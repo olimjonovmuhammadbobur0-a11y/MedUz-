@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedUz Quiz Standalone</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #007bff; }
+        body { font-family: 'Inter', sans-serif; transition: all 0.3s ease; }
+        .bg-primary { background-color: var(--primary); }
+        .text-primary { color: var(--primary); }
+        .border-primary { border-color: var(--primary); }
+        .ring-primary { --tw-ring-color: var(--primary); }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+    <!-- Floating Palette -->
+    <div class="fixed top-6 right-6 z-50 flex gap-2 bg-white p-2 rounded-full shadow-xl border border-slate-100">
+        <button onclick="setTheme('#007bff')" class="w-8 h-8 rounded-full bg-[#007bff] border-2 border-white shadow-sm" title="Ko'k"></button>
+        <button onclick="setTheme('#28a745')" class="w-8 h-8 rounded-full bg-[#28a745] border-2 border-white shadow-sm" title="Yashil"></button>
+        <button onclick="setTheme('#6f42c1')" class="w-8 h-8 rounded-full bg-[#6f42c1] border-2 border-white shadow-sm" title="Binafsha"></button>
+        <button onclick="setTheme('#fd7e14')" class="w-8 h-8 rounded-full bg-[#fd7e14] border-2 border-white shadow-sm" title="To'q sariq"></button>
+        <button onclick="setTheme('#20c997')" class="w-8 h-8 rounded-full bg-[#20c997] border-2 border-white shadow-sm" title="Yashil-ko'k"></button>
+    </div>
+
+    <div id="app" class="max-w-2xl mx-auto py-12 px-4">
+        <!-- Settings Screen -->
+        <div id="settings-screen" class="space-y-8">
+            <div class="text-center space-y-4">
+                <h1 class="text-4xl font-black text-slate-900">MedUz Quiz</h1>
+                <p class="text-slate-500">Tibbiyot talabalari uchun interaktiv test platformasi</p>
+            </div>
+
+            <div class="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 space-y-6">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-2">Fan</label>
+                        <select id="subject-select" onchange="updateTopics()" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 ring-primary">
+                            <option value="internal">Ichki kasalliklar</option>
+                            <option value="surgery">Xirurgiya</option>
+                            <option value="pediatrics">Pediatriya</option>
+                            <option value="obstetrics">Akusherlik</option>
+                            <option value="neurology">Nevrologiya</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-2">Mavzu</label>
+                        <select id="topic-select" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 ring-primary">
+                            <!-- Topics populated by JS -->
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-2">Qiyinlik darajasi</label>
+                        <select id="difficulty-select" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 ring-primary">
+                            <option value="all">Barchasi</option>
+                            <option value="easy">Oson</option>
+                            <option value="medium">O'rta</option>
+                            <option value="hard">Qiyin</option>
+                        </select>
+                    </div>
+                </div>
+                <button onclick="startQuiz()" class="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg hover:opacity-90 transition-all">
+                    Testni boshlash
+                </button>
+            </div>
+        </div>
+
+        <!-- Quiz Screen -->
+        <div id="quiz-screen" class="hidden space-y-8">
+            <div class="flex justify-between items-center">
+                <div id="progress-text" class="text-sm font-bold text-slate-500">Savol 1 / 5</div>
+                <div id="timer" class="px-4 py-2 bg-amber-50 text-amber-700 rounded-xl font-mono font-bold">10:00</div>
+            </div>
+            <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div id="progress-bar" class="h-full bg-primary transition-all duration-500" style="width: 0%"></div>
+            </div>
+
+            <div class="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 space-y-8">
+                <h2 id="question-text" class="text-2xl font-bold text-slate-900 leading-tight"></h2>
+                <div id="options-container" class="grid grid-cols-1 gap-4">
+                    <!-- Options populated by JS -->
+                </div>
+                <div id="feedback-container" class="hidden space-y-6 pt-6 border-t border-slate-100">
+                    <div id="explanation-box" class="p-5 rounded-2xl bg-blue-50 text-blue-700 text-sm leading-relaxed"></div>
+                    <button onclick="nextQuestion()" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-slate-800 transition-all">
+                        Keyingi savol
+                    </button>
+                </div>
+                <button id="check-btn" onclick="checkAnswer()" disabled class="w-full py-4 rounded-2xl font-bold bg-slate-100 text-slate-400 cursor-not-allowed transition-all">
+                    Javobni tekshirish
+                </button>
+            </div>
+        </div>
+
+        <!-- Result Screen -->
+        <div id="result-screen" class="hidden text-center space-y-8 py-12">
+            <div class="w-32 h-32 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
+                <span id="final-score" class="text-4xl font-black text-primary">4/5</span>
+            </div>
+            <div class="space-y-2">
+                <h2 class="text-3xl font-bold">Test yakunlandi!</h2>
+                <p id="result-text" class="text-slate-500"></p>
+            </div>
+            <button onclick="resetQuiz()" class="bg-primary text-white px-12 py-4 rounded-2xl font-bold shadow-lg hover:opacity-90 transition-all">
+                Qaytadan boshlash
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const quizQuestions = [
+            // INTERNAL MEDICINE (5 questions)
+            { subject: "internal", topic: "yurak", difficulty: "medium", question: "Yurak yetishmovchiligida qanday gemodinamik o'zgarish kuzatiladi?", options: ["ABP ortadi", "ABP kamayadi", "CVP kamayadi", "CVP ortadi"], correct: 3, explanation: "Yurak yetishmovchiligida markaziy venoz bosim (CVP) ortadi." },
+            { subject: "internal", topic: "yurak", difficulty: "hard", question: "Miyokard infarktining eng tez-tez uchraydigan asorati?", options: ["Yurak tamponadasi", "Aritmiya", "Miyokard rupture", "Qorincha anevrizmasi"], correct: 1, explanation: "Aritmiyalar eng ko'p uchraydi." },
+            { subject: "internal", topic: "opka", difficulty: "medium", question: "O'pka arteriyasida bosim qachon ortadi?", options: ["Mitral stenozda", "Aorta stenozda", "Trikuspidal yetishmovchilikda", "O'pka venoz bosim ortishida"], correct: 0, explanation: "Mitral stenozda chap qorincha to'lishi qiyinlashadi." },
+            { subject: "internal", topic: "jigar", difficulty: "medium", question: "Jigar sirrozi bilan og'rigan bemorda qanday gormonal o'zgarish kuzatiladi?", options: ["Aldosteron kamayadi", "Aldosteron ortadi", "ADH kamayadi", "Renin kamayadi"], correct: 1, explanation: "Jigar sirrozida aldosteron ortadi." },
+            { subject: "internal", topic: "buyrak", difficulty: "easy", question: "O'tkir glomerulonefritning asosiy belgisi?", options: ["Gipertenziya", "Gipotoniya", "Poliuriya", "Dizuriya"], correct: 0, explanation: "Qon bosimi ortadi va shish paydo bo'ladi." },
+            // SURGERY (5 questions)
+            { subject: "surgery", topic: "appenditsit", difficulty: "medium", question: "O'tkir appenditsitda eng tipik simptom?", options: ["Murphy", "Kocher", "Ortner", "Cough"], correct: 1, explanation: "Kocher simptomi – og'riqning o'ng yonbosh sohaga ko'chishi." },
+            { subject: "surgery", topic: "xoletsistit", difficulty: "medium", question: "O'tkir xoletsistitda qaysi simptom kuzatiladi?", options: ["Murphy", "Kocher", "Psoas", "Rovsing"], correct: 0, explanation: "Murphy simptomi – o't pufagi sohasida og'riq." },
+            { subject: "surgery", topic: "pankreatit", difficulty: "hard", question: "O'tkir pankreatitda qaysi ferment yuqori bo'ladi?", options: ["ALT", "AST", "Amilaza", "Kreatinin"], correct: 2, explanation: "Amilaza va lipaza yuqori bo'ladi." },
+            { subject: "surgery", topic: "travma", difficulty: "easy", question: "Suyak sinishining mutloq belgisi?", options: ["Og'riq", "Shish", "Krepitatsiya", "Gematoma"], correct: 2, explanation: "Krepitatsiya – suyak parchalarning ishqalanishi." },
+            { subject: "surgery", topic: "onkologiya", difficulty: "medium", question: "Oshqozon saratonining eng keng tarqalgan gistologik turi?", options: ["Adenokarsinoma", "Skuamoz", "Sarkoma", "Limfoma"], correct: 0, explanation: "95% adenokarsinoma." },
+            // PEDIATRICS (5 questions)
+            { subject: "pediatrics", topic: "raxit", difficulty: "easy", question: "Bolalarda raxit qaysi vitamin yetishmovchiligida kelib chiqadi?", options: ["A", "B", "D", "E"], correct: 2, explanation: "Raxit vitamin D yetishmovchiligida kelib chiqadi." },
+            { subject: "pediatrics", topic: "infeksiyalar", difficulty: "medium", question: "Qizamiq kasalligining inkubatsion davri?", options: ["3-5 kun", "7-14 kun", "14-21 kun", "21-28 kun"], correct: 1, explanation: "Qizamiqda inkubatsion davr o'rtacha 7-14 kun." },
+            { subject: "pediatrics", topic: "yuqumli kasalliklar", difficulty: "medium", question: "Skarlatinada qanday toshma xarakterli?", options: ["Papulyoz", "Mayda nuqtali", "Vezikulyar", "Pustulyoz"], correct: 1, explanation: "Mayda nuqtali toshma xarakterli." },
+            { subject: "pediatrics", topic: "nevrologiya", difficulty: "hard", question: "Bolalarda meningitning eng tez-tez qo'zg'atuvchisi?", options: ["Viruslar", "Bakteriyalar", "Zamburug'lar", "Parazitlar"], correct: 1, explanation: "Bakterial meningit ko'proq uchraydi." },
+            { subject: "pediatrics", topic: "raxit", difficulty: "medium", question: "Raxitning boshlang'ich belgisi?", options: ["Terlash", "Suyak deformatsiyasi", "Mushak gipotoniyasi", "Tish chiqishining kechikishi"], correct: 0, explanation: "Bosh terlash, bezovtalik boshlang'ich belgilar." },
+            // OBSTETRICS (5 questions)
+            { subject: "obstetrics", topic: "homiladorlik", difficulty: "medium", question: "Homiladorlikda preeklampsiyaning asosiy belgisi?", options: ["Gipertenziya", "Gipotoniya", "Bradikardiya", "Anemiya"], correct: 0, explanation: "Preeklampsiyada qon bosimi ortadi." },
+            { subject: "obstetrics", topic: "tug'ruq", difficulty: "easy", question: "Tug'ruqning birinchi davri nima bilan tugaydi?", options: ["Bola tug'ilishi", "Yo'ldosh ajralishi", "Bachadon bo'yni ochilishi", "Qisqarishlar boshlanishi"], correct: 2, explanation: "Bachadon bo'yni to'liq ochiladi." },
+            { subject: "obstetrics", topic: "asoratlar", difficulty: "hard", question: "HeLLP sindromi qaysi kasallikning asorati?", options: ["Preeklampsiya", "Giperemez", "Anemiya", "Piyelonefrit"], correct: 0, explanation: "HeLLP preeklampsiyaning og'ir asorati." },
+            { subject: "obstetrics", topic: "homiladorlik", difficulty: "medium", question: "Homiladorlikda qanday anemiya ko'p uchraydi?", options: ["B12 yetishmovchilik", "Folat yetishmovchilik", "Temir yetishmovchilik", "Gemolitik"], correct: 2, explanation: "Temir yetishmovchilik anemiyasi 90%" },
+            { subject: "obstetrics", topic: "tug'ruq", difficulty: "medium", question: "Tug'ruqdan keyingi qon ketishning eng ko'p sababi?", options: ["Bachadon atoniyasi", "Platsenta akkreta", "Tug'ruq yo'llari yorilishi", "Koaqulopatiya"], correct: 0, explanation: "Bachadon tonusi pasayishi sabab bo'ladi." },
+            // NEUROLOGY (5 questions)
+            { subject: "neurology", topic: "bosh_miya", difficulty: "hard", question: "Insultning eng keng tarqalgan turi?", options: ["Gemorragik", "Ishemik", "Subaraxnoidal", "Mikroinsult"], correct: 1, explanation: "Barcha insultlarning 85% ishemik insult." },
+            { subject: "neurology", topic: "periferik_nervlar", difficulty: "medium", question: "Karpal tunnel sindromida qaysi nerv zararlanadi?", options: ["Ulnar", "Radial", "Median", "Aksillar"], correct: 2, explanation: "Median nerv karpal tunnelda zararlanadi." },
+            { subject: "neurology", topic: "bosh_miya", difficulty: "easy", question: "Miya chayqalishining asosiy belgisi?", options: ["Qisqa muddatli xotira yo'qolishi", "Uzoq muddatli koma", "Falaj", "Nutq buzilishi"], correct: 0, explanation: "Qisqa muddatli xotira yo'qolishi xarakterli." },
+            { subject: "neurology", topic: "o'murtqa", difficulty: "medium", question: "Lumbal ponksiya qayerda o'tkaziladi?", options: ["L1-L2", "L2-L3", "L3-L4", "L4-L5"], correct: 3, explanation: "L4-L5 yoki L5-S1 oralig'ida." },
+            { subject: "neurology", topic: "bosh_miya", difficulty: "hard", question: "Parkinson kasalligida qaysi neyrotransmitter kamayadi?", options: ["Serotonin", "Dopamin", "Noradrenalin", "GABA"], correct: 1, explanation: "Dopamin ishlab chiqaruvchi neyronlar nobud bo'ladi." }
+        ];
+
+        const topics = {
+            internal: ["yurak", "opka", "jigar", "buyrak", "oshqozon-ichak"],
+            surgery: ["appenditsit", "xoletsistit", "pankreatit", "travma", "onkologiya"],
+            pediatrics: ["raxit", "infeksiyalar", "yuqumli kasalliklar", "nevrologiya"],
+            obstetrics: ["homiladorlik", "tug'ruq", "asoratlar"],
+            neurology: ["bosh_miya", "o'murtqa", "periferik_nervlar"]
+        };
+
+        let currentQuestions = [];
+        let currentIdx = 0;
+        let score = 0;
+        let selectedOption = null;
+        let timerInterval = null;
+        let timeLeft = 600;
+
+        function setTheme(color) {
+            document.documentElement.style.setProperty('--primary', color);
+            localStorage.setItem('meduz_theme', color);
+        }
+
+        function updateTopics() {
+            const subject = document.getElementById('subject-select').value;
+            const topicSelect = document.getElementById('topic-select');
+            topicSelect.innerHTML = '<option value="all">Barchasi</option>';
+            topics[subject].forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t;
+                opt.textContent = t.charAt(0).toUpperCase() + t.slice(1).replace('_', ' ');
+                topicSelect.appendChild(opt);
+            });
+        }
+
+        function startQuiz() {
+            const subject = document.getElementById('subject-select').value;
+            const topic = document.getElementById('topic-select').value;
+            const difficulty = document.getElementById('difficulty-select').value;
+
+            currentQuestions = quizQuestions.filter(q => {
+                const sMatch = q.subject === subject;
+                const tMatch = topic === 'all' || q.topic === topic;
+                const dMatch = difficulty === 'all' || q.difficulty === difficulty;
+                return sMatch && tMatch && dMatch;
+            });
+
+            if (currentQuestions.length === 0) {
+                alert('Ushbu filtrlar bo\'yicha savollar topilmadi.');
+                return;
+            }
+
+            currentQuestions = currentQuestions.sort(() => 0.5 - Math.random()).slice(0, 5);
+            currentIdx = 0;
+            score = 0;
+            timeLeft = 600;
+            
+            document.getElementById('settings-screen').classList.add('hidden');
+            document.getElementById('quiz-screen').classList.remove('hidden');
+            
+            startTimer();
+            showQuestion();
+        }
+
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                const m = Math.floor(timeLeft / 60);
+                const s = timeLeft % 60;
+                document.getElementById('timer').textContent = `${m}:${s < 10 ? '0' : ''}${s}`;
+                if (timeLeft <= 0) finishQuiz();
+            }, 1000);
+        }
+
+        function showQuestion() {
+            const q = currentQuestions[currentIdx];
+            document.getElementById('progress-text').textContent = `Savol ${currentIdx + 1} / ${currentQuestions.length}`;
+            document.getElementById('progress-bar').style.width = `${((currentIdx + 1) / currentQuestions.length) * 100}%`;
+            document.getElementById('question-text').textContent = q.question;
+            
+            const container = document.getElementById('options-container');
+            container.innerHTML = '';
+            selectedOption = null;
+            document.getElementById('check-btn').disabled = true;
+            document.getElementById('check-btn').classList.add('bg-slate-100', 'text-slate-400');
+            document.getElementById('check-btn').classList.remove('bg-primary', 'text-white');
+            document.getElementById('feedback-container').classList.add('hidden');
+            document.getElementById('check-btn').classList.remove('hidden');
+
+            q.options.forEach((opt, i) => {
+                const btn = document.createElement('button');
+                btn.className = 'w-full text-left p-5 rounded-2xl border-2 border-slate-100 font-medium transition-all hover:border-primary/30 hover:bg-primary/5';
+                btn.textContent = opt;
+                btn.onclick = () => selectOption(i, btn);
+                container.appendChild(btn);
+            });
+        }
+
+        function selectOption(idx, btn) {
+            selectedOption = idx;
+            const btns = document.getElementById('options-container').children;
+            for (let b of btns) b.classList.remove('border-primary', 'bg-primary/5');
+            btn.classList.add('border-primary', 'bg-primary/5');
+            
+            const checkBtn = document.getElementById('check-btn');
+            checkBtn.disabled = false;
+            checkBtn.classList.remove('bg-slate-100', 'text-slate-400');
+            checkBtn.classList.add('bg-primary', 'text-white');
+        }
+
+        function checkAnswer() {
+            const q = currentQuestions[currentIdx];
+            const btns = document.getElementById('options-container').children;
+            
+            for (let i = 0; i < btns.length; i++) {
+                btns[i].disabled = true;
+                if (i === q.correct) {
+                    btns[i].classList.add('border-emerald-500', 'bg-emerald-50', 'text-emerald-700');
+                } else if (i === selectedOption) {
+                    btns[i].classList.add('border-red-500', 'bg-red-50', 'text-red-700');
+                }
+            }
+
+            if (selectedOption === q.correct) score++;
+            
+            document.getElementById('explanation-box').textContent = q.explanation;
+            document.getElementById('feedback-container').classList.remove('hidden');
+            document.getElementById('check-btn').classList.add('hidden');
+        }
+
+        function nextQuestion() {
+            currentIdx++;
+            if (currentIdx < currentQuestions.length) {
+                showQuestion();
+            } else {
+                finishQuiz();
+            }
+        }
+
+        function finishQuiz() {
+            clearInterval(timerInterval);
+            document.getElementById('quiz-screen').classList.add('hidden');
+            document.getElementById('result-screen').classList.remove('hidden');
+            document.getElementById('final-score').textContent = `${score} / ${currentQuestions.length}`;
+            document.getElementById('result-text').textContent = score >= 4 ? "Ajoyib natija! Siz tibbiyotni yaxshi bilasiz." : "Yaxshi, lekin ko'proq o'qishingiz kerak.";
+        }
+
+        function resetQuiz() {
+            document.getElementById('result-screen').classList.add('hidden');
+            document.getElementById('settings-screen').classList.remove('hidden');
+        }
+
+        // Init
+        window.onload = () => {
+            const savedTheme = localStorage.getItem('meduz_theme');
+            if (savedTheme) setTheme(savedTheme);
+            updateTopics();
+        };
+    </script>
+</body>
+</html>
