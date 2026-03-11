@@ -28,10 +28,24 @@ import {
   LogOut,
   Edit2,
   Sparkles,
-  Loader2
+  Loader2,
+  MessageSquare,
+  Send,
+  Camera,
+  Image as ImageIcon,
+  Film,
+  Search as SearchIcon,
+  Paperclip,
+  Zap,
+  Upload,
+  Scissors,
+  Baby,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
+import { GoogleGenAI, ThinkingLevel, GenerateContentResponse } from "@google/genai";
 import { Mnemonic, Question, SymptomData, VideoData, Section, Setting } from './data';
 import { explainMedicalTopic } from './services/aiService';
 
@@ -42,15 +56,25 @@ const getYouTubeEmbedUrl = (url: string) => {
   return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : url;
 };
 
-type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin';
+type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [themeColor, setThemeColor] = useState(() => localStorage.getItem('meduz_theme') || '#007bff');
+  const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('meduz_dark_mode') === 'true');
+  const [themeColor, setThemeColor] = useState(() => localStorage.getItem('meduz_theme') || '#2563eb');
 
   useEffect(() => {
-    document.documentElement.style.setProperty('--primary-color', themeColor);
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('meduz_dark_mode', isDarkMode.toString());
+  }, [isDarkMode]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--primary', themeColor);
     localStorage.setItem('meduz_theme', themeColor);
   }, [themeColor]);
   
@@ -60,12 +84,69 @@ export default function App() {
   const [videosData, setVideosData] = useState<VideoData[]>([]);
   const [sectionsData, setSectionsData] = useState<Section[]>([]);
   const [settingsData, setSettingsData] = useState<Setting[]>([]);
+  const [libraryData, setLibraryData] = useState<any>(() => {
+    const saved = localStorage.getItem('meduz_library');
+    return saved ? JSON.parse(saved) : initialMedicalData;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('meduz_library', JSON.stringify(libraryData));
+  }, [libraryData]);
   const [aiModal, setAiModal] = useState<{ isOpen: boolean, title: string, content: string, loading: boolean }>({
     isOpen: false,
     title: '',
     content: '',
     loading: false
   });
+
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'model', text: string }[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [isThinkingMode, setIsThinkingMode] = useState(false);
+  const [isSearchEnabled, setIsSearchEnabled] = useState(true);
+
+  const handleSendMessage = async () => {
+    if (!chatInput.trim() || isChatLoading) return;
+
+    const userMessage = chatInput.trim();
+    setChatMessages(prev => [...prev, { role: 'user', text: userMessage }]);
+    setChatInput('');
+    setIsChatLoading(true);
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const model = isThinkingMode ? 'gemini-3.1-pro-preview' : 'gemini-3-flash-preview';
+      
+      const config: any = {
+        systemInstruction: "Siz MedUz tibbiy platformasining AI yordamchisiz. Tibbiy talabalarga o'zbek tilida aniq va ilmiy asoslangan javoblar bering.",
+      };
+
+      if (isThinkingMode) {
+        config.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
+      }
+
+      if (isSearchEnabled) {
+        config.tools = [{ googleSearch: {} }];
+      }
+
+      const response = await ai.models.generateContent({
+        model,
+        contents: [...chatMessages, { role: 'user', text: userMessage }].map(m => ({
+          role: m.role,
+          parts: [{ text: m.text }]
+        })),
+        config
+      });
+
+      setChatMessages(prev => [...prev, { role: 'model', text: response.text || "Kechirasiz, javob olishda xatolik yuz berdi." }]);
+    } catch (error) {
+      console.error("Chat error:", error);
+      setChatMessages(prev => [...prev, { role: 'model', text: "Xatolik yuz berdi. Iltimos, qaytadan urinib ko'ring." }]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
 
   const handleAIExplain = async (title: string, context: string) => {
     setAiModal({ isOpen: true, title, content: '', loading: true });
@@ -114,7 +195,118 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      {/* Floating Color Palette */}
+      {/* Floating Chatbot */}
+      <div className="fixed bottom-6 left-6 z-[100]">
+        <AnimatePresence>
+          {isChatOpen && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8, y: 20, x: -20 }}
+              animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
+              exit={{ opacity: 0, scale: 0.8, y: 20, x: -20 }}
+              className="bg-white rounded-3xl shadow-2xl w-[350px] sm:w-[400px] h-[500px] flex flex-col overflow-hidden border border-slate-200 mb-4"
+            >
+              <div className="p-4 bg-blue-600 text-white flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <div className="bg-white/20 p-1.5 rounded-lg">
+                    <MessageSquare className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm">MedUz AI Yordamchi</h3>
+                    <p className="text-[10px] opacity-80">Tibbiy savollaringizga javob beraman</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsChatOpen(false)} className="p-1 hover:bg-white/10 rounded-full">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-slate-50">
+                {chatMessages.length === 0 && (
+                  <div className="text-center py-8 space-y-2">
+                    <div className="bg-blue-100 w-12 h-12 rounded-full flex items-center justify-center mx-auto">
+                      <Sparkles className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <p className="text-slate-500 text-sm font-medium">Salom! Men MedUz AI yordamchisiman. Qanday yordam bera olaman?</p>
+                  </div>
+                )}
+                {chatMessages.map((m, i) => (
+                  <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${m.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-700 shadow-sm border border-slate-100 rounded-tl-none'}`}>
+                      <Markdown>{m.text}</Markdown>
+                    </div>
+                  </div>
+                ))}
+                {isChatLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 rounded-tl-none flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+                      <span className="text-xs text-slate-500">O'ylayapman...</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 border-t border-slate-100 bg-white space-y-2">
+                <div className="flex items-center gap-4 px-2">
+                  <label className="flex items-center gap-2 cursor-pointer group">
+                    <input 
+                      type="checkbox" 
+                      checked={isThinkingMode} 
+                      onChange={(e) => setIsThinkingMode(e.target.checked)}
+                      className="hidden"
+                    />
+                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isThinkingMode ? 'bg-purple-600 border-purple-600' : 'border-slate-300'}`}>
+                      {isThinkingMode && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-purple-600 transition-colors">Thinking Mode</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer group">
+                    <input 
+                      type="checkbox" 
+                      checked={isSearchEnabled} 
+                      onChange={(e) => setIsSearchEnabled(e.target.checked)}
+                      className="hidden"
+                    />
+                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSearchEnabled ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300'}`}>
+                      {isSearchEnabled && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-emerald-600 transition-colors">Google Search</span>
+                  </label>
+                </div>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                    placeholder="Savolingizni yozing..."
+                    className="flex-1 bg-slate-100 border-none rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-600 outline-none"
+                  />
+                  <button 
+                    onClick={handleSendMessage}
+                    disabled={isChatLoading || !chatInput.trim()}
+                    className="bg-blue-600 text-white p-2 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    <Send className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <button
+          onClick={() => setIsChatOpen(!isChatOpen)}
+          className="bg-blue-600 text-white p-4 rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all flex items-center justify-center group relative"
+        >
+          {isChatOpen ? <X className="w-6 h-6" /> : <MessageSquare className="w-6 h-6" />}
+          {!isChatOpen && (
+            <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+              AI Yordamchi
+            </div>
+          )}
+        </button>
+      </div>
+
       <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-2 bg-white/80 backdrop-blur-md p-2 rounded-full shadow-2xl border border-white/20">
         {[
           { name: 'Ko\'k', color: '#007bff' },
@@ -134,32 +326,63 @@ export default function App() {
       </div>
 
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 bg-white border-b border-slate-200 shadow-sm">
+      <nav className="sticky top-0 z-50 bg-card border-b border-border shadow-sm backdrop-blur-md bg-card/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div 
               className="flex items-center gap-2 cursor-pointer" 
               onClick={() => navigate('home')}
             >
-              <div className="bg-blue-600 p-1.5 rounded-lg">
-                <Heart className="w-6 h-6 text-white" />
+              <div className="bg-primary p-1.5 rounded-lg">
+                <Heart className="w-6 h-6 text-primary-foreground" />
               </div>
-              <span className="text-2xl font-bold tracking-tight text-blue-600">MedUz</span>
+              <span className="text-2xl font-bold tracking-tight text-primary">MedUz</span>
             </div>
 
             {/* Desktop Nav */}
-            <div className="hidden md:flex items-center gap-8">
+            <div className="hidden md:flex items-center gap-6">
+              <NavLink active={currentPage === 'library'} onClick={() => navigate('library')}>Kutubxona</NavLink>
               <NavLink active={currentPage === 'mnemonics'} onClick={() => navigate('mnemonics')}>Mnemonikalar</NavLink>
-              <NavLink active={currentPage === 'videos'} onClick={() => navigate('videos')}>Video Kutubxona</NavLink>
+              <NavLink active={currentPage === 'videos'} onClick={() => navigate('videos')}>Videolar</NavLink>
               <NavLink active={currentPage === 'symptoms'} onClick={() => navigate('symptoms')}>Simptomlar</NavLink>
-              <NavLink active={currentPage === 'quiz'} onClick={() => navigate('quiz')}>Kunlik Test</NavLink>
+              <NavLink active={currentPage === 'quiz'} onClick={() => navigate('quiz')}>Testlar</NavLink>
+              <NavLink active={currentPage === 'ai'} onClick={() => navigate('ai')}>
+                <div className="flex items-center gap-1.5 text-accent font-bold">
+                  <Sparkles className="w-4 h-4" />
+                  AI Markazi
+                </div>
+              </NavLink>
+              
+              <div className="h-6 w-px bg-border mx-2" />
+              
+              <button 
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="p-2 rounded-xl bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground transition-all"
+                title={isDarkMode ? "Kunduzgi rejim" : "Tungi rejim"}
+              >
+                {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </button>
+              
+              <button 
+                onClick={() => navigate('admin')}
+                className="p-2 rounded-xl bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground transition-all"
+                title="Admin Panel"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
             </div>
 
             {/* Mobile Menu Button */}
-            <div className="md:hidden">
+            <div className="md:hidden flex items-center gap-2">
+              <button 
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="p-2 rounded-xl bg-secondary text-foreground"
+              >
+                {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </button>
               <button 
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="p-2 text-slate-600 hover:bg-slate-100 rounded-md"
+                className="p-2 text-foreground hover:bg-secondary rounded-md"
               >
                 {isMenuOpen ? <X /> : <Menu />}
               </button>
@@ -174,13 +397,16 @@ export default function App() {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="md:hidden bg-white border-t border-slate-100 overflow-hidden"
+              className="md:hidden bg-card border-t border-border overflow-hidden"
             >
               <div className="px-4 py-4 space-y-2">
-                <MobileNavLink active={currentPage === 'mnemonics'} onClick={() => navigate('mnemonics')}>Mnemonikalar</MobileNavLink>
-                <MobileNavLink active={currentPage === 'videos'} onClick={() => navigate('videos')}>Video Kutubxona</MobileNavLink>
-                <MobileNavLink active={currentPage === 'symptoms'} onClick={() => navigate('symptoms')}>Simptomlar</MobileNavLink>
-                <MobileNavLink active={currentPage === 'quiz'} onClick={() => navigate('quiz')}>Kunlik Test</MobileNavLink>
+                <MobileNavLink active={currentPage === 'library'} onClick={() => { navigate('library'); setIsMenuOpen(false); }}>Kutubxona</MobileNavLink>
+                <MobileNavLink active={currentPage === 'mnemonics'} onClick={() => { navigate('mnemonics'); setIsMenuOpen(false); }}>Mnemonikalar</MobileNavLink>
+                <MobileNavLink active={currentPage === 'videos'} onClick={() => { navigate('videos'); setIsMenuOpen(false); }}>Videolar</MobileNavLink>
+                <MobileNavLink active={currentPage === 'symptoms'} onClick={() => { navigate('symptoms'); setIsMenuOpen(false); }}>Simptomlar</MobileNavLink>
+                <MobileNavLink active={currentPage === 'quiz'} onClick={() => { navigate('quiz'); setIsMenuOpen(false); }}>Testlar</MobileNavLink>
+                <MobileNavLink active={currentPage === 'ai'} onClick={() => { navigate('ai'); setIsMenuOpen(false); }}>AI Markazi</MobileNavLink>
+                <MobileNavLink active={currentPage === 'admin'} onClick={() => { navigate('admin'); setIsMenuOpen(false); }}>Admin Panel</MobileNavLink>
               </div>
             </motion.div>
           )}
@@ -195,6 +421,8 @@ export default function App() {
           {currentPage === 'videos' && <VideosPage data={videosData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'symptoms' && <SymptomsPage data={symptomsData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'quiz' && <QuizPage data={questionsData} handleAIExplain={handleAIExplain} />}
+          {currentPage === 'library' && <LibraryPage data={libraryData} handleAIExplain={handleAIExplain} />}
+          {currentPage === 'ai' && <AIPage />}
           {currentPage === 'admin' && <AdminPage 
             mnemonics={mnemonicsData} 
             questions={questionsData} 
@@ -202,7 +430,9 @@ export default function App() {
             videos={videosData}
             sections={sectionsData}
             settings={settingsData}
+            library={libraryData}
             onUpdate={fetchAllData} 
+            onUpdateLibrary={setLibraryData}
             themeColor={themeColor}
             setThemeColor={setThemeColor}
           />}
@@ -383,7 +613,14 @@ function HomePage({ onNavigate, sections }: { onNavigate: (page: Page) => void, 
       </section>
 
       {/* Features Grid */}
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <FeatureCard 
+          icon={<BookOpen className="w-8 h-8 text-blue-600" />}
+          title="Kutubxona"
+          description="Fanlar, mavzular va resurslarning iyerarxik to'plami."
+          onClick={() => onNavigate('library')}
+          color="blue"
+        />
         <FeatureCard 
           icon={<Brain className="w-8 h-8 text-purple-500" />}
           title="Mnemonikalar"
@@ -411,6 +648,13 @@ function HomePage({ onNavigate, sections }: { onNavigate: (page: Page) => void, 
           description="Bilimingizni sinash uchun har kuni yangi savollar to'plami."
           onClick={() => onNavigate('quiz')}
           color="blue"
+        />
+        <FeatureCard 
+          icon={<Sparkles className="w-8 h-8 text-purple-600" />}
+          title="AI Markazi"
+          description="Sun'iy intellekt yordamida tahlil va media yaratish."
+          onClick={() => onNavigate('ai')}
+          color="purple"
         />
         {sections.map((sec, idx) => (
           <FeatureCard 
@@ -1108,18 +1352,20 @@ function QuizPage({ data, handleAIExplain }: { data: Question[], handleAIExplain
   );
 }
 
-function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings, onUpdate, themeColor, setThemeColor }: { 
+function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings, library, onUpdate, onUpdateLibrary, themeColor, setThemeColor }: { 
   mnemonics: Mnemonic[], 
   questions: Question[], 
   symptoms: SymptomData[], 
   videos: VideoData[],
   sections: Section[],
   settings: Setting[],
+  library: any,
   onUpdate: () => void,
+  onUpdateLibrary: (data: any) => void,
   themeColor: string,
   setThemeColor: (color: string) => void
 }) {
-  const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'sections' | 'settings'>('mnemonics');
+  const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'sections' | 'settings' | 'library'>('mnemonics');
   const [password, setPassword] = useState('');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [error, setError] = useState('');
@@ -1181,27 +1427,27 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="max-w-md mx-auto mt-20 p-8 bg-white rounded-3xl shadow-xl border border-slate-100"
+        className="max-w-md mx-auto mt-20 p-8 bg-card rounded-[32px] shadow-xl border border-border"
       >
         <div className="flex justify-center mb-6">
-          <div className="bg-blue-100 p-4 rounded-full">
-            <Lock className="w-8 h-8 text-blue-600" />
+          <div className="bg-primary/10 p-4 rounded-full">
+            <Lock className="w-8 h-8 text-primary" />
           </div>
         </div>
-        <h2 className="text-2xl font-bold text-center mb-6">Admin Kirish</h2>
+        <h2 className="text-2xl font-bold text-center mb-6 text-foreground">Admin Kirish</h2>
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-1">Parol</label>
+            <label className="block text-sm font-bold text-foreground/70 mb-1">Parol</label>
             <input 
               type="password" 
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-primary outline-none transition-all"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
             />
           </div>
           {error && <p className="text-red-500 text-sm font-medium">{error}</p>}
-          <button className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100">
+          <button className="w-full bg-primary text-primary-foreground py-3 rounded-xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
             Kirish
           </button>
         </form>
@@ -1218,31 +1464,40 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Sidebar Navigation */}
         <aside className="lg:w-72 flex-shrink-0">
-          <div className="bg-white border border-slate-200 rounded-3xl p-4 sticky top-24 space-y-1 shadow-sm">
+          <div className="bg-card border border-border rounded-[32px] p-4 sticky top-24 space-y-1 shadow-sm">
             <div className="px-4 py-4 mb-2">
-              <h2 className="text-2xl font-bold text-slate-900">Admin Panel</h2>
-              <p className="text-xs text-slate-400 font-medium mt-1">Ma'lumotlarni boshqarish</p>
+              <h2 className="text-2xl font-bold text-foreground">Admin Panel</h2>
+              <p className="text-xs text-foreground/40 font-medium mt-1">Ma'lumotlarni boshqarish</p>
             </div>
             
             <div className="space-y-1">
-              {(['mnemonics', 'questions', 'symptoms', 'videos', 'sections', 'settings'] as const).map(tab => {
-                const Icon = tab === 'mnemonics' ? Brain : tab === 'questions' ? CheckCircle2 : tab === 'symptoms' ? Stethoscope : tab === 'videos' ? Video : tab === 'sections' ? Plus : Settings;
-                const label = tab === 'mnemonics' ? 'Mnemonikalar' : tab === 'questions' ? 'Savollar' : tab === 'symptoms' ? 'Simptomlar' : tab === 'videos' ? 'Videolar' : tab === 'sections' ? 'Bo\'limlar' : 'Sozlamalar';
+              {[
+                { id: 'mnemonics', label: 'Mnemonikalar', icon: Brain },
+                { id: 'questions', label: 'Savollar', icon: CheckCircle2 },
+                { id: 'symptoms', label: 'Simptomlar', icon: Stethoscope },
+                { id: 'videos', label: 'Videolar', icon: Video },
+                { id: 'library', label: 'Kutubxona', icon: BookOpen },
+                { id: 'sections', label: 'Bo\'limlar', icon: Plus },
+                { id: 'settings', label: 'Sozlamalar', icon: Settings },
+              ].map(tab => {
+                const Icon = tab.icon;
+                const label = tab.label;
+                const id = tab.id as any;
                 
                 return (
                   <button 
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`w-full px-4 py-3.5 rounded-2xl text-sm font-bold transition-all flex items-center gap-3.5 ${activeTab === tab ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'text-slate-600 hover:bg-slate-50 hover:text-blue-600'}`}
+                    key={id}
+                    onClick={() => setActiveTab(id)}
+                    className={`w-full px-4 py-3.5 rounded-2xl text-sm font-bold transition-all flex items-center gap-3.5 ${activeTab === id ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'text-foreground/60 hover:bg-secondary hover:text-primary'}`}
                   >
-                    <Icon className={`w-5 h-5 ${activeTab === tab ? 'text-white' : 'text-slate-400'}`} />
+                    <Icon className={`w-5 h-5 ${activeTab === id ? 'text-primary-foreground' : 'text-foreground/40'}`} />
                     {label}
                   </button>
                 );
               })}
             </div>
 
-            <div className="pt-4 mt-4 border-t border-slate-100">
+            <div className="pt-4 mt-4 border-t border-border">
               <button 
                 onClick={() => setIsLoggedIn(false)}
                 className="w-full px-4 py-3.5 rounded-2xl text-sm font-bold text-red-600 hover:bg-red-50 transition-all flex items-center gap-3.5"
@@ -1256,102 +1511,116 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
         {/* Main Content Area */}
         <div className="flex-1 space-y-8">
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-            <div className="xl:col-span-2 bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-sm h-fit">
-              <div className="px-6 py-5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                  {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-blue-600" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-blue-600" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-blue-600" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-blue-600" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-blue-600" /> : <Settings className="w-5 h-5 text-blue-600" />}
-                  {activeTab === 'mnemonics' ? 'Mnemonikalar Ro\'yxati' : activeTab === 'questions' ? 'Savollar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : 'Tizim Sozlamalari'}
+            <div className="xl:col-span-2 bg-card border border-border rounded-[32px] overflow-hidden shadow-sm h-fit">
+              <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
+                <h3 className="font-bold text-foreground flex items-center gap-2">
+                  {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
+                  {activeTab === 'mnemonics' ? 'Mnemonikalar Ro\'yxati' : activeTab === 'questions' ? 'Savollar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : 'Tizim Sozlamalari'}
                 </h3>
-                <span className="text-[10px] font-bold bg-blue-100 text-blue-600 px-2 py-1 rounded-full uppercase tracking-wider">
-                  {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : sections).length} ta element
+                <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">
+                  {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'library' ? library.subjects : sections).length} ta element
                 </span>
               </div>
               
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
-                  <thead className="bg-slate-50/30 border-b border-slate-100">
+                  <thead className="bg-secondary/30 border-b border-border">
                     <tr>
-                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Ma'lumot</th>
-                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-24 text-right">Amallar</th>
+                      <th className="px-6 py-4 text-xs font-bold text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
+                      <th className="px-6 py-4 text-xs font-bold text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-border">
                     {activeTab === 'mnemonics' && mnemonics.map(m => (
-                      <tr key={m.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <tr key={m.id} className="hover:bg-secondary/50 transition-colors group">
                         <td className="px-6 py-4">
-                          <div className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{m.title}</div>
-                          <div className="text-[10px] text-blue-600 font-bold uppercase tracking-widest mt-0.5">{m.category}</div>
-                          <div className="text-sm text-slate-500 mt-2 font-mono bg-slate-50 p-2 rounded-lg border border-slate-100">{m.mnemonic}</div>
+                          <div className="font-bold text-foreground group-hover:text-primary transition-colors">{m.title}</div>
+                          <div className="text-[10px] text-primary font-bold uppercase tracking-widest mt-0.5">{m.category}</div>
+                          <div className="text-sm text-foreground/60 mt-2 font-mono bg-secondary/50 p-2 rounded-lg border border-border">{m.mnemonic}</div>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <button onClick={() => deleteItem('mnemonics', m.id!)} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                          <button onClick={() => deleteItem('mnemonics', m.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
                         </td>
                       </tr>
                     ))}
                     {activeTab === 'questions' && questions.map(q => (
-                      <tr key={q.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <tr key={q.id} className="hover:bg-secondary/50 transition-colors group">
                         <td className="px-6 py-4">
-                          <div className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{q.question}</div>
-                          <div className="text-[10px] text-blue-600 font-bold uppercase tracking-wider mt-1">{q.subject} • {q.topic} • {q.difficulty}</div>
-                          <div className="text-xs text-slate-500 mt-2 italic bg-slate-50 p-2 rounded-lg border border-slate-100">To'g'ri javob: <span className="text-emerald-600 font-bold">{q.options[q.correct]}</span></div>
+                          <div className="font-bold text-foreground group-hover:text-primary transition-colors">{q.question}</div>
+                          <div className="text-[10px] text-primary font-bold uppercase tracking-wider mt-1">{q.subject} • {q.topic} • {q.difficulty}</div>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <button onClick={() => deleteItem('questions', q.id!)} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                          <button onClick={() => deleteItem('questions', q.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
                         </td>
                       </tr>
                     ))}
                     {activeTab === 'symptoms' && symptoms.map(s => (
-                      <tr key={s.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <tr key={s.id} className="hover:bg-secondary/50 transition-colors group">
                         <td className="px-6 py-4">
-                          <div className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{s.diagnosis}</div>
-                          <div className="flex flex-wrap gap-1.5 mt-2">
-                            {s.symptoms.map((sym, i) => (<span key={i} className="text-[10px] bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full text-blue-600 font-medium">{sym}</span>))}
+                          <div className="font-bold text-foreground group-hover:text-primary transition-colors">{s.diagnosis}</div>
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {s.symptoms.map((sym, i) => (
+                              <span key={i} className="text-[10px] bg-secondary px-2 py-0.5 rounded-full text-foreground/60 border border-border">{sym}</span>
+                            ))}
                           </div>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <button onClick={() => deleteItem('symptoms', s.id!)} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                          <button onClick={() => deleteItem('symptoms', s.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
                         </td>
                       </tr>
                     ))}
                     {activeTab === 'videos' && videos.map(v => (
-                      <tr key={v.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <tr key={v.id} className="hover:bg-secondary/50 transition-colors group">
                         <td className="px-6 py-4">
-                          <div className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{v.title}</div>
-                          <div className="text-xs text-slate-500 mt-1">{v.category} • <span className="font-mono">{v.duration}</span></div>
+                          <div className="font-bold text-foreground group-hover:text-primary transition-colors">{v.title}</div>
+                          <div className="text-xs text-foreground/60 mt-1">{v.category} • {v.duration}</div>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <button onClick={() => deleteItem('videos', v.id!)} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                          <button onClick={() => deleteItem('videos', v.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                        </td>
+                      </tr>
+                    ))}
+                    {activeTab === 'library' && library.subjects.map((sub: any) => (
+                      <tr key={sub.id} className="hover:bg-secondary/50 transition-colors group">
+                        <td className="px-6 py-4">
+                          <div className="font-bold text-foreground group-hover:text-primary transition-colors">{sub.name}</div>
+                          <div className="text-xs text-foreground/60 mt-1">{sub.topics.length} ta mavzu</div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button 
+                            onClick={() => {
+                              if(confirm('Ushbu fanni va uning barcha mavzularini o\'chirmoqchimisiz?')) {
+                                const newSubjects = library.subjects.filter((s: any) => s.id !== sub.id);
+                                onUpdateLibrary({ ...library, subjects: newSubjects });
+                              }
+                            }} 
+                            className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                          >
+                            <Trash2 className="w-4.5 h-4.5" />
+                          </button>
                         </td>
                       </tr>
                     ))}
                     {activeTab === 'sections' && sections.map(sec => (
-                      <tr key={sec.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <tr key={sec.id} className="hover:bg-secondary/50 transition-colors group">
                         <td className="px-6 py-4">
-                          <div className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{sec.title}</div>
-                          <div className="text-xs text-slate-500 mt-1 line-clamp-2">{sec.content}</div>
+                          <div className="font-bold text-foreground group-hover:text-primary transition-colors">{sec.title}</div>
+                          <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{sec.content}</div>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <button onClick={() => deleteItem('sections', sec.id!)} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                          <button onClick={() => deleteItem('sections', sec.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : sections).length === 0 && activeTab !== 'settings' && (
-                <div className="p-16 text-center space-y-3">
-                  <div className="bg-slate-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto">
-                    <Search className="w-8 h-8 text-slate-300" />
-                  </div>
-                  <p className="text-slate-400 italic font-medium">Ushbu bo'limda ma'lumotlar mavjud emas.</p>
-                </div>
-              )}
             </div>
 
-            <div className="bg-white border border-slate-100 rounded-3xl p-8 shadow-sm h-fit sticky top-24">
-              <h3 className="font-bold text-slate-900 mb-8 flex items-center gap-3 text-xl">
-                <div className="bg-blue-600 p-2 rounded-xl">
-                  <Plus className="w-5 h-5 text-white" />
+            <div className="bg-card border border-border rounded-[32px] p-8 shadow-sm h-fit sticky top-24">
+              <h3 className="font-bold text-foreground mb-8 flex items-center gap-3 text-xl">
+                <div className="bg-primary p-2 rounded-xl">
+                  <Plus className="w-5 h-5 text-primary-foreground" />
                 </div>
                 {activeTab === 'settings' ? 'Tizimni Sozlash' : 'Yangi Qo\'shish'}
               </h3>
@@ -1362,6 +1631,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
                 {activeTab === 'symptoms' && <SymptomForm onAdd={(data) => addItem('symptoms', data)} />}
                 {activeTab === 'videos' && <VideoForm onAdd={(data) => addItem('videos', data)} />}
                 {activeTab === 'sections' && <SectionForm onAdd={(data) => addItem('sections', data)} />}
+                {activeTab === 'library' && <LibraryForm library={library} onUpdate={onUpdateLibrary} />}
                 {activeTab === 'settings' && <SettingsForm settings={settings} onUpdate={onUpdate} password={password} themeColor={themeColor} setThemeColor={setThemeColor} />}
               </div>
             </div>
@@ -1369,6 +1639,137 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
         </div>
       </div>
     </motion.div>
+  );
+}
+
+function LibraryForm({ library, onUpdate }: { library: any, onUpdate: (data: any) => void }) {
+  const [newSubject, setNewSubject] = useState({ name: '', icon: 'Stethoscope' });
+  const [newTopic, setNewTopic] = useState({ subjectId: '', name: '', manuals: '', cases: '', questions: '' });
+
+  const handleAddSubject = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSubject.name) return;
+    
+    const subject = {
+      id: Date.now(),
+      name: newSubject.name,
+      icon: newSubject.icon,
+      topics: []
+    };
+    
+    onUpdate({ ...library, subjects: [...library.subjects, subject] });
+    setNewSubject({ name: '', icon: 'Stethoscope' });
+  };
+
+  const handleAddTopic = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTopic.subjectId || !newTopic.name) return;
+    
+    const updatedSubjects = library.subjects.map((sub: any) => {
+      if (sub.id === Number(newTopic.subjectId)) {
+        return {
+          ...sub,
+          topics: [
+            ...sub.topics,
+            {
+              id: Date.now(),
+              name: newTopic.name,
+              resources: {
+                manuals: newTopic.manuals.split('\n').filter(i => i.trim()),
+                cases: newTopic.cases.split('\n').filter(i => i.trim()),
+                questions: newTopic.questions.split('\n').filter(i => i.trim())
+              }
+            }
+          ]
+        };
+      }
+      return sub;
+    });
+    
+    onUpdate({ ...library, subjects: updatedSubjects });
+    setNewTopic({ subjectId: '', name: '', manuals: '', cases: '', questions: '' });
+  };
+
+  return (
+    <div className="space-y-10">
+      {/* Add Subject */}
+      <form onSubmit={handleAddSubject} className="space-y-4 p-6 bg-secondary/30 rounded-2xl border border-border">
+        <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+          <Plus className="w-4 h-4 text-primary" /> Yangi Fan Qo'shish
+        </h4>
+        <div className="grid grid-cols-1 gap-4">
+          <input 
+            type="text" 
+            placeholder="Fan nomi (masalan: Kardiologiya)" 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={newSubject.name}
+            onChange={e => setNewSubject({ ...newSubject, name: e.target.value })}
+          />
+          <select 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={newSubject.icon}
+            onChange={e => setNewSubject({ ...newSubject, icon: e.target.value })}
+          >
+            <option value="Stethoscope">Stetoskop</option>
+            <option value="Brain">Miya</option>
+            <option value="Heart">Yurak</option>
+            <option value="BookOpen">Kitob</option>
+            <option value="Activity">Faollik</option>
+            <option value="Thermometer">Termometr</option>
+          </select>
+          <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-bold text-sm hover:bg-primary/90 transition-all">
+            Fanni saqlash
+          </button>
+        </div>
+      </form>
+
+      {/* Add Topic */}
+      <form onSubmit={handleAddTopic} className="space-y-4 p-6 bg-secondary/30 rounded-2xl border border-border">
+        <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+          <Plus className="w-4 h-4 text-primary" /> Yangi Mavzu Qo'shish
+        </h4>
+        <div className="space-y-4">
+          <select 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={newTopic.subjectId}
+            onChange={e => setNewTopic({ ...newTopic, subjectId: e.target.value })}
+          >
+            <option value="">Fanni tanlang</option>
+            {library.subjects.map((s: any) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <input 
+            type="text" 
+            placeholder="Mavzu nomi" 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={newTopic.name}
+            onChange={e => setNewTopic({ ...newTopic, name: e.target.value })}
+          />
+          <textarea 
+            placeholder="Qo'llanmalar (har biri yangi qatorda)" 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24"
+            value={newTopic.manuals}
+            onChange={e => setNewTopic({ ...newTopic, manuals: e.target.value })}
+          />
+          <textarea 
+            placeholder="Klinik caselar (har biri yangi qatorda)" 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24"
+            value={newTopic.cases}
+            onChange={e => setNewTopic({ ...newTopic, cases: e.target.value })}
+          />
+          <textarea 
+            placeholder="Savollar (har biri yangi qatorda)" 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24"
+            value={newTopic.questions}
+            onChange={e => setNewTopic({ ...newTopic, questions: e.target.value })}
+          />
+          <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-bold text-sm hover:bg-primary/90 transition-all">
+            Mavzuni saqlash
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -1589,5 +1990,471 @@ function SectionForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
       </select>
       <button className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold">Qo'shish</button>
     </form>
+  );
+}
+
+function AIPage() {
+  const [activeTool, setActiveTool] = useState<'analysis' | 'image' | 'video'>('analysis');
+  const [prompt, setPrompt] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [generatedMedia, setGeneratedMedia] = useState<string | null>(null);
+
+  const handleAnalysis = async () => {
+    if (!file) return;
+    setLoading(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = async () => {
+        const base64Data = (reader.result as string).split(',')[1];
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-lite-preview',
+          contents: [
+            {
+              parts: [
+                { text: prompt || "Ushbu tibbiy tasvirni tahlil qiling va muhim jihatlarini tushuntiring." },
+                { inlineData: { data: base64Data, mimeType: file.type } }
+              ]
+            }
+          ]
+        });
+        setResult(response.text || "Tahlil natijasi topilmadi.");
+        setLoading(false);
+      };
+    } catch (error) {
+      console.error(error);
+      setResult("Xatolik yuz berdi.");
+      setLoading(false);
+    }
+  };
+
+  const handleImageGen = async () => {
+    if (!prompt) return;
+    setLoading(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-pro-image-preview',
+        contents: [{ parts: [{ text: prompt }] }],
+        config: { imageConfig: { aspectRatio: "1:1" } }
+      });
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          setGeneratedMedia(`data:image/png;base64,${part.inlineData.data}`);
+          break;
+        }
+      }
+      setLoading(false);
+    } catch (error) {
+      console.error(error);
+      setLoading(false);
+    }
+  };
+
+  const handleVideoGen = async () => {
+    if (!prompt) return;
+    setLoading(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      let operation = await ai.models.generateVideos({
+        model: 'veo-3.1-fast-generate-preview',
+        prompt: prompt,
+        config: { numberOfVideos: 1, resolution: '720p', aspectRatio: '16:9' }
+      });
+      while (!operation.done) {
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        operation = await ai.operations.getVideosOperation({ operation: operation });
+      }
+      const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+      const response = await fetch(downloadLink!, {
+        method: 'GET',
+        headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY! },
+      });
+      const blob = await response.blob();
+      setGeneratedMedia(URL.createObjectURL(blob));
+      setLoading(false);
+    } catch (error) {
+      console.error(error);
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-8">
+      <div className="text-center space-y-4">
+        <h2 className="text-3xl font-bold text-slate-900">AI Markazi</h2>
+        <p className="text-slate-500">Tibbiy ta'lim uchun sun'iy intellekt imkoniyatlaridan foydalaning</p>
+      </div>
+
+      <div className="flex justify-center gap-4">
+        <button onClick={() => setActiveTool('analysis')} className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all ${activeTool === 'analysis' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+          <Search className="w-5 h-5" /> Tahlil
+        </button>
+        <button onClick={() => setActiveTool('image')} className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all ${activeTool === 'image' ? 'bg-purple-600 text-white shadow-lg' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+          <ImageIcon className="w-5 h-5" /> Rasm yaratish
+        </button>
+        <button onClick={() => setActiveTool('video')} className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all ${activeTool === 'video' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+          <Film className="w-5 h-5" /> Video yaratish
+        </button>
+      </div>
+
+      <div className="bg-white rounded-[32px] p-8 border border-slate-100 shadow-xl space-y-6">
+        {activeTool === 'analysis' && (
+          <div className="space-y-6">
+            <div className="border-2 border-dashed border-slate-200 rounded-3xl p-12 text-center space-y-4 hover:border-blue-400 transition-colors cursor-pointer relative">
+              <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => setFile(e.target.files?.[0] || null)} />
+              <div className="bg-blue-50 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto">
+                <Upload className="w-8 h-8 text-blue-600" />
+              </div>
+              <div>
+                <p className="font-bold text-slate-900">{file ? file.name : "Rasm yoki video yuklang"}</p>
+                <p className="text-sm text-slate-500">Rentgen, MRT yoki boshqa tibbiy tasvirlar</p>
+              </div>
+            </div>
+            <textarea placeholder="AI ga savol bering (ixtiyoriy)..." className="w-full p-4 rounded-2xl border border-slate-100 focus:ring-2 focus:ring-blue-600/20 outline-none h-32" value={prompt} onChange={e => setPrompt(e.target.value)} />
+            <button onClick={handleAnalysis} disabled={loading || !file} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />} Tahlilni boshlash
+            </button>
+          </div>
+        )}
+
+        {(activeTool === 'image' || activeTool === 'video') && (
+          <div className="space-y-6">
+            <textarea placeholder={activeTool === 'image' ? "Qanday rasm yaratmoqchisiz? (masalan: Yurak anatomiyasi 3D)" : "Qanday video yaratmoqchisiz? (masalan: Qon aylanish jarayoni)"} className="w-full p-4 rounded-2xl border border-slate-100 focus:ring-2 focus:ring-blue-600/20 outline-none h-32" value={prompt} onChange={e => setPrompt(e.target.value)} />
+            <button onClick={activeTool === 'image' ? handleImageGen : handleVideoGen} disabled={loading || !prompt} className={`w-full py-4 rounded-2xl font-bold text-white transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${activeTool === 'image' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />} {activeTool === 'image' ? "Rasm yaratish" : "Video yaratish"}
+            </button>
+          </div>
+        )}
+
+        {result && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+            <h4 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <Search className="w-4 h-4 text-blue-600" /> Tahlil natijasi:
+            </h4>
+            <div className="prose prose-slate max-w-none">
+              <Markdown>{result}</Markdown>
+            </div>
+          </motion.div>
+        )}
+
+        {generatedMedia && (
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="rounded-2xl overflow-hidden border border-slate-100 shadow-lg">
+            {activeTool === 'video' ? (
+              <video src={generatedMedia} controls className="w-full" />
+            ) : (
+              <img src={generatedMedia} alt="Generated" className="w-full" />
+            )}
+          </motion.div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ const initialMedicalData = {
+  subjects: [
+    {
+      id: 1,
+      name: "Ichki kasalliklar",
+      icon: "Stethoscope",
+      topics: [
+        {
+          id: 101,
+          name: "Arterial gipertenziya",
+          resources: {
+            manuals: ["AG bo'yicha qo'llanma (PDF)", "2024 yilgi protokol"],
+            cases: ["45 yoshli ayol, bosh og'rig'i, BP 160/100", "52 yoshli erkak, bosh aylanishi"],
+            questions: ["AG ning asosiy sababi?", "Birinchi tanlov dori?"]
+          }
+        },
+        {
+          id: 102,
+          name: "Yurak yetishmovchiligi",
+          resources: {
+            manuals: ["CHF bo'yicha protokol", "NYHA klassifikatsiyasi"],
+            cases: ["60 yoshli erkak, hansirash, shishlar", "70 yoshli ayol, ortopnoe"],
+            questions: ["CHF da qanday dorilar qo'llanadi?", "Echokardiyografiya ko'rsatkichlari?"]
+          }
+        }
+      ]
+    },
+    {
+      id: 2,
+      name: "Xirurgiya",
+      icon: "Scissors",
+      topics: [
+        {
+          id: 201,
+          name: "O'tkir appenditsit",
+          resources: {
+            manuals: ["Appenditsit diagnostikasi", "Alvarado shkalasi"],
+            cases: ["20 yoshli qiz, qorinda og'riq, ko'ngil aynishi"],
+            questions: ["Koxer simptomi nima?", "Differentsial diagnostika?"]
+          }
+        }
+      ]
+    },
+    {
+      id: 3,
+      name: "Pediatriya",
+      icon: "Baby",
+      topics: [
+        {
+          id: 301,
+          name: "Bolalarda pneumoniya",
+          resources: {
+            manuals: ["Pneumoniya tasnifi", "Antibiotik terapiyasi"],
+            cases: ["3 yoshli bola, yo'tal, isitma"],
+            questions: ["Bolalarda taxipnoe mezonlari?"]
+          }
+        }
+      ]
+    },
+    {
+      id: 4,
+      name: "Nevrologiya",
+      icon: "Brain",
+      topics: [
+        {
+          id: 401,
+          name: "Insult",
+          resources: {
+            manuals: ["Ishemik insult protokoli", "NIHSS shkalasi"],
+            cases: ["65 yoshli erkak, yarim parez", "70 yoshli ayol, afaziya"],
+            questions: ["TOAST klassifikatsiyasi?", "Tromboliz ko'rsatmalari?"]
+          }
+        }
+      ]
+    },
+    {
+      id: 5,
+      name: "Kardiologiya",
+      icon: "Heart",
+      topics: [
+        {
+          id: 501,
+          name: "O'tkir koronar sindrom",
+          resources: {
+            manuals: ["O'KS diagnostikasi", "Troponin mezonlari"],
+            cases: ["55 yoshli erkak, sternum orti og'rig'i"],
+            questions: ["GRACE skori?", "Dual antiagregant terapiya?"]
+          }
+        }
+      ]
+    }
+  ]
+};
+
+const SubjectIcon = ({ name, className }: { name: string, className?: string }) => {
+  switch (name) {
+    case 'Stethoscope': return <Stethoscope className={className} />;
+    case 'Scissors': return <Scissors className={className} />;
+    case 'Baby': return <Baby className={className} />;
+    case 'Brain': return <Brain className={className} />;
+    case 'Heart': return <Heart className={className} />;
+    default: return <BookOpen className={className} />;
+  }
+};
+
+function LibraryPage({ data, handleAIExplain }: { data: any, handleAIExplain: (title: string, content: string) => void }) {
+  const [selectedSubject, setSelectedSubject] = useState<any>(null);
+  const [selectedTopic, setSelectedTopic] = useState<any>(null);
+
+  return (
+    <div className="flex flex-col md:flex-row gap-8 min-h-[600px]">
+      {/* Sidebar: Subjects */}
+      <aside className="w-full md:w-64 space-y-4">
+        <h3 className="text-lg font-bold text-foreground mb-6 flex items-center gap-2">
+          <BookOpen className="w-5 h-5 text-primary" />
+          Fanlar
+        </h3>
+        <div className="space-y-2">
+          {data.subjects.map((subject: any) => (
+            <button
+              key={subject.id}
+              onClick={() => {
+                setSelectedSubject(subject);
+                setSelectedTopic(null);
+              }}
+              className={`w-full text-left px-4 py-3 rounded-xl transition-all flex items-center justify-between group ${
+                selectedSubject?.id === subject.id
+                  ? 'bg-primary text-primary-foreground shadow-lg'
+                  : 'bg-card text-foreground hover:bg-secondary border border-border'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className={selectedSubject?.id === subject.id ? 'text-primary-foreground' : 'text-primary'}>
+                  <SubjectIcon name={subject.icon} className="w-5 h-5" />
+                </span>
+                <span className="font-medium">{subject.name}</span>
+              </div>
+              <ChevronRight className={`w-4 h-4 transition-transform ${selectedSubject?.id === subject.id ? 'rotate-90' : 'group-hover:translate-x-1'}`} />
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      {/* Main Content: Topics and Resources */}
+      <main className="flex-1 space-y-8">
+        {!selectedSubject ? (
+          <div className="h-full flex flex-col items-center justify-center text-center space-y-4 bg-card rounded-[32px] border border-border p-12">
+            <div className="bg-primary/10 p-4 rounded-2xl">
+              <BookOpen className="w-12 h-12 text-primary" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-foreground">Kutubxonaga xush kelibsiz</h3>
+              <p className="text-foreground/60 max-w-xs mx-auto mt-2">O'rganishni boshlash uchun chap tomondagi menyudan fanni tanlang.</p>
+            </div>
+          </div>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            key={selectedSubject.id}
+            className="space-y-8"
+          >
+            <div className="flex items-center gap-3 border-b border-border pb-6">
+              <div className="bg-primary p-2 rounded-xl">
+                <SubjectIcon name={selectedSubject.icon} className="w-6 h-6 text-primary-foreground" />
+              </div>
+              <h2 className="text-2xl font-bold text-foreground">{selectedSubject.name}</h2>
+            </div>
+
+            {/* Topics Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {selectedSubject.topics.map((topic: any) => (
+                <button
+                  key={topic.id}
+                  onClick={() => setSelectedTopic(topic)}
+                  className={`p-6 rounded-2xl border text-left transition-all ${
+                    selectedTopic?.id === topic.id
+                      ? 'bg-primary/5 border-primary ring-2 ring-primary/10'
+                      : 'bg-card border-border hover:border-primary/50 hover:shadow-md'
+                  }`}
+                >
+                  <h4 className="font-bold text-foreground mb-1">{topic.name}</h4>
+                  <p className="text-xs text-foreground/50 uppercase tracking-widest font-bold">
+                    {Object.values(topic.resources).flat().length} ta resurs
+                  </p>
+                </button>
+              ))}
+            </div>
+
+            {/* Resources Section */}
+            <AnimatePresence mode="wait">
+              {selectedTopic && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  key={selectedTopic.id}
+                  className="bg-card rounded-[32px] p-8 border border-border shadow-xl space-y-8"
+                >
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xl font-bold text-foreground">{selectedTopic.name}</h3>
+                    <button onClick={() => setSelectedTopic(null)} className="text-foreground/40 hover:text-foreground/60">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Manuals */}
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 text-primary">
+                        <BookOpen className="w-5 h-5" />
+                        <h5 className="font-bold uppercase tracking-wider text-xs">Qo'llanmalar</h5>
+                      </div>
+                      <div className="space-y-3">
+                        {selectedTopic.resources.manuals.map((item: string, i: number) => (
+                          <div key={i} className="group p-4 bg-secondary rounded-2xl border border-border hover:border-primary/20 hover:bg-primary/5 transition-all">
+                            <div className="flex items-start gap-3">
+                              <div className="mt-1 w-5 h-5 bg-primary/10 text-primary rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                                {i + 1}
+                              </div>
+                              <div className="flex-1 space-y-3">
+                                <p className="text-sm text-foreground/80 font-medium leading-relaxed">{item}</p>
+                                <button 
+                                  onClick={() => handleAIExplain(item, `Mavzu: ${selectedTopic.name}\nQo'llanma: ${item}\n\nIltimos, ushbu mavzu bo'yicha qisqacha konspekt va asosiy tushunchalarni tushuntirib bering.`)}
+                                  className="flex items-center gap-1.5 text-[11px] font-bold text-primary hover:text-primary/80 uppercase tracking-wider transition-colors"
+                                >
+                                  <Sparkles className="w-3 h-3" />
+                                  AI Konspekt
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Clinical Cases */}
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 text-emerald-600">
+                        <Stethoscope className="w-5 h-5" />
+                        <h5 className="font-bold uppercase tracking-wider text-xs">Klinik caselar</h5>
+                      </div>
+                      <div className="space-y-3">
+                        {selectedTopic.resources.cases.map((item: string, i: number) => (
+                          <div key={i} className="group p-4 bg-secondary rounded-2xl border border-border hover:border-emerald-200 hover:bg-emerald-50/30 transition-all">
+                            <div className="flex items-start gap-3">
+                              <div className="mt-1 w-5 h-5 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                                {i + 1}
+                              </div>
+                              <div className="flex-1 space-y-3">
+                                <p className="text-sm text-foreground/80 font-medium leading-relaxed">{item}</p>
+                                <button 
+                                  onClick={() => handleAIExplain("Klinik Case Tahlili", `Mavzu: ${selectedTopic.name}\nCase: ${item}\n\nIltimos, ushbu klinik holatni tahlil qiling, taxminiy tashxis qo'ying va davolash rejasini tushuntiring.`)}
+                                  className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 hover:text-emerald-700 uppercase tracking-wider transition-colors"
+                                >
+                                  <Sparkles className="w-3 h-3" />
+                                  Case tahlili (AI)
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Questions */}
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 text-purple-600">
+                        <Brain className="w-5 h-5" />
+                        <h5 className="font-bold uppercase tracking-wider text-xs">Savollar</h5>
+                      </div>
+                      <div className="space-y-3">
+                        {selectedTopic.resources.questions.map((item: string, i: number) => (
+                          <div key={i} className="group p-4 bg-secondary rounded-2xl border border-border hover:border-purple-200 hover:bg-purple-50/30 transition-all">
+                            <div className="flex items-start gap-3">
+                              <div className="mt-1 w-5 h-5 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                                {i + 1}
+                              </div>
+                              <div className="flex-1 space-y-3">
+                                <p className="text-sm text-foreground/80 font-medium leading-relaxed">{item}</p>
+                                <button 
+                                  onClick={() => handleAIExplain(item, `Mavzu: ${selectedTopic.name}\nSavol: ${item}\n\nIltimos, ushbu savolga batafsil tibbiy javob bering va tushuntirib bering.`)}
+                                  className="flex items-center gap-1.5 text-[11px] font-bold text-purple-600 hover:text-purple-700 uppercase tracking-wider transition-colors"
+                                >
+                                  <Sparkles className="w-3 h-3" />
+                                  Javobni ko'rish (AI)
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </main>
+    </div>
   );
 }
