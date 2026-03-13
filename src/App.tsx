@@ -1452,35 +1452,53 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
   setThemeColor: (color: string) => void
 }) {
   const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'sections' | 'settings' | 'library'>('mnemonics');
-  const [password, setPassword] = useState('');
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async () => {
+    setLoading(true);
+    setError('');
     try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password })
-      });
-      if (res.ok) {
-        setIsLoggedIn(true);
-        setError('');
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists() && userDoc.data().role === 'admin') {
+        setIsAdmin(true);
       } else {
-        setError('Noto\'g\'ri parol');
+        await signOut(auth);
+        setError('Sizda admin huquqlari yo\'q.');
       }
     } catch (err) {
-      setError('Xatolik yuz berdi');
+      setError('Kirishda xatolik yuz berdi.');
+    } finally {
+      setLoading(false);
     }
   };
+
+  if (!isAdmin) {
+    return (
+      <div className="max-w-md mx-auto mt-20 p-8 bg-white rounded-3xl border border-slate-100 shadow-sm text-center space-y-6">
+        <h2 className="text-2xl font-bold">Admin panelga kirish</h2>
+        {error && <p className="text-red-500">{error}</p>}
+        <button 
+          onClick={handleLogin}
+          disabled={loading}
+          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all"
+        >
+          {loading ? 'Tekshirilmoqda...' : 'Google orqali kirish'}
+        </button>
+      </div>
+    );
+  }
 
   const deleteItem = async (type: string, id: number) => {
     if (!confirm('Haqiqatan ham o\'chirmoqchimisiz?')) return;
     try {
       await fetch(`/api/${type}/${id}`, { 
-        method: 'DELETE',
-        headers: { 'x-admin-password': password }
+        method: 'DELETE'
       });
       onUpdate();
     } catch (error) {
@@ -1493,8 +1511,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
       const res = await fetch(`/api/${type}`, {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          'x-admin-password': password 
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(data)
       });
