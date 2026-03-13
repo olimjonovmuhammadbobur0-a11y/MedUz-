@@ -49,6 +49,9 @@ import { GoogleGenAI, ThinkingLevel, GenerateContentResponse } from "@google/gen
 import { Mnemonic, Question, SymptomData, VideoData, Section, Setting } from './data';
 import { explainMedicalTopic } from './services/aiService';
 import { quizData } from './quizData';
+import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from './firebase';
 
 const getYouTubeEmbedUrl = (url: string) => {
   if (!url) return '';
@@ -1463,16 +1466,20 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
+      
+      console.log("Logged in user UID:", user.uid);
 
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (userDoc.exists() && userDoc.data().role === 'admin') {
         setIsAdmin(true);
       } else {
+        console.error("User document does not exist or not an admin:", userDoc.exists() ? userDoc.data() : "No doc");
         await signOut(auth);
-        setError('Sizda admin huquqlari yo\'q.');
+        setError(`Sizda admin huquqlari yo'q. UID: ${user.uid}`);
       }
     } catch (err) {
-      setError('Kirishda xatolik yuz berdi.');
+      console.error("Login error:", err);
+      setError('Kirishda xatolik yuz berdi. Konsolni tekshiring.');
     } finally {
       setLoading(false);
     }
@@ -1525,7 +1532,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
     return false;
   };
 
-  if (!isLoggedIn) {
+  if (!isAdmin) {
     return (
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
@@ -1538,22 +1545,14 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
           </div>
         </div>
         <h2 className="text-2xl font-bold text-center mb-6 text-foreground">Admin Kirish</h2>
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="block text-sm font-bold text-foreground/70 mb-1">Parol</label>
-            <input 
-              type="password" 
-              className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-primary outline-none transition-all"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-            />
-          </div>
-          {error && <p className="text-red-500 text-sm font-medium">{error}</p>}
-          <button className="w-full bg-primary text-primary-foreground py-3 rounded-xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
-            Kirish
-          </button>
-        </form>
+        {error && <p className="text-red-500 text-sm font-medium text-center mb-4">{error}</p>}
+        <button 
+          onClick={handleLogin}
+          disabled={loading}
+          className="w-full bg-primary text-primary-foreground py-3 rounded-xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+        >
+          {loading ? 'Tekshirilmoqda...' : 'Google orqali kirish'}
+        </button>
       </motion.div>
     );
   }
@@ -1602,7 +1601,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
 
             <div className="pt-4 mt-4 border-t border-border">
               <button 
-                onClick={() => setIsLoggedIn(false)}
+                onClick={() => signOut(auth)}
                 className="w-full px-4 py-3.5 rounded-2xl text-sm font-bold text-red-600 hover:bg-red-50 transition-all flex items-center gap-3.5"
               >
                 <LogOut className="w-5 h-5" /> Chiqish
@@ -1735,7 +1734,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
                 {activeTab === 'videos' && <VideoForm onAdd={(data) => addItem('videos', data)} />}
                 {activeTab === 'sections' && <SectionForm onAdd={(data) => addItem('sections', data)} />}
                 {activeTab === 'library' && <LibraryForm library={library} onUpdate={onUpdateLibrary} />}
-                {activeTab === 'settings' && <SettingsForm settings={settings} onUpdate={onUpdate} password={password} themeColor={themeColor} setThemeColor={setThemeColor} />}
+                {activeTab === 'settings' && <SettingsForm settings={settings} onUpdate={onUpdate} themeColor={themeColor} setThemeColor={setThemeColor} />}
               </div>
             </div>
           </div>
@@ -1876,7 +1875,7 @@ function LibraryForm({ library, onUpdate }: { library: any, onUpdate: (data: any
   );
 }
 
-function SettingsForm({ settings, onUpdate, password, themeColor, setThemeColor }: { settings: Setting[], onUpdate: () => void, password: string, themeColor: string, setThemeColor: (color: string) => void }) {
+function SettingsForm({ settings, onUpdate, themeColor, setThemeColor }: { settings: Setting[], onUpdate: () => void, themeColor: string, setThemeColor: (color: string) => void }) {
   const [formData, setFormData] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -1892,8 +1891,7 @@ function SettingsForm({ settings, onUpdate, password, themeColor, setThemeColor 
         fetch('/api/settings', {
           method: 'POST',
           headers: { 
-            'Content-Type': 'application/json',
-            'x-admin-password': password 
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({ key, value })
         })
