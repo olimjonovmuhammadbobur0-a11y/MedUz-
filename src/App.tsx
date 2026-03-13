@@ -48,6 +48,7 @@ import Markdown from 'react-markdown';
 import { GoogleGenAI, ThinkingLevel, GenerateContentResponse } from "@google/genai";
 import { Mnemonic, Question, SymptomData, VideoData, Section, Setting } from './data';
 import { explainMedicalTopic } from './services/aiService';
+import { quizData } from './quizData';
 
 const getYouTubeEmbedUrl = (url: string) => {
   if (!url) return '';
@@ -420,7 +421,7 @@ export default function App() {
           {currentPage === 'mnemonics' && <MnemonicsPage data={mnemonicsData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'videos' && <VideosPage data={videosData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'symptoms' && <SymptomsPage data={symptomsData} handleAIExplain={handleAIExplain} />}
-          {currentPage === 'quiz' && <QuizPage data={questionsData} handleAIExplain={handleAIExplain} />}
+          {currentPage === 'quiz' && <QuizPage handleAIExplain={handleAIExplain} />}
           {currentPage === 'library' && <LibraryPage data={libraryData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'ai' && <AIPage />}
           {currentPage === 'admin' && <AdminPage 
@@ -1029,66 +1030,38 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
   );
 }
 
-function QuizPage({ data, handleAIExplain }: { data: Question[], handleAIExplain: (title: string, context: string) => void }) {
-  const [quizStarted, setQuizStarted] = useState(false);
+function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, context: string) => void }) {
+  const [step, setStep] = useState<'subjects' | 'topics' | 'quiz' | 'enter_name' | 'result'>('subjects');
+  const [selectedSubject, setSelectedSubject] = useState<any>(null);
+  const [selectedTopic, setSelectedTopic] = useState<any>(null);
+  
+  const [userName, setUserName] = useState('');
+  const [userSurname, setUserSurname] = useState('');
+  
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
   const [score, setScore] = useState(0);
-  const [quizFinished, setQuizFinished] = useState(false);
-  const [quizQuestions, setQuizQuestions] = useState<Question[]>([]);
-  
-  const [subject, setSubject] = useState('internal');
-  const [topic, setTopic] = useState('all');
-  const [difficulty, setDifficulty] = useState('all');
-  const [timeLeft, setTimeLeft] = useState(600);
   const [startTime, setStartTime] = useState(0);
-  const [userName, setUserName] = useState('');
-  const [scoreboard, setScoreboard] = useState<{name: string, score: number, time: number}[]>([]);
-
-  const topics: Record<string, string[]> = {
-    internal: ["yurak", "opka", "jigar", "buyrak", "oshqozon-ichak"],
-    surgery: ["appenditsit", "xoletsistit", "pankreatit", "travma", "onkologiya"],
-    pediatrics: ["raxit", "infeksiyalar", "yuqumli kasalliklar", "nevrologiya"],
-    obstetrics: ["homiladorlik", "tug'ruq", "asoratlar"],
-    neurology: ["bosh_miya", "o'murtqa", "periferik_nervlar"]
-  };
+  const [timeTaken, setTimeTaken] = useState(0);
+  
+  const [scoreboard, setScoreboard] = useState<{name: string, surname: string, score: number, time: number, topic: string}[]>([]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('meduz_scores');
+    const saved = localStorage.getItem('meduz_quiz_scores');
     if (saved) setScoreboard(JSON.parse(saved));
   }, []);
 
-  useEffect(() => {
-    let timer: any;
-    if (quizStarted && !quizFinished && timeLeft > 0) {
-      timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
-    } else if (timeLeft === 0) {
-      setQuizFinished(true);
-    }
-    return () => clearInterval(timer);
-  }, [quizStarted, quizFinished, timeLeft]);
+  const handleSubjectSelect = (subject: any) => {
+    setSelectedSubject(subject);
+    setStep('topics');
+  };
 
-  const startQuiz = () => {
-    let filtered = data.filter(q => {
-      const sMatch = q.subject === subject;
-      const tMatch = topic === 'all' || q.topic === topic;
-      const dMatch = difficulty === 'all' || q.difficulty === difficulty;
-      return sMatch && tMatch && dMatch;
-    });
-    
-    if (filtered.length === 0) {
-      alert('Ushbu filtrlar bo\'yicha savollar topilmadi.');
-      return;
-    }
-
-    const shuffled = filtered.sort(() => 0.5 - Math.random()).slice(0, 5);
-    setQuizQuestions(shuffled);
-    setQuizStarted(true);
-    setQuizFinished(false);
+  const handleTopicSelect = (topic: any) => {
+    setSelectedTopic(topic);
+    setStep('quiz');
     setCurrentQuestionIdx(0);
     setScore(0);
-    setTimeLeft(600);
     setStartTime(Date.now());
     setIsAnswered(false);
     setSelectedOption(null);
@@ -1102,254 +1075,367 @@ function QuizPage({ data, handleAIExplain }: { data: Question[], handleAIExplain
   const checkAnswer = () => {
     if (selectedOption === null || isAnswered) return;
     setIsAnswered(true);
-    if (selectedOption === quizQuestions[currentQuestionIdx].correct) {
+    if (selectedOption === selectedTopic.questions[currentQuestionIdx].correct) {
       setScore(s => s + 1);
     }
   };
 
   const nextQuestion = () => {
-    if (currentQuestionIdx < quizQuestions.length - 1) {
+    if (currentQuestionIdx < selectedTopic.questions.length - 1) {
       setCurrentQuestionIdx(prev => prev + 1);
       setSelectedOption(null);
       setIsAnswered(false);
     } else {
-      setQuizFinished(true);
+      setStep('enter_name');
     }
   };
 
-  const saveResult = () => {
-    const timeTaken = Math.floor((Date.now() - startTime) / 1000);
-    const newScore = { name: userName || 'Anonim', score, time: timeTaken };
-    const newBoard = [...scoreboard, newScore].sort((a, b) => b.score - a.score || a.time - b.time).slice(0, 10);
+  const finishQuiz = () => {
+    if (!userName.trim() || !userSurname.trim()) {
+      alert("Iltimos, ism va familiyangizni kiriting.");
+      return;
+    }
+    const time = Math.floor((Date.now() - startTime) / 1000);
+    setTimeTaken(time);
+    
+    const newScore = { 
+      name: userName, 
+      surname: userSurname, 
+      score, 
+      time,
+      topic: selectedTopic.name
+    };
+    
+    const newBoard = [...scoreboard, newScore]
+      .sort((a, b) => b.score - a.score || a.time - b.time)
+      .slice(0, 10);
+      
     setScoreboard(newBoard);
-    localStorage.setItem('meduz_scores', JSON.stringify(newBoard));
-    setQuizStarted(false);
-    setQuizFinished(false);
+    localStorage.setItem('meduz_quiz_scores', JSON.stringify(newBoard));
+    setStep('result');
   };
 
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  const resetQuiz = () => {
+    setStep('subjects');
+    setSelectedSubject(null);
+    setSelectedTopic(null);
+    setUserName('');
+    setUserSurname('');
   };
 
-  if (!quizStarted) {
+  const totalQuestions = selectedTopic?.questions?.length || 1;
+  const percentage = Math.round((score / totalQuestions) * 100);
+  
+  let resultMessage = "";
+  let resultColor = "";
+  let animationProps = {};
+  
+  if (percentage >= 80) {
+    resultMessage = "Barakalla! Siz juda yaxshi natija ko'rsatdingiz.";
+    resultColor = "text-emerald-600";
+    animationProps = {
+      animate: { scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] },
+      transition: { duration: 0.5, repeat: Infinity, repeatType: "reverse" }
+    };
+  } else if (percentage >= 60) {
+    resultMessage = "Yaxshi natija, lekin yanada yaxshiroq bo'lishi mumkin.";
+    resultColor = "text-amber-500";
+    animationProps = {
+      animate: { opacity: [0.5, 1, 0.5] },
+      transition: { duration: 1.5, repeat: Infinity }
+    };
+  } else {
+    resultMessage = "Harakatda davom eting! Keyingi safar albatta yaxshiroq natija bo'ladi.";
+    resultColor = "text-red-500";
+  }
+
+  const generatePDF = () => {
+    import('jspdf').then(({ jsPDF }) => {
+      const doc = new jsPDF('landscape', 'mm', 'a4');
+      const width = doc.internal.pageSize.getWidth();
+      const height = doc.internal.pageSize.getHeight();
+
+      // Background & Border
+      doc.setFillColor(248, 250, 252);
+      doc.rect(0, 0, width, height, 'F');
+      
+      doc.setDrawColor(37, 99, 235);
+      doc.setLineWidth(4);
+      doc.rect(10, 10, width - 20, height - 20);
+      
+      doc.setDrawColor(147, 197, 253);
+      doc.setLineWidth(1);
+      doc.rect(14, 14, width - 28, height - 28);
+
+      // Title
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(36);
+      doc.setFont("helvetica", "bold");
+      doc.text("TEST NATIJASI", width / 2, 50, { align: "center" });
+
+      // Name
+      doc.setFontSize(28);
+      doc.setTextColor(37, 99, 235);
+      doc.text(`${userName} ${userSurname}`, width / 2, 80, { align: "center" });
+
+      // Score
+      doc.setFontSize(20);
+      doc.setTextColor(71, 85, 105);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Mavzu: ${selectedTopic?.name}`, width / 2, 100, { align: "center" });
+      
+      doc.setFontSize(24);
+      doc.setTextColor(15, 23, 42);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Natija: ${score} / ${totalQuestions} (${percentage}%)`, width / 2, 120, { align: "center" });
+
+      // Message
+      doc.setFontSize(18);
+      doc.setFont("helvetica", "italic");
+      if (percentage >= 80) doc.setTextColor(5, 150, 105);
+      else if (percentage >= 60) doc.setTextColor(217, 119, 6);
+      else doc.setTextColor(220, 38, 38);
+      
+      const splitMessage = doc.splitTextToSize(resultMessage, width - 40);
+      doc.text(splitMessage, width / 2, 140, { align: "center" });
+
+      // Date
+      doc.setFontSize(12);
+      doc.setTextColor(100, 116, 139);
+      doc.setFont("helvetica", "normal");
+      const dateStr = new Date().toLocaleString('uz-UZ');
+      doc.text(`Sana va vaqt: ${dateStr}`, width / 2, 180, { align: "center" });
+
+      doc.save(`Natija_${userName}_${userSurname}.pdf`);
+    });
+  };
+
+  useEffect(() => {
+    if (step === 'result') {
+      generatePDF();
+    }
+  }, [step]);
+
+  if (step === 'subjects') {
     return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-2xl mx-auto space-y-8">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto space-y-8">
         <div className="text-center space-y-4">
           <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto">
             <BookOpen className="w-8 h-8 text-blue-600" />
           </div>
-          <h2 className="text-3xl font-bold">MedUz Quiz</h2>
-          <p className="text-slate-500">Tibbiyot talabalari uchun interaktiv test platformasi</p>
+          <h2 className="text-3xl font-bold">Fanlar sahifasi</h2>
+          <p className="text-slate-500">Test ishlash uchun fanni tanlang</p>
         </div>
-
-        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-slate-700">Fan</label>
-              <select 
-                value={subject} 
-                onChange={e => { setSubject(e.target.value); setTopic('all'); }}
-                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                <option value="internal">Ichki kasalliklar</option>
-                <option value="surgery">Xirurgiya</option>
-                <option value="pediatrics">Pediatriya</option>
-                <option value="obstetrics">Akusherlik</option>
-                <option value="neurology">Nevrologiya</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-slate-700">Mavzu</label>
-              <select 
-                value={topic} 
-                onChange={e => setTopic(e.target.value)}
-                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                <option value="all">Barchasi</option>
-                {topics[subject]?.map(t => (
-                  <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1).replace('_', ' ')}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-bold text-slate-700">Qiyinlik darajasi</label>
-              <select 
-                value={difficulty} 
-                onChange={e => setDifficulty(e.target.value)}
-                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                <option value="all">Barchasi</option>
-                <option value="easy">Oson</option>
-                <option value="medium">O'rta</option>
-                <option value="hard">Qiyin</option>
-              </select>
-            </div>
-          </div>
-          <button 
-            onClick={startQuiz}
-            className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all"
-          >
-            Testni boshlash
-          </button>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {quizData.subjects.map(subject => (
+            <motion.button
+              key={subject.id}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => handleSubjectSelect(subject)}
+              className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col items-center justify-center gap-4 text-center"
+            >
+              <div className="text-4xl">{subject.icon}</div>
+              <h3 className="text-xl font-bold text-slate-800">{subject.name}</h3>
+            </motion.button>
+          ))}
         </div>
-
-        {scoreboard.length > 0 && (
-          <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold">Eng yaxshi natijalar</h3>
-              <button 
-                onClick={() => { localStorage.removeItem('meduz_scores'); setScoreboard([]); }}
-                className="text-xs text-red-500 font-bold hover:underline"
-              >
-                Tozalash
-              </button>
-            </div>
-            <div className="space-y-3">
-              {scoreboard.map((s, i) => (
-                <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <span className="w-6 h-6 bg-blue-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{i+1}</span>
-                    <span className="font-bold text-slate-700">{s.name}</span>
-                  </div>
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="text-blue-600 font-bold">{s.score}/5</span>
-                    <span className="text-slate-400">{s.time}s</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </motion.div>
     );
   }
 
-  const currentQ = quizQuestions[currentQuestionIdx];
-  const progress = ((currentQuestionIdx + 1) / quizQuestions.length) * 100;
+  if (step === 'topics') {
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto space-y-8">
+        <div className="flex items-center gap-4 mb-8">
+          <button onClick={() => setStep('subjects')} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+            <ChevronRight className="w-6 h-6 rotate-180" />
+          </button>
+          <h2 className="text-3xl font-bold">{selectedSubject.name} &rarr; Mavzular</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {selectedSubject.topics.map((topic: any) => (
+            <motion.button
+              key={topic.id}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => handleTopicSelect(topic)}
+              className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all text-left flex justify-between items-center"
+            >
+              <div>
+                <h3 className="text-xl font-bold text-slate-800">{topic.name}</h3>
+                <p className="text-sm text-slate-500 mt-1">{topic.questions.length} ta savol</p>
+              </div>
+              <ChevronRight className="w-6 h-6 text-slate-400" />
+            </motion.button>
+          ))}
+        </div>
+      </motion.div>
+    );
+  }
 
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-2xl mx-auto space-y-8">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-blue-600 text-white rounded-xl flex items-center justify-center font-bold">
-            {currentQuestionIdx + 1}
-          </div>
-          <div>
-            <h2 className="font-bold text-slate-900">Savol {currentQuestionIdx + 1}</h2>
-            <div className="w-32 h-2 bg-slate-100 rounded-full mt-1 overflow-hidden">
-              <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} className="h-full bg-blue-600" />
+  if (step === 'quiz') {
+    const currentQ = selectedTopic.questions[currentQuestionIdx];
+    const progress = ((currentQuestionIdx + 1) / selectedTopic.questions.length) * 100;
+
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-2xl mx-auto space-y-8">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-blue-600 text-white rounded-xl flex items-center justify-center font-bold">
+              {currentQuestionIdx + 1}
+            </div>
+            <div>
+              <h2 className="font-bold text-slate-900">Savol {currentQuestionIdx + 1} / {selectedTopic.questions.length}</h2>
+              <div className="w-32 h-2 bg-slate-100 rounded-full mt-1 overflow-hidden">
+                <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} className="h-full bg-blue-600" />
+              </div>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-700 rounded-xl font-mono font-bold">
-          <Clock className="w-4 h-4" /> {formatTime(timeLeft)}
-        </div>
-      </div>
 
-      <div className="bg-white border border-slate-100 rounded-3xl p-8 shadow-sm space-y-8">
-        <h3 className="text-2xl font-bold text-slate-900 leading-tight">{currentQ.question}</h3>
-        
-        <div className="grid grid-cols-1 gap-4">
-          {currentQ.options.map((option, idx) => {
-            let stateClass = "border-slate-100 hover:border-blue-200 hover:bg-blue-50";
-            if (isAnswered) {
-              if (idx === currentQ.correct) stateClass = "border-emerald-500 bg-emerald-50 text-emerald-700";
-              else if (idx === selectedOption) stateClass = "border-red-500 bg-red-50 text-red-700";
-              else stateClass = "border-slate-100 opacity-50";
-            } else if (idx === selectedOption) {
-              stateClass = "border-blue-500 bg-blue-50 text-blue-700";
-            }
+        <div className="bg-white border border-slate-100 rounded-3xl p-8 shadow-sm space-y-8">
+          <h3 className="text-2xl font-bold text-slate-900 leading-tight">{currentQ.text}</h3>
+          
+          <div className="grid grid-cols-1 gap-4">
+            {currentQ.options.map((option: string, idx: number) => {
+              let stateClass = "border-slate-100 hover:border-blue-200 hover:bg-blue-50";
+              if (isAnswered) {
+                if (idx === currentQ.correct) stateClass = "border-emerald-500 bg-emerald-50 text-emerald-700";
+                else if (idx === selectedOption) stateClass = "border-red-500 bg-red-50 text-red-700";
+                else stateClass = "border-slate-100 opacity-50";
+              } else if (idx === selectedOption) {
+                stateClass = "border-blue-500 bg-blue-50 text-blue-700";
+              }
 
-            return (
-              <button 
-                key={idx}
-                onClick={() => handleAnswer(idx)}
-                disabled={isAnswered}
-                className={`w-full text-left p-5 rounded-2xl border-2 font-medium transition-all flex justify-between items-center ${stateClass}`}
-              >
-                <span>{option}</span>
-                {isAnswered && idx === currentQ.correct && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
-                {isAnswered && idx === selectedOption && idx !== currentQ.correct && <X className="w-5 h-5 text-red-500" />}
-              </button>
-            );
-          })}
-        </div>
-
-        <AnimatePresence>
-          {isAnswered && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pt-6 border-t border-slate-100">
-              <div className="bg-blue-50 p-5 rounded-2xl">
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="text-sm font-bold text-blue-800 flex items-center gap-2">
-                    <Info className="w-4 h-4" /> Izoh:
-                  </h4>
-                  <button 
-                    onClick={() => handleAIExplain(currentQ.question, `Savol: ${currentQ.question}. To'g'ri javob: ${currentQ.options[currentQ.correct]}. Izoh: ${currentQ.explanation}`)}
-                    className="text-purple-600 hover:bg-purple-100 p-1.5 rounded-lg transition-all flex items-center gap-1 text-[10px] font-bold uppercase"
-                  >
-                    <Sparkles className="w-3 h-3" /> AI Tushuntirishi
-                  </button>
-                </div>
-                <p className="text-sm text-blue-700 leading-relaxed">{currentQ.explanation}</p>
-              </div>
-              <button 
-                onClick={nextQuestion}
-                className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
-              >
-                {currentQuestionIdx === quizQuestions.length - 1 ? 'Natijani ko\'rish' : 'Keyingi savol'}
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {!isAnswered && (
-          <button 
-            onClick={checkAnswer}
-            disabled={selectedOption === null}
-            className={`w-full py-4 rounded-2xl font-bold transition-all ${selectedOption !== null ? 'bg-blue-600 text-white shadow-lg shadow-blue-100 hover:bg-blue-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
-          >
-            Javobni tekshirish
-          </button>
-        )}
-      </div>
-
-      {/* Completion Modal */}
-      <AnimatePresence>
-        {quizFinished && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-3xl p-8 max-w-md w-full text-center space-y-6 shadow-2xl">
-              <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
-                <Sparkles className="w-12 h-12 text-blue-600" />
-              </div>
-              <div className="space-y-2">
-                <h2 className="text-3xl font-bold">Test yakunlandi!</h2>
-                <p className="text-slate-500">Sizning natijangiz: <span className="font-bold text-blue-600">{score}/5</span></p>
-                <p className="text-xs text-slate-400">Sarfangan vaqt: {600 - timeLeft} soniya</p>
-              </div>
-              <div className="space-y-4">
-                <input 
-                  type="text" 
-                  placeholder="Ismingizni kiriting" 
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
-                  value={userName}
-                  onChange={e => setUserName(e.target.value)}
-                />
+              return (
                 <button 
-                  onClick={saveResult}
-                  className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all"
+                  key={idx}
+                  onClick={() => handleAnswer(idx)}
+                  disabled={isAnswered}
+                  className={`w-full text-left p-5 rounded-2xl border-2 font-medium transition-all flex justify-between items-center ${stateClass}`}
                 >
-                  Natijani saqlash
+                  <span>{option}</span>
+                  {isAnswered && idx === currentQ.correct && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                  {isAnswered && idx === selectedOption && idx !== currentQ.correct && <X className="w-5 h-5 text-red-500" />}
                 </button>
-              </div>
-            </motion.div>
+              );
+            })}
           </div>
-        )}
-      </AnimatePresence>
-    </motion.div>
-  );
+
+          <AnimatePresence>
+            {isAnswered && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pt-6 border-t border-slate-100">
+                <button 
+                  onClick={nextQuestion}
+                  className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+                >
+                  {currentQuestionIdx === selectedTopic.questions.length - 1 ? 'Natijani ko\'rish' : 'Keyingi'}
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {!isAnswered && (
+            <button 
+              onClick={checkAnswer}
+              disabled={selectedOption === null}
+              className={`w-full py-4 rounded-2xl font-bold transition-all ${selectedOption !== null ? 'bg-blue-600 text-white shadow-lg shadow-blue-100 hover:bg-blue-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+            >
+              Javobni tasdiqlash
+            </button>
+          )}
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (step === 'enter_name') {
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-md mx-auto space-y-8">
+        <div className="text-center space-y-4">
+          <div className="bg-emerald-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto">
+            <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+          </div>
+          <h2 className="text-3xl font-bold">Test yakunlandi!</h2>
+          <p className="text-slate-500">Natijani ko'rish va sertifikat yuklab olish uchun ismingizni kiriting</p>
+        </div>
+        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-slate-700">Ismingiz</label>
+              <input 
+                type="text" 
+                value={userName}
+                onChange={e => setUserName(e.target.value)}
+                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="Ismingizni kiriting"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-slate-700">Familiyangiz</label>
+              <input 
+                type="text" 
+                value={userSurname}
+                onChange={e => setUserSurname(e.target.value)}
+                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="Familiyangizni kiriting"
+              />
+            </div>
+          </div>
+          <button 
+            onClick={finishQuiz}
+            className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all"
+          >
+            Natijani ko'rish
+          </button>
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (step === 'result') {
+    return (
+      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="max-w-2xl mx-auto text-center space-y-8">
+        <div className="bg-white p-12 rounded-3xl border border-slate-100 shadow-xl space-y-8 relative overflow-hidden">
+          {percentage >= 80 && (
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-20">
+              <Sparkles className="w-full h-full text-emerald-500" />
+            </div>
+          )}
+          
+          <motion.div {...(animationProps as any)} className="space-y-4 relative z-10">
+            <h2 className={`text-4xl font-bold ${resultColor}`}>{resultMessage}</h2>
+            <p className="text-slate-600 text-lg">{userName} {userSurname}</p>
+          </motion.div>
+          
+          <div className="grid grid-cols-2 gap-6 relative z-10">
+            <div className="bg-slate-50 p-6 rounded-2xl">
+              <p className="text-slate-500 text-sm font-bold mb-1">To'g'ri javoblar</p>
+              <p className="text-4xl font-bold text-slate-900">{score} / {totalQuestions}</p>
+            </div>
+            <div className="bg-slate-50 p-6 rounded-2xl">
+              <p className="text-slate-500 text-sm font-bold mb-1">Foiz</p>
+              <p className="text-4xl font-bold text-slate-900">{percentage}%</p>
+            </div>
+          </div>
+          
+          <div className="pt-4 relative z-10 space-y-4">
+            <p className="text-sm text-slate-500">Natijangiz PDF formatida yuklab olinmoqda...</p>
+            <button 
+              onClick={resetQuiz}
+              className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-bold hover:bg-slate-800 transition-all"
+            >
+              Boshqa mavzu
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  return null;
 }
 
 function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings, library, onUpdate, onUpdateLibrary, themeColor, setThemeColor }: { 
