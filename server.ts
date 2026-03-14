@@ -54,6 +54,16 @@ db.exec(`
     color TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS patients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    age INTEGER,
+    symptoms TEXT,
+    condition TEXT,
+    healthScore INTEGER,
+    medications TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
@@ -80,6 +90,20 @@ if (mnemonicCount.count === 0) {
   ];
   const insert = db.prepare("INSERT INTO mnemonics (category, title, mnemonic, explanation) VALUES (?, ?, ?, ?)");
   seedMnemonics.forEach(m => insert.run(m.category, m.title, m.mnemonic, m.explanation));
+}
+
+const patientCount = db.prepare("SELECT COUNT(*) as count FROM patients").get() as any;
+console.log("Patient count:", patientCount.count);
+if (patientCount.count === 0) {
+  console.log("Seeding patients...");
+  const seedPatients = [
+    { name: "Ahmadjonov B.", age: 45, symptoms: "Ko'krak qafasida sanchuvchi og'riq, nafas qisishi", condition: "Og'ir", healthScore: 40, medications: "" },
+    { name: "Karimova D.", age: 62, symptoms: "Bosh aylanishi, qon bosimi oshishi (180/100)", condition: "Kritik", healthScore: 30, medications: "" },
+    { name: "Toshmatov S.", age: 28, symptoms: "Qorin o'ng pastki qismida og'riq, ko'ngil aynishi", condition: "Barqaror", healthScore: 70, medications: "" }
+  ];
+  const insert = db.prepare("INSERT INTO patients (name, age, symptoms, condition, healthScore, medications) VALUES (?, ?, ?, ?, ?, ?)");
+  seedPatients.forEach(p => insert.run(p.name, p.age, p.symptoms, p.condition, p.healthScore, p.medications));
+  console.log("Patients seeded.");
 }
 
 const questionCount = db.prepare("SELECT COUNT(*) as count FROM questions").get() as any;
@@ -437,6 +461,30 @@ async function startServer() {
 
   app.delete("/api/videos/:id", auth, (req, res) => {
     db.prepare("DELETE FROM videos WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  });
+
+  // Patients
+  app.get("/api/patients", (req, res) => {
+    const rows = db.prepare("SELECT * FROM patients").all();
+    console.log("GET /api/patients returning:", rows);
+    res.json(rows);
+  });
+
+  app.post("/api/patients", auth, (req, res) => {
+    const { name, age, symptoms, condition, healthScore, medications } = req.body;
+    const info = db.prepare("INSERT INTO patients (name, age, symptoms, condition, healthScore, medications) VALUES (?, ?, ?, ?, ?, ?)").run(name, age, symptoms, condition, healthScore, medications);
+    res.json({ id: info.lastInsertRowid });
+  });
+
+  app.put("/api/patients/:id", auth, (req, res) => {
+    const { name, age, symptoms, condition, healthScore, medications } = req.body;
+    db.prepare("UPDATE patients SET name = ?, age = ?, symptoms = ?, condition = ?, healthScore = ?, medications = ? WHERE id = ?").run(name, age, symptoms, condition, healthScore, medications, req.params.id);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/patients/:id", auth, (req, res) => {
+    db.prepare("DELETE FROM patients WHERE id = ?").run(req.params.id);
     res.json({ success: true });
   });
 

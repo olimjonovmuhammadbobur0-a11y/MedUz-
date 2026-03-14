@@ -41,6 +41,16 @@ export interface Section {
   color: string;
 }
 
+export interface Patient {
+  id?: number;
+  name: string;
+  age: number;
+  symptoms: string;
+  condition: string;
+  healthScore: number;
+  medications: string;
+}
+
 export interface Setting {
   key: string;
   value: string;

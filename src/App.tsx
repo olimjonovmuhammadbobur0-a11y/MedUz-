@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { PatientForm } from './components/PatientForm';
 import { 
   Heart, 
   Brain, 
@@ -46,7 +47,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { GoogleGenAI, ThinkingLevel, GenerateContentResponse } from "@google/genai";
-import { Mnemonic, Question, SymptomData, VideoData, Section, Setting } from './data';
+import { Mnemonic, Question, SymptomData, VideoData, Section, Setting, Patient } from './data';
 import { explainMedicalTopic } from './services/aiService';
 import { quizData } from './quizData';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
@@ -60,7 +61,7 @@ const getYouTubeEmbedUrl = (url: string) => {
   return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : url;
 };
 
-type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library';
+type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
@@ -86,6 +87,7 @@ export default function App() {
   const [questionsData, setQuestionsData] = useState<Question[]>([]);
   const [symptomsData, setSymptomsData] = useState<SymptomData[]>([]);
   const [videosData, setVideosData] = useState<VideoData[]>([]);
+  const [patientsData, setPatientsData] = useState<Patient[]>([]);
   const [sectionsData, setSectionsData] = useState<Section[]>([]);
   const [settingsData, setSettingsData] = useState<Setting[]>([]);
   const [libraryData, setLibraryData] = useState<any>(() => {
@@ -160,26 +162,33 @@ export default function App() {
 
   const fetchAllData = async () => {
     try {
-      const [mRes, qRes, sRes, vRes, secRes, setRes] = await Promise.all([
+      console.log('Fetching all data...');
+      const [mRes, qRes, sRes, vRes, pRes, secRes, setRes] = await Promise.all([
         fetch('/api/mnemonics'),
         fetch('/api/questions'),
         fetch('/api/symptoms'),
         fetch('/api/videos'),
+        fetch('/api/patients'),
         fetch('/api/sections'),
         fetch('/api/settings')
       ]);
-      const [m, q, s, v, sec, sett] = await Promise.all([
+      console.log('Data fetched, parsing JSON...');
+      const [m, q, s, v, p, sec, sett] = await Promise.all([
         mRes.json(), 
         qRes.json(), 
         sRes.json(),
         vRes.json(),
+        pRes.json(),
         secRes.json(),
         setRes.json()
       ]);
+      
+      console.log('Patients data:', p);
       setMnemonicsData(m);
       setQuestionsData(q);
       setSymptomsData(s);
       setVideosData(v);
+      setPatientsData(p);
       setSectionsData(sec);
       setSettingsData(sett);
     } catch (error) {
@@ -197,8 +206,48 @@ export default function App() {
     window.scrollTo(0, 0);
   };
 
+  const handleTreatPatient = async (id: number, medication: string) => {
+    const patient = patientsData.find(p => p.id === id);
+    if (!patient) return;
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Bemor: ${patient.name}, Yosh: ${patient.age}, Simptomlar: ${patient.symptoms}, Ahvoli: ${patient.condition}, Sog'liq: ${patient.healthScore}%. 
+        Talaba yuborgan dori: ${medication}. 
+        Ushbu dori bemor ahvolini qanday o'zgartiradi? Feedback bering va sog'liq ko'rsatkichini (0-100) qanchaga o'zgartirish kerakligini ayting. Javobni JSON formatida qaytaring: { "feedback": "...", "newHealthScore": number }`,
+        config: { responseMimeType: "application/json" }
+      });
+      
+      const result = JSON.parse(response.text || '{}');
+      
+      // Update patient in DB
+      await fetch(`/api/patients/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...patient, healthScore: result.newHealthScore, medications: patient.medications + ', ' + medication })
+      });
+      
+      fetchAllData();
+      
+      // Download feedback
+      const blob = new Blob([result.feedback], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `feedback_${patient.name}.txt`;
+      a.click();
+      
+      alert(result.feedback);
+    } catch (error) {
+      console.error('Treatment error:', error);
+      alert('Davolashda xatolik yuz berdi.');
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+    <div className="min-h-screen bg-background font-sans text-foreground selection:bg-primary/20 transition-colors duration-300">
       {/* Floating Chatbot */}
       <div className="fixed bottom-6 left-6 z-[100]">
         <AnimatePresence>
@@ -207,11 +256,11 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.8, y: 20, x: -20 }}
               animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
               exit={{ opacity: 0, scale: 0.8, y: 20, x: -20 }}
-              className="bg-white rounded-3xl shadow-2xl w-[350px] sm:w-[400px] h-[500px] flex flex-col overflow-hidden border border-slate-200 mb-4"
+              className="bg-card rounded-3xl shadow-2xl w-[350px] sm:w-[400px] h-[500px] flex flex-col overflow-hidden border border-border/50 mb-4 backdrop-blur-xl"
             >
-              <div className="p-4 bg-blue-600 text-white flex justify-between items-center">
+              <div className="p-4 bg-primary text-primary-foreground flex justify-between items-center">
                 <div className="flex items-center gap-2">
-                  <div className="bg-white/20 p-1.5 rounded-lg">
+                  <div className="bg-white/20 p-1.5 rounded-xl backdrop-blur-sm">
                     <MessageSquare className="w-5 h-5" />
                   </div>
                   <div>
@@ -224,33 +273,33 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-slate-50">
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-secondary/30">
                 {chatMessages.length === 0 && (
                   <div className="text-center py-8 space-y-2">
-                    <div className="bg-blue-100 w-12 h-12 rounded-full flex items-center justify-center mx-auto">
-                      <Sparkles className="w-6 h-6 text-blue-600" />
+                    <div className="bg-primary/10 w-12 h-12 rounded-full flex items-center justify-center mx-auto">
+                      <Sparkles className="w-6 h-6 text-primary" />
                     </div>
-                    <p className="text-slate-500 text-sm font-medium">Salom! Men MedUz AI yordamchisiman. Qanday yordam bera olaman?</p>
+                    <p className="text-foreground/60 text-sm font-medium">Salom! Men MedUz AI yordamchisiman. Qanday yordam bera olaman?</p>
                   </div>
                 )}
                 {chatMessages.map((m, i) => (
                   <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${m.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-700 shadow-sm border border-slate-100 rounded-tl-none'}`}>
+                    <div className={`max-w-[85%] p-3.5 rounded-2xl text-sm leading-relaxed ${m.role === 'user' ? 'bg-primary text-primary-foreground rounded-tr-sm shadow-md shadow-primary/20' : 'bg-card text-foreground shadow-sm border border-border/50 rounded-tl-sm'}`}>
                       <Markdown>{m.text}</Markdown>
                     </div>
                   </div>
                 ))}
                 {isChatLoading && (
                   <div className="flex justify-start">
-                    <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 rounded-tl-none flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-                      <span className="text-xs text-slate-500">O'ylayapman...</span>
+                    <div className="bg-card p-3.5 rounded-2xl shadow-sm border border-border/50 rounded-tl-sm flex items-center gap-3">
+                      <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                      <span className="text-xs font-medium text-foreground/60">O'ylayapman...</span>
                     </div>
                   </div>
                 )}
               </div>
 
-              <div className="p-4 border-t border-slate-100 bg-white space-y-2">
+              <div className="p-4 border-t border-border/50 bg-card/80 backdrop-blur-md space-y-3">
                 <div className="flex items-center gap-4 px-2">
                   <label className="flex items-center gap-2 cursor-pointer group">
                     <input 
@@ -259,10 +308,10 @@ export default function App() {
                       onChange={(e) => setIsThinkingMode(e.target.checked)}
                       className="hidden"
                     />
-                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isThinkingMode ? 'bg-purple-600 border-purple-600' : 'border-slate-300'}`}>
+                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isThinkingMode ? 'bg-purple-600 border-purple-600' : 'border-border'}`}>
                       {isThinkingMode && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
                     </div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-purple-600 transition-colors">Thinking Mode</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-foreground/50 group-hover:text-purple-600 transition-colors">Thinking Mode</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer group">
                     <input 
@@ -271,10 +320,10 @@ export default function App() {
                       onChange={(e) => setIsSearchEnabled(e.target.checked)}
                       className="hidden"
                     />
-                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSearchEnabled ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300'}`}>
+                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSearchEnabled ? 'bg-emerald-600 border-emerald-600' : 'border-border'}`}>
                       {isSearchEnabled && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
                     </div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-emerald-600 transition-colors">Google Search</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-foreground/50 group-hover:text-emerald-600 transition-colors">Google Search</span>
                   </label>
                 </div>
                 <div className="flex gap-2">
@@ -284,12 +333,12 @@ export default function App() {
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                     placeholder="Savolingizni yozing..."
-                    className="flex-1 bg-slate-100 border-none rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-600 outline-none"
+                    className="flex-1 bg-secondary border-none rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all placeholder:text-foreground/40"
                   />
                   <button 
                     onClick={handleSendMessage}
                     disabled={isChatLoading || !chatInput.trim()}
-                    className="bg-blue-600 text-white p-2 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    className="bg-primary text-primary-foreground p-2.5 rounded-xl hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-primary/20"
                   >
                     <Send className="w-5 h-5" />
                   </button>
@@ -300,47 +349,29 @@ export default function App() {
         </AnimatePresence>
         <button
           onClick={() => setIsChatOpen(!isChatOpen)}
-          className="bg-blue-600 text-white p-4 rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all flex items-center justify-center group relative"
+          className="bg-primary text-primary-foreground p-4 rounded-full shadow-xl shadow-primary/30 hover:scale-105 active:scale-95 transition-all flex items-center justify-center group relative"
         >
           {isChatOpen ? <X className="w-6 h-6" /> : <MessageSquare className="w-6 h-6" />}
           {!isChatOpen && (
-            <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+            <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-foreground text-background text-[10px] font-bold px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
               AI Yordamchi
             </div>
           )}
         </button>
       </div>
 
-      <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-2 bg-white/80 backdrop-blur-md p-2 rounded-full shadow-2xl border border-white/20">
-        {[
-          { name: 'Ko\'k', color: '#007bff' },
-          { name: 'Yashil', color: '#28a745' },
-          { name: 'Binafsha', color: '#6f42c1' },
-          { name: 'To\'q sariq', color: '#fd7e14' },
-          { name: 'Yashil-ko\'k', color: '#20c997' }
-        ].map((c) => (
-          <button
-            key={c.color}
-            onClick={() => setThemeColor(c.color)}
-            className={`w-10 h-10 rounded-full border-2 transition-all hover:scale-110 active:scale-95 ${themeColor === c.color ? 'border-white ring-4 ring-slate-200 shadow-lg' : 'border-transparent'}`}
-            style={{ backgroundColor: c.color }}
-            title={c.name}
-          />
-        ))}
-      </div>
-
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 bg-card border-b border-border shadow-sm backdrop-blur-md bg-card/80">
+      <nav className="sticky top-0 z-50 bg-card/70 backdrop-blur-xl border-b border-border/50 shadow-sm transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div 
-              className="flex items-center gap-2 cursor-pointer" 
+              className="flex items-center gap-3 cursor-pointer group" 
               onClick={() => navigate('home')}
             >
-              <div className="bg-primary p-1.5 rounded-lg">
-                <Heart className="w-6 h-6 text-primary-foreground" />
+              <div className="bg-primary p-2 rounded-xl shadow-md shadow-primary/20 group-hover:scale-105 transition-transform">
+                <Heart className="w-5 h-5 text-primary-foreground" />
               </div>
-              <span className="text-2xl font-bold tracking-tight text-primary">MedUz</span>
+              <span className="text-2xl font-extrabold tracking-tight text-foreground group-hover:text-primary transition-colors">Med<span className="text-primary">Uz</span></span>
             </div>
 
             {/* Desktop Nav */}
@@ -349,6 +380,7 @@ export default function App() {
               <NavLink active={currentPage === 'mnemonics'} onClick={() => navigate('mnemonics')}>Mnemonikalar</NavLink>
               <NavLink active={currentPage === 'videos'} onClick={() => navigate('videos')}>Videolar</NavLink>
               <NavLink active={currentPage === 'symptoms'} onClick={() => navigate('symptoms')}>Simptomlar</NavLink>
+              <NavLink active={currentPage === 'patients'} onClick={() => navigate('patients')}>Bemorlar</NavLink>
               <NavLink active={currentPage === 'quiz'} onClick={() => navigate('quiz')}>Testlar</NavLink>
               <NavLink active={currentPage === 'ai'} onClick={() => navigate('ai')}>
                 <div className="flex items-center gap-1.5 text-accent font-bold">
@@ -408,6 +440,7 @@ export default function App() {
                 <MobileNavLink active={currentPage === 'mnemonics'} onClick={() => { navigate('mnemonics'); setIsMenuOpen(false); }}>Mnemonikalar</MobileNavLink>
                 <MobileNavLink active={currentPage === 'videos'} onClick={() => { navigate('videos'); setIsMenuOpen(false); }}>Videolar</MobileNavLink>
                 <MobileNavLink active={currentPage === 'symptoms'} onClick={() => { navigate('symptoms'); setIsMenuOpen(false); }}>Simptomlar</MobileNavLink>
+                <MobileNavLink active={currentPage === 'patients'} onClick={() => { navigate('patients'); setIsMenuOpen(false); }}>Bemorlar</MobileNavLink>
                 <MobileNavLink active={currentPage === 'quiz'} onClick={() => { navigate('quiz'); setIsMenuOpen(false); }}>Testlar</MobileNavLink>
                 <MobileNavLink active={currentPage === 'ai'} onClick={() => { navigate('ai'); setIsMenuOpen(false); }}>AI Markazi</MobileNavLink>
                 <MobileNavLink active={currentPage === 'admin'} onClick={() => { navigate('admin'); setIsMenuOpen(false); }}>Admin Panel</MobileNavLink>
@@ -424,6 +457,7 @@ export default function App() {
           {currentPage === 'mnemonics' && <MnemonicsPage data={mnemonicsData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'videos' && <VideosPage data={videosData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'symptoms' && <SymptomsPage data={symptomsData} handleAIExplain={handleAIExplain} />}
+          {currentPage === 'patients' && <PatientsPage patients={patientsData} onTreat={handleTreatPatient} />}
           {currentPage === 'quiz' && <QuizPage handleAIExplain={handleAIExplain} />}
           {currentPage === 'library' && <LibraryPage data={libraryData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'ai' && <AIPage />}
@@ -432,6 +466,7 @@ export default function App() {
             questions={questionsData} 
             symptoms={symptomsData} 
             videos={videosData}
+            patients={patientsData}
             sections={sectionsData}
             settings={settingsData}
             library={libraryData}
@@ -446,46 +481,46 @@ export default function App() {
       {/* AI Modal */}
       <AnimatePresence>
         {aiModal.isOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
+              className="bg-card rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col border border-border/50"
             >
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-purple-50/50">
+              <div className="p-6 border-b border-border/50 flex justify-between items-center bg-secondary/30">
                 <div className="flex items-center gap-3">
-                  <div className="bg-purple-600 p-2 rounded-xl">
-                    <Sparkles className="w-5 h-5 text-white" />
+                  <div className="bg-primary p-2.5 rounded-xl shadow-md shadow-primary/20">
+                    <Sparkles className="w-5 h-5 text-primary-foreground" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-slate-900 leading-tight">{aiModal.title}</h3>
-                    <p className="text-[10px] font-bold text-purple-600 uppercase tracking-widest">AI Tibbiy Tushuntirish</p>
+                    <h3 className="font-bold text-foreground leading-tight">{aiModal.title}</h3>
+                    <p className="text-[10px] font-bold text-primary uppercase tracking-widest">AI Tibbiy Tushuntirish</p>
                   </div>
                 </div>
                 <button 
                   onClick={() => setAiModal(prev => ({ ...prev, isOpen: false }))}
-                  className="p-2 hover:bg-white rounded-full transition-colors text-slate-400 hover:text-slate-600"
+                  className="p-2 hover:bg-secondary rounded-full transition-colors text-foreground/40 hover:text-foreground/80"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
               
-              <div className="p-8 overflow-y-auto custom-scrollbar">
+              <div className="p-8 overflow-y-auto custom-scrollbar flex-1 bg-card">
                 {aiModal.loading ? (
                   <div className="flex flex-col items-center justify-center py-12 space-y-4">
-                    <Loader2 className="w-10 h-10 text-purple-600 animate-spin" />
-                    <p className="text-slate-500 font-medium animate-pulse">AI ma'lumotlarni tahlil qilmoqda...</p>
+                    <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                    <p className="text-foreground/60 font-medium animate-pulse">AI ma'lumotlarni tahlil qilmoqda...</p>
                   </div>
                 ) : (
-                  <div className="prose prose-slate max-w-none prose-headings:text-slate-900 prose-p:text-slate-600 prose-strong:text-slate-900 prose-ul:list-disc">
+                  <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-foreground/80 prose-strong:text-foreground prose-ul:list-disc">
                     <Markdown>{aiModal.content}</Markdown>
                   </div>
                 )}
               </div>
               
-              <div className="p-4 bg-slate-50 border-t border-slate-100 text-center">
-                <p className="text-[10px] text-slate-400">
+              <div className="p-4 bg-secondary/30 border-t border-border/50 text-center">
+                <p className="text-[10px] text-foreground/40">
                   AI tomonidan yaratilgan ma'lumotlar xato bo'lishi mumkin. Har doim rasmiy darsliklarga tayanib ish ko'ring.
                 </p>
               </div>
@@ -495,44 +530,44 @@ export default function App() {
       </AnimatePresence>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-slate-200 py-12 mt-20">
+      <footer className="bg-card border-t border-border/50 py-12 mt-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <Heart className="w-5 h-5 text-blue-600" />
-                <span className="text-xl font-bold text-blue-600">MedUz</span>
+                <Heart className="w-5 h-5 text-primary" />
+                <span className="text-xl font-bold text-primary">MedUz</span>
               </div>
-              <p className="text-slate-500 text-sm leading-relaxed">
+              <p className="text-foreground/60 text-sm leading-relaxed">
                 O'zbekiston tibbiyot talabalari uchun bepul va sifatli ta'lim platformasi. 
                 Bizning maqsadimiz - bo'lajak shifokorlarga bilim olishda ko'maklashish.
               </p>
             </div>
             <div>
-              <h4 className="font-semibold mb-4">Bo'limlar</h4>
-              <ul className="space-y-2 text-sm text-slate-500">
-                <li><button onClick={() => navigate('mnemonics')} className="hover:text-blue-600">Mnemonikalar</button></li>
-                <li><button onClick={() => navigate('videos')} className="hover:text-blue-600">Video darslar</button></li>
-                <li><button onClick={() => navigate('symptoms')} className="hover:text-blue-600">Simptomlar tekshiruvi</button></li>
-                <li><button onClick={() => navigate('quiz')} className="hover:text-blue-600">Kunlik testlar</button></li>
+              <h4 className="font-semibold mb-4 text-foreground">Bo'limlar</h4>
+              <ul className="space-y-2 text-sm text-foreground/60">
+                <li><button onClick={() => navigate('mnemonics')} className="hover:text-primary transition-colors">Mnemonikalar</button></li>
+                <li><button onClick={() => navigate('videos')} className="hover:text-primary transition-colors">Video darslar</button></li>
+                <li><button onClick={() => navigate('symptoms')} className="hover:text-primary transition-colors">Simptomlar tekshiruvi</button></li>
+                <li><button onClick={() => navigate('quiz')} className="hover:text-primary transition-colors">Kunlik testlar</button></li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold mb-4">Aloqa</h4>
-              <p className="text-sm text-slate-500 mb-2">Savollar va takliflar uchun:</p>
+              <h4 className="font-semibold mb-4 text-foreground">Aloqa</h4>
+              <p className="text-sm text-foreground/60 mb-2">Savollar va takliflar uchun:</p>
               <div className="space-y-2">
                 {settingsData.find(s => s.key === 'contact_email') && (
-                  <a href={`mailto:${settingsData.find(s => s.key === 'contact_email')?.value}`} className="block text-blue-600 text-sm font-medium hover:underline">
+                  <a href={`mailto:${settingsData.find(s => s.key === 'contact_email')?.value}`} className="block text-primary text-sm font-medium hover:underline">
                     {settingsData.find(s => s.key === 'contact_email')?.value}
                   </a>
                 )}
                 {settingsData.find(s => s.key === 'contact_telegram') && (
-                  <a href={`https://t.me/${settingsData.find(s => s.key === 'contact_telegram')?.value.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="block text-blue-600 text-sm font-medium hover:underline">
+                  <a href={`https://t.me/${settingsData.find(s => s.key === 'contact_telegram')?.value.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="block text-primary text-sm font-medium hover:underline">
                     Telegram: {settingsData.find(s => s.key === 'contact_telegram')?.value}
                   </a>
                 )}
                 {settingsData.find(s => s.key === 'contact_phone') && (
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-foreground/60">
                     Tel: {settingsData.find(s => s.key === 'contact_phone')?.value}
                   </p>
                 )}
@@ -540,14 +575,14 @@ export default function App() {
               <div className="mt-4">
                 <button 
                   onClick={() => navigate('admin')}
-                  className="flex items-center gap-2 text-xs text-slate-400 hover:text-blue-600 transition-colors"
+                  className="flex items-center gap-2 text-xs text-foreground/40 hover:text-primary transition-colors"
                 >
                   <Settings className="w-3 h-3" /> Admin Panel
                 </button>
               </div>
             </div>
           </div>
-          <div className="border-t border-slate-100 mt-12 pt-8 text-center text-slate-400 text-xs">
+          <div className="border-t border-border/50 mt-12 pt-8 text-center text-foreground/40 text-xs">
             © {new Date().getFullYear()} MedUz. Barcha huquqlar himoyalangan.
           </div>
         </div>
@@ -560,9 +595,15 @@ function NavLink({ children, active, onClick }: { children: React.ReactNode, act
   return (
     <button 
       onClick={onClick}
-      className={`text-sm font-medium transition-colors hover:text-blue-600 ${active ? 'text-blue-600' : 'text-slate-600'}`}
+      className={`text-sm font-medium transition-all hover:text-primary relative py-2 ${active ? 'text-primary' : 'text-foreground/70'}`}
     >
       {children}
+      {active && (
+        <motion.div 
+          layoutId="activeNav"
+          className="absolute -bottom-[21px] left-0 right-0 h-0.5 bg-primary"
+        />
+      )}
     </button>
   );
 }
@@ -571,7 +612,7 @@ function MobileNavLink({ children, active, onClick }: { children: React.ReactNod
   return (
     <button 
       onClick={onClick}
-      className={`block w-full text-left px-4 py-2 rounded-lg text-base font-medium transition-colors ${active ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}
+      className={`block w-full text-left px-4 py-3 rounded-xl text-base font-medium transition-colors ${active ? 'bg-primary/10 text-primary' : 'text-foreground/70 hover:bg-secondary hover:text-primary'}`}
     >
       {children}
     </button>
@@ -589,27 +630,30 @@ function HomePage({ onNavigate, sections }: { onNavigate: (page: Page) => void, 
       className="space-y-16"
     >
       {/* Hero Section */}
-      <section className="text-center space-y-6 py-12">
+      <section className="text-center space-y-6 py-16 relative">
+        <div className="absolute inset-0 -z-10 flex items-center justify-center opacity-30">
+          <div className="w-[600px] h-[600px] bg-primary/20 rounded-full blur-[120px]" />
+        </div>
         <motion.h1 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="text-4xl md:text-6xl font-extrabold tracking-tight text-slate-900"
+          className="text-5xl md:text-7xl font-extrabold tracking-tight text-foreground"
         >
-          MedUz – <span className="text-blue-600">Barcha tibbiyot</span> <br className="hidden md:block" /> talabalari uchun
+          MedUz – <span className="text-primary">Barcha tibbiyot</span> <br className="hidden md:block" /> talabalari uchun
         </motion.h1>
-        <p className="text-lg md:text-xl text-slate-500 max-w-2xl mx-auto">
+        <p className="text-lg md:text-xl text-foreground/60 max-w-2xl mx-auto font-medium">
           Bepul, o'zbek tilida, sifatli tibbiyot ta'limi. Bilimingizni mustahkamlang va imtihonlarga tayyorlaning.
         </p>
-        <div className="flex flex-wrap justify-center gap-4 pt-4">
+        <div className="flex flex-wrap justify-center gap-4 pt-8">
           <button 
             onClick={() => onNavigate('quiz')}
-            className="bg-blue-600 text-white px-8 py-3 rounded-full font-semibold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all transform hover:-translate-y-1"
+            className="bg-primary text-primary-foreground px-8 py-4 rounded-2xl font-bold shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all transform hover:-translate-y-1"
           >
             Testni boshlash
           </button>
           <button 
             onClick={() => onNavigate('mnemonics')}
-            className="bg-white text-slate-700 border border-slate-200 px-8 py-3 rounded-full font-semibold hover:bg-slate-50 transition-all"
+            className="bg-card text-foreground border border-border/50 px-8 py-4 rounded-2xl font-bold hover:bg-secondary transition-all shadow-sm"
           >
             Mnemonikalarni ko'rish
           </button>
@@ -619,42 +663,36 @@ function HomePage({ onNavigate, sections }: { onNavigate: (page: Page) => void, 
       {/* Features Grid */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <FeatureCard 
-          icon={<BookOpen className="w-8 h-8 text-blue-600" />}
           title="Kutubxona"
           description="Fanlar, mavzular va resurslarning iyerarxik to'plami."
           onClick={() => onNavigate('library')}
           color="blue"
         />
         <FeatureCard 
-          icon={<Brain className="w-8 h-8 text-purple-500" />}
           title="Mnemonikalar"
           description="Murakkab mavzularni oson eslab qolish uchun maxsus iboralar to'plami."
           onClick={() => onNavigate('mnemonics')}
           color="purple"
         />
         <FeatureCard 
-          icon={<Video className="w-8 h-8 text-red-500" />}
           title="Video Kutubxona"
           description="Klinik ko'nikmalar va amaliyotlar bo'yicha video darslar."
           onClick={() => onNavigate('videos')}
           color="red"
         />
         <FeatureCard 
-          icon={<Stethoscope className="w-8 h-8 text-emerald-500" />}
           title="Simptomlar"
           description="Simptomlar asosida taxminiy tashxislar va 'Qizil bayroqlar'."
           onClick={() => onNavigate('symptoms')}
           color="emerald"
         />
         <FeatureCard 
-          icon={<CheckCircle2 className="w-8 h-8 text-blue-500" />}
           title="Kunlik Test"
           description="Bilimingizni sinash uchun har kuni yangi savollar to'plami."
           onClick={() => onNavigate('quiz')}
           color="blue"
         />
         <FeatureCard 
-          icon={<Sparkles className="w-8 h-8 text-purple-600" />}
           title="AI Markazi"
           description="Sun'iy intellekt yordamida tahlil va media yaratish."
           onClick={() => onNavigate('ai')}
@@ -663,7 +701,6 @@ function HomePage({ onNavigate, sections }: { onNavigate: (page: Page) => void, 
         {sections.map((sec, idx) => (
           <FeatureCard 
             key={sec.id || idx}
-            icon={<div className="text-3xl">{sec.icon}</div>}
             title={sec.title}
             description={sec.content}
             onClick={() => alert(`Bu bo'lim tez kunda ishga tushadi: ${sec.title}`)}
@@ -673,19 +710,19 @@ function HomePage({ onNavigate, sections }: { onNavigate: (page: Page) => void, 
       </section>
 
       {/* Coming Soon Section */}
-      <section className="bg-blue-600 rounded-3xl p-8 md:p-12 text-white overflow-hidden relative">
+      <section className="bg-primary rounded-[2rem] p-8 md:p-12 text-primary-foreground overflow-hidden relative shadow-xl shadow-primary/20">
         <div className="relative z-10 max-w-2xl">
-          <span className="inline-block bg-blue-500 text-xs font-bold px-3 py-1 rounded-full mb-4 uppercase tracking-wider">Tez kunda</span>
-          <h2 className="text-3xl font-bold mb-4">Virtual Bemor Simulyatori</h2>
-          <p className="text-blue-100 mb-8">
+          <span className="inline-block bg-white/20 backdrop-blur-md text-xs font-bold px-3 py-1.5 rounded-full mb-6 uppercase tracking-wider">Tez kunda</span>
+          <h2 className="text-3xl md:text-4xl font-extrabold mb-4 tracking-tight">Virtual Bemor Simulyatori</h2>
+          <p className="text-primary-foreground/80 mb-8 text-lg leading-relaxed">
             Haqiqiy klinik holatlarni virtual muhitda boshqarish va qaror qabul qilish ko'nikmalarini rivojlantirish uchun yangi bo'lim ustida ishlayapmiz.
           </p>
-          <div className="flex items-center gap-2 text-sm font-medium">
+          <div className="flex items-center gap-3 text-sm font-medium bg-black/10 w-fit px-4 py-2 rounded-xl backdrop-blur-sm">
             <Info className="w-4 h-4" />
             <span>Yangi yangiliklardan xabardor bo'lish uchun bizni kuzatib boring.</span>
           </div>
         </div>
-        <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 opacity-10">
+        <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 opacity-10 pointer-events-none">
           <Stethoscope className="w-96 h-96" />
         </div>
       </section>
@@ -693,12 +730,12 @@ function HomePage({ onNavigate, sections }: { onNavigate: (page: Page) => void, 
   );
 }
 
-const FeatureCard: React.FC<{ icon: React.ReactNode, title: string, description: string, onClick: () => void, color: string }> = ({ icon, title, description, onClick, color }) => {
+const FeatureCard: React.FC<{ title: string, description: string, onClick: () => void, color: string }> = ({ title, description, onClick, color }) => {
   const colors: Record<string, string> = {
-    purple: 'hover:border-purple-200 hover:bg-purple-50',
-    red: 'hover:border-red-200 hover:bg-red-50',
-    emerald: 'hover:border-emerald-200 hover:bg-emerald-50',
-    blue: 'hover:border-blue-200 hover:bg-blue-50',
+    purple: 'hover:border-purple-300 hover:bg-purple-50/50 dark:hover:bg-purple-900/20',
+    red: 'hover:border-red-300 hover:bg-red-50/50 dark:hover:bg-red-900/20',
+    emerald: 'hover:border-emerald-300 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/20',
+    blue: 'hover:border-blue-300 hover:bg-blue-50/50 dark:hover:bg-blue-900/20',
   };
 
   const colorClass = colors[color] || colors.blue;
@@ -706,12 +743,11 @@ const FeatureCard: React.FC<{ icon: React.ReactNode, title: string, description:
   return (
     <button 
       onClick={onClick}
-      className={`text-left p-8 bg-white border border-slate-100 rounded-2xl shadow-sm transition-all duration-300 group ${colorClass}`}
+      className={`text-left p-8 bg-card border border-border/50 rounded-[2rem] shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group ${colorClass}`}
     >
-      <div className="mb-6 transform transition-transform group-hover:scale-110 duration-300">{icon}</div>
-      <h3 className="text-xl font-bold mb-2 group-hover:text-slate-900">{title}</h3>
-      <p className="text-slate-500 text-sm leading-relaxed mb-4">{description}</p>
-      <div className="flex items-center text-blue-600 text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+      <h3 className="text-2xl font-bold mb-3 text-foreground group-hover:text-primary transition-colors tracking-tight">{title}</h3>
+      <p className="text-foreground/60 text-sm leading-relaxed mb-6 font-medium">{description}</p>
+      <div className="flex items-center text-primary text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-[-10px] group-hover:translate-x-0 duration-300">
         Batafsil <ChevronRight className="w-4 h-4 ml-1" />
       </div>
     </button>
@@ -746,15 +782,15 @@ function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIEx
     >
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-2">
-          <h2 className="text-3xl font-bold">Tibbiy Mnemonikalar</h2>
-          <p className="text-slate-500">Murakkab tushunchalarni oson eslab qolishga yordam beruvchi iboralar.</p>
+          <h2 className="text-4xl font-extrabold tracking-tight text-foreground">Tibbiy Mnemonikalar</h2>
+          <p className="text-foreground/60 font-medium text-lg">Murakkab tushunchalarni oson eslab qolishga yordam beruvchi iboralar.</p>
         </div>
         <div className="relative w-full md:w-96">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/40" />
           <input 
             type="text" 
             placeholder="Qidirish..." 
-            className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+            className="w-full pl-12 pr-4 py-3.5 bg-card border border-border/50 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all shadow-sm placeholder:text-foreground/40 text-foreground"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -766,7 +802,7 @@ function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIEx
           <button 
             key={cat}
             onClick={() => setSelectedCategory(cat)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${selectedCategory === cat ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+            className={`px-5 py-2 rounded-full text-sm font-bold transition-all duration-300 ${selectedCategory === cat ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-105' : 'bg-card text-foreground/70 border border-border/50 hover:bg-secondary hover:text-foreground'}`}
           >
             {cat}
           </button>
@@ -778,52 +814,55 @@ function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIEx
           <motion.div 
             layout
             key={idx}
-            className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow"
+            className="bg-card border border-border/50 rounded-[2rem] p-8 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group"
           >
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md uppercase tracking-wider">{m.category}</span>
+            <div className="flex justify-between items-start mb-6">
+              <span className="text-xs font-extrabold text-primary bg-primary/10 px-3 py-1.5 rounded-lg uppercase tracking-wider">{m.category}</span>
               <div className="flex gap-2">
                 <button 
                   onClick={() => handleAIExplain(m.title, `Mnemonika: ${m.mnemonic}. Izoh: ${m.explanation}`)}
-                  className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-all"
+                  className="p-2.5 text-purple-500 hover:bg-purple-500/10 rounded-xl transition-all"
                   title="AI tushuntirishi"
                 >
-                  <Sparkles className="w-4 h-4" />
+                  <Sparkles className="w-5 h-5" />
                 </button>
                 <button 
                   onClick={() => copyToClipboard(m.mnemonic)}
-                  className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                  className="p-2.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"
                   title="Nusxa olish"
                 >
-                  <Copy className="w-4 h-4" />
+                  <Copy className="w-5 h-5" />
                 </button>
               </div>
             </div>
-            <h3 className="text-xl font-bold mb-3">{m.title}</h3>
-            <div className="bg-slate-50 p-4 rounded-xl mb-4 border-l-4 border-blue-500">
-              <p className="text-lg font-mono font-bold text-blue-700">{m.mnemonic}</p>
+            <h3 className="text-2xl font-bold mb-4 text-foreground tracking-tight">{m.title}</h3>
+            <div className="bg-secondary/50 p-5 rounded-2xl mb-5 border-l-4 border-primary">
+              <p className="text-xl font-mono font-bold text-primary">{m.mnemonic}</p>
             </div>
-            <p className="text-slate-600 text-sm leading-relaxed">{m.explanation}</p>
+            <p className="text-foreground/70 text-sm leading-relaxed font-medium">{m.explanation}</p>
           </motion.div>
         ))}
       </div>
 
       {filteredMnemonics.length === 0 && (
-        <div className="text-center py-20">
-          <div className="bg-slate-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Search className="w-8 h-8 text-slate-400" />
+        <div className="text-center py-24 bg-card rounded-[2rem] border border-border/50">
+          <div className="bg-secondary w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Search className="w-10 h-10 text-foreground/40" />
           </div>
-          <h3 className="text-lg font-semibold text-slate-900">Hech narsa topilmadi</h3>
-          <p className="text-slate-500">Boshqa kalit so'z bilan qidirib ko'ring.</p>
+          <h3 className="text-2xl font-bold text-foreground mb-2">Hech narsa topilmadi</h3>
+          <p className="text-foreground/60 font-medium">Boshqa kalit so'z bilan qidirib ko'ring.</p>
         </div>
       )}
 
-      <div className="bg-slate-900 rounded-2xl p-8 text-white text-center">
-        <h3 className="text-xl font-bold mb-2">O'z mnemonikangiz bormi?</h3>
-        <p className="text-slate-400 mb-6 max-w-md mx-auto">Bizning platformaga o'z hissangizni qo'shing va boshqalarga yordam bering.</p>
-        <button className="bg-white text-slate-900 px-6 py-2 rounded-full font-bold hover:bg-slate-100 transition-all">
-          Yuborish
-        </button>
+      <div className="bg-foreground rounded-[2rem] p-12 text-background text-center relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent opacity-50" />
+        <div className="relative z-10">
+          <h3 className="text-3xl font-extrabold mb-4 tracking-tight">O'z mnemonikangiz bormi?</h3>
+          <p className="text-background/70 mb-8 max-w-md mx-auto text-lg font-medium">Bizning platformaga o'z hissangizni qo'shing va boshqalarga yordam bering.</p>
+          <button className="bg-background text-foreground px-8 py-4 rounded-2xl font-bold hover:bg-background/90 transition-all shadow-xl hover:-translate-y-1">
+            Yuborish
+          </button>
+        </div>
       </div>
     </motion.div>
   );
@@ -845,8 +884,8 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
       className="space-y-8"
     >
       <div className="space-y-2">
-        <h2 className="text-3xl font-bold">Video Kutubxona</h2>
-        <p className="text-slate-500">Klinik ko'nikmalarni vizual tarzda o'rganing.</p>
+        <h2 className="text-4xl font-extrabold tracking-tight text-foreground">Video Kutubxona</h2>
+        <p className="text-foreground/60 font-medium text-lg">Klinik ko'nikmalarni vizual tarzda o'rganing.</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -854,7 +893,7 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
           <button 
             key={f}
             onClick={() => setSelectedFilter(f)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${selectedFilter === f ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+            className={`px-5 py-2 rounded-full text-sm font-bold transition-all duration-300 ${selectedFilter === f ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-105' : 'bg-card text-foreground/70 border border-border/50 hover:bg-secondary hover:text-foreground'}`}
           >
             {f}
           </button>
@@ -864,58 +903,58 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredVideos.map((v, idx) => (
           <div key={idx} className="group cursor-pointer" onClick={() => v.available && setActiveVideo(v)}>
-            <div className="relative aspect-video rounded-2xl overflow-hidden mb-3 bg-slate-200 flex items-center justify-center">
-              <div className="absolute inset-0 bg-gradient-to-br from-slate-100 to-slate-200" />
-              <Video className="w-12 h-12 text-slate-300 relative z-10" />
+            <div className="relative aspect-video rounded-3xl overflow-hidden mb-4 bg-secondary flex items-center justify-center border border-border/50 shadow-sm group-hover:shadow-xl group-hover:-translate-y-1 transition-all duration-300">
+              <div className="absolute inset-0 bg-gradient-to-br from-secondary to-card" />
+              <Video className="w-12 h-12 text-foreground/20 relative z-10" />
               {v.available ? (
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 z-20">
-                  <PlayCircle className="w-12 h-12 text-white" />
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 backdrop-blur-sm z-20">
+                  <PlayCircle className="w-16 h-16 text-white" />
                 </div>
               ) : (
-                <div className="absolute top-3 right-3 bg-slate-900/80 text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider z-20">
+                <div className="absolute top-4 right-4 bg-background/80 backdrop-blur-md text-foreground text-[10px] font-extrabold px-3 py-1.5 rounded-lg uppercase tracking-wider z-20 shadow-sm">
                   Tez kunda
                 </div>
               )}
-              <div className="absolute bottom-3 right-3 bg-black/60 text-white text-xs px-2 py-1 rounded flex items-center gap-1 z-20">
-                <Clock className="w-3 h-3" /> {v.duration}
+              <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-md text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 z-20">
+                <Clock className="w-3.5 h-3.5" /> {v.duration}
               </div>
             </div>
-            <h4 className={`font-bold leading-tight mb-1 ${!v.available ? 'text-slate-400' : 'text-slate-900'}`}>{v.title}</h4>
+            <h4 className={`text-lg font-bold leading-tight mb-1.5 tracking-tight ${!v.available ? 'text-foreground/40' : 'text-foreground group-hover:text-primary transition-colors'}`}>{v.title}</h4>
             <div className="flex justify-between items-center">
-              <p className="text-xs text-slate-500 font-medium">{v.category}</p>
+              <p className="text-sm text-foreground/60 font-medium">{v.category}</p>
               {v.available && (
                 <button 
                   onClick={(e) => {
                     e.stopPropagation();
                     handleAIExplain(v.title, `Video dars mavzusi: ${v.title}. Kategoriya: ${v.category}`);
                   }}
-                  className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg transition-all"
+                  className="p-2 text-purple-500 hover:bg-purple-500/10 rounded-xl transition-all"
                   title="AI tushuntirishi"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <Sparkles className="w-4 h-4" />
                 </button>
               )}
             </div>
           </div>
         ))}
         {filteredVideos.length === 0 && (
-          <div className="col-span-full text-center py-20 text-slate-400">Hozircha videolar mavjud emas.</div>
+          <div className="col-span-full text-center py-24 text-foreground/40 font-medium text-lg bg-card rounded-[2rem] border border-border/50">Hozircha videolar mavjud emas.</div>
         )}
       </div>
 
       {/* Video Player Modal */}
       <AnimatePresence>
         {activeVideo && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-md">
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-background/80 backdrop-blur-xl">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-black rounded-3xl shadow-2xl w-full max-w-5xl aspect-video overflow-hidden relative"
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-black rounded-[2rem] shadow-2xl w-full max-w-5xl aspect-video overflow-hidden relative ring-1 ring-white/10"
             >
               <button 
                 onClick={() => setActiveVideo(null)}
-                className="absolute top-4 right-4 z-20 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors text-white"
+                className="absolute top-6 right-6 z-20 p-3 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full transition-all text-white hover:scale-110"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -958,19 +997,19 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
       className="max-w-3xl mx-auto space-y-8"
     >
       <div className="text-center space-y-4">
-        <div className="bg-emerald-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto">
-          <Stethoscope className="w-8 h-8 text-emerald-600" />
+        <div className="bg-emerald-500/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-inner">
+          <Stethoscope className="w-10 h-10 text-emerald-500" />
         </div>
-        <h2 className="text-3xl font-bold">Simptomlar Tekshiruvi</h2>
-        <p className="text-slate-500">Simptomlarni kiriting va ehtimoliy tashxislarni ko'ring.</p>
+        <h2 className="text-4xl font-extrabold tracking-tight text-foreground">Simptomlar Tekshiruvi</h2>
+        <p className="text-foreground/60 font-medium text-lg">Simptomlarni kiriting va ehtimoliy tashxislarni ko'ring.</p>
       </div>
 
       <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-slate-400" />
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-foreground/40" />
         <input 
           type="text" 
           placeholder="Masalan: ko'krak og'rig'i, isitma..." 
-          className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all text-lg"
+          className="w-full pl-14 pr-4 py-4 bg-card border border-border/50 rounded-2xl shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-lg placeholder:text-foreground/40 text-foreground"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -982,49 +1021,49 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             key={idx}
-            className={`p-6 rounded-2xl border ${res.redFlag ? 'bg-red-50 border-red-100' : 'bg-white border-slate-100 shadow-sm'}`}
+            className={`p-8 rounded-[2rem] border ${res.redFlag ? 'bg-red-500/5 border-red-500/20 shadow-sm shadow-red-500/10' : 'bg-card border-border/50 shadow-sm hover:shadow-md'} transition-all duration-300`}
           >
-            <div className="flex justify-between items-start mb-4">
-              <h3 className={`text-xl font-bold ${res.redFlag ? 'text-red-700' : 'text-slate-900'}`}>{res.diagnosis}</h3>
+            <div className="flex justify-between items-start mb-6">
+              <h3 className={`text-2xl font-bold tracking-tight ${res.redFlag ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>{res.diagnosis}</h3>
               <div className="flex items-center gap-2">
                 <button 
                   onClick={() => handleAIExplain(res.diagnosis, `Simptomlar: ${res.symptoms.join(', ')}. Tashxis: ${res.diagnosis}`)}
-                  className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-all"
+                  className="p-2.5 text-purple-500 hover:bg-purple-500/10 rounded-xl transition-all"
                   title="AI tushuntirishi"
                 >
-                  <Sparkles className="w-4 h-4" />
+                  <Sparkles className="w-5 h-5" />
                 </button>
                 {res.redFlag && (
-                  <span className="flex items-center gap-1 text-xs font-bold bg-red-600 text-white px-2 py-1 rounded-md uppercase tracking-wider">
-                    <AlertTriangle className="w-3 h-3" /> Qizil bayroq
+                  <span className="flex items-center gap-1.5 text-xs font-extrabold bg-red-500 text-white px-3 py-1.5 rounded-lg uppercase tracking-wider shadow-sm shadow-red-500/20">
+                    <AlertTriangle className="w-4 h-4" /> Qizil bayroq
                   </span>
                 )}
               </div>
             </div>
-            <div className="flex flex-wrap gap-2 mb-4">
+            <div className="flex flex-wrap gap-2 mb-6">
               {res.symptoms.map((s, i) => (
-                <span key={i} className="text-xs font-medium bg-slate-100 text-slate-600 px-2 py-1 rounded-md">{s}</span>
+                <span key={i} className="text-sm font-medium bg-secondary text-foreground/80 px-3 py-1.5 rounded-xl border border-border/50">{s}</span>
               ))}
             </div>
             {res.redFlag && (
-              <p className="text-sm text-red-600 font-medium bg-red-100/50 p-3 rounded-lg">
-                <strong>Diqqat:</strong> Bu holat shoshilinch tibbiy yordam talab qilishi mumkin. Darhol shifokorga murojaat qiling!
+              <p className="text-sm text-red-700 dark:text-red-300 font-medium bg-red-500/10 p-4 rounded-xl border border-red-500/20 leading-relaxed">
+                <strong className="font-bold">Diqqat:</strong> Bu holat shoshilinch tibbiy yordam talab qilishi mumkin. Darhol shifokorga murojaat qiling!
               </p>
             )}
           </motion.div>
         ))}
 
         {query && results.length === 0 && (
-          <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200">
-            <p className="text-slate-500 italic">Ma'lumotlar bazasidan mos keladigan tashxis topilmadi.</p>
+          <div className="text-center py-16 bg-card rounded-[2rem] border border-dashed border-border/50">
+            <p className="text-foreground/50 font-medium text-lg">Ma'lumotlar bazasidan mos keladigan tashxis topilmadi.</p>
           </div>
         )}
       </div>
 
-      <div className="bg-amber-50 border border-amber-100 p-6 rounded-2xl flex gap-4">
-        <Info className="w-6 h-6 text-amber-600 shrink-0" />
-        <p className="text-sm text-amber-800 leading-relaxed">
-          <strong>Rad etish:</strong> Ushbu vosita faqat ta'lim maqsadlari uchun mo'ljallangan. 
+      <div className="bg-amber-500/10 border border-amber-500/20 p-8 rounded-[2rem] flex gap-5">
+        <Info className="w-8 h-8 text-amber-500 shrink-0" />
+        <p className="text-sm text-amber-700 dark:text-amber-300 leading-relaxed font-medium">
+          <strong className="font-bold">Rad etish:</strong> Ushbu vosita faqat ta'lim maqsadlari uchun mo'ljallangan. 
           U professional tibbiy maslahat, tashxis yoki davolash o'rnini bosa olmaydi. 
           Har qanday tibbiy holat bo'yicha har doim shifokoringiz bilan maslahatlashing.
         </p>
@@ -1223,11 +1262,11 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto space-y-8">
         <div className="text-center space-y-4">
-          <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto">
-            <BookOpen className="w-8 h-8 text-blue-600" />
+          <div className="bg-primary/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-inner">
+            <BookOpen className="w-10 h-10 text-primary" />
           </div>
-          <h2 className="text-3xl font-bold">Fanlar sahifasi</h2>
-          <p className="text-slate-500">Test ishlash uchun fanni tanlang</p>
+          <h2 className="text-4xl font-extrabold tracking-tight text-foreground">Fanlar sahifasi</h2>
+          <p className="text-foreground/60 font-medium text-lg">Test ishlash uchun fanni tanlang</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {quizData.subjects.map(subject => (
@@ -1236,10 +1275,10 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => handleSubjectSelect(subject)}
-              className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col items-center justify-center gap-4 text-center"
+              className="bg-card p-8 rounded-[2rem] border border-border/50 shadow-sm hover:shadow-xl transition-all flex flex-col items-center justify-center gap-5 text-center group"
             >
-              <div className="text-4xl">{subject.icon}</div>
-              <h3 className="text-xl font-bold text-slate-800">{subject.name}</h3>
+              <div className="text-5xl group-hover:scale-110 transition-transform duration-300">{subject.icon}</div>
+              <h3 className="text-xl font-bold text-foreground group-hover:text-primary transition-colors tracking-tight">{subject.name}</h3>
             </motion.button>
           ))}
         </div>
@@ -1251,10 +1290,10 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto space-y-8">
         <div className="flex items-center gap-4 mb-8">
-          <button onClick={() => setStep('subjects')} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+          <button onClick={() => setStep('subjects')} className="p-3 hover:bg-secondary rounded-full transition-colors text-foreground/60 hover:text-foreground">
             <ChevronRight className="w-6 h-6 rotate-180" />
           </button>
-          <h2 className="text-3xl font-bold">{selectedSubject.name} &rarr; Mavzular</h2>
+          <h2 className="text-3xl font-extrabold tracking-tight text-foreground">{selectedSubject.name} <span className="text-primary mx-2">&rarr;</span> Mavzular</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {selectedSubject.topics.map((topic: any) => (
@@ -1263,13 +1302,13 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => handleTopicSelect(topic)}
-              className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all text-left flex justify-between items-center"
+              className="bg-card p-8 rounded-[2rem] border border-border/50 shadow-sm hover:shadow-xl transition-all text-left flex justify-between items-center group"
             >
               <div>
-                <h3 className="text-xl font-bold text-slate-800">{topic.name}</h3>
-                <p className="text-sm text-slate-500 mt-1">{topic.questions.length} ta savol</p>
+                <h3 className="text-xl font-bold text-foreground group-hover:text-primary transition-colors tracking-tight">{topic.name}</h3>
+                <p className="text-sm text-foreground/50 mt-2 font-medium bg-secondary w-fit px-3 py-1 rounded-lg">{topic.questions.length} ta savol</p>
               </div>
-              <ChevronRight className="w-6 h-6 text-slate-400" />
+              <ChevronRight className="w-6 h-6 text-foreground/30 group-hover:text-primary transition-colors group-hover:translate-x-1" />
             </motion.button>
           ))}
         </div>
@@ -1283,32 +1322,32 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
 
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-2xl mx-auto space-y-8">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-600 text-white rounded-xl flex items-center justify-center font-bold">
+        <div className="flex justify-between items-center bg-card p-4 rounded-[2rem] border border-border/50 shadow-sm">
+          <div className="flex items-center gap-4 w-full">
+            <div className="w-14 h-14 bg-primary text-primary-foreground rounded-2xl flex items-center justify-center font-extrabold text-xl shadow-inner">
               {currentQuestionIdx + 1}
             </div>
-            <div>
-              <h2 className="font-bold text-slate-900">Savol {currentQuestionIdx + 1} / {selectedTopic.questions.length}</h2>
-              <div className="w-32 h-2 bg-slate-100 rounded-full mt-1 overflow-hidden">
-                <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} className="h-full bg-blue-600" />
+            <div className="flex-1 pr-4">
+              <h2 className="font-bold text-foreground mb-2">Savol {currentQuestionIdx + 1} / {selectedTopic.questions.length}</h2>
+              <div className="w-full h-2.5 bg-secondary rounded-full overflow-hidden">
+                <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} className="h-full bg-primary" />
               </div>
             </div>
           </div>
         </div>
 
-        <div className="bg-white border border-slate-100 rounded-3xl p-8 shadow-sm space-y-8">
-          <h3 className="text-2xl font-bold text-slate-900 leading-tight">{currentQ.text}</h3>
+        <div className="bg-card border border-border/50 rounded-[2rem] p-8 md:p-10 shadow-xl shadow-primary/5 space-y-8">
+          <h3 className="text-2xl md:text-3xl font-extrabold text-foreground leading-tight tracking-tight">{currentQ.text}</h3>
           
           <div className="grid grid-cols-1 gap-4">
             {currentQ.options.map((option: string, idx: number) => {
-              let stateClass = "border-slate-100 hover:border-blue-200 hover:bg-blue-50";
+              let stateClass = "border-border/50 hover:border-primary/50 hover:bg-primary/5 text-foreground";
               if (isAnswered) {
-                if (idx === currentQ.correct) stateClass = "border-emerald-500 bg-emerald-50 text-emerald-700";
-                else if (idx === selectedOption) stateClass = "border-red-500 bg-red-50 text-red-700";
-                else stateClass = "border-slate-100 opacity-50";
+                if (idx === currentQ.correct) stateClass = "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shadow-sm shadow-emerald-500/10";
+                else if (idx === selectedOption) stateClass = "border-red-500 bg-red-500/10 text-red-600 dark:text-red-400 shadow-sm shadow-red-500/10";
+                else stateClass = "border-border/50 opacity-40 text-foreground";
               } else if (idx === selectedOption) {
-                stateClass = "border-blue-500 bg-blue-50 text-blue-700";
+                stateClass = "border-primary bg-primary/10 text-primary shadow-sm shadow-primary/10";
               }
 
               return (
@@ -1316,11 +1355,11 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
                   key={idx}
                   onClick={() => handleAnswer(idx)}
                   disabled={isAnswered}
-                  className={`w-full text-left p-5 rounded-2xl border-2 font-medium transition-all flex justify-between items-center ${stateClass}`}
+                  className={`w-full text-left p-5 rounded-2xl border-2 font-bold transition-all duration-300 flex justify-between items-center group ${stateClass}`}
                 >
-                  <span>{option}</span>
-                  {isAnswered && idx === currentQ.correct && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
-                  {isAnswered && idx === selectedOption && idx !== currentQ.correct && <X className="w-5 h-5 text-red-500" />}
+                  <span className="text-lg">{option}</span>
+                  {isAnswered && idx === currentQ.correct && <CheckCircle2 className="w-6 h-6 text-emerald-500" />}
+                  {isAnswered && idx === selectedOption && idx !== currentQ.correct && <X className="w-6 h-6 text-red-500" />}
                 </button>
               );
             })}
@@ -1328,10 +1367,10 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
 
           <AnimatePresence>
             {isAnswered && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pt-6 border-t border-slate-100">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pt-6 border-t border-border/50">
                 <button 
                   onClick={nextQuestion}
-                  className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+                  className="w-full bg-foreground text-background py-4 rounded-2xl font-bold hover:bg-foreground/90 transition-all flex items-center justify-center gap-2 shadow-xl hover:-translate-y-1"
                 >
                   {currentQuestionIdx === selectedTopic.questions.length - 1 ? 'Natijani ko\'rish' : 'Keyingi'}
                   <ChevronRight className="w-5 h-5" />
@@ -1344,7 +1383,7 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
             <button 
               onClick={checkAnswer}
               disabled={selectedOption === null}
-              className={`w-full py-4 rounded-2xl font-bold transition-all ${selectedOption !== null ? 'bg-blue-600 text-white shadow-lg shadow-blue-100 hover:bg-blue-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+              className={`w-full py-4 rounded-2xl font-bold transition-all duration-300 ${selectedOption !== null ? 'bg-primary text-primary-foreground shadow-xl shadow-primary/30 hover:bg-primary/90 hover:-translate-y-1' : 'bg-secondary text-foreground/40 cursor-not-allowed'}`}
             >
               Javobni tasdiqlash
             </button>
@@ -1358,38 +1397,38 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-md mx-auto space-y-8">
         <div className="text-center space-y-4">
-          <div className="bg-emerald-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto">
-            <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+          <div className="bg-emerald-500/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-inner">
+            <CheckCircle2 className="w-10 h-10 text-emerald-500" />
           </div>
-          <h2 className="text-3xl font-bold">Test yakunlandi!</h2>
-          <p className="text-slate-500">Natijani ko'rish va sertifikat yuklab olish uchun ismingizni kiriting</p>
+          <h2 className="text-4xl font-extrabold tracking-tight text-foreground">Test yakunlandi!</h2>
+          <p className="text-foreground/60 font-medium text-lg">Natijani ko'rish va sertifikat yuklab olish uchun ismingizni kiriting</p>
         </div>
-        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
-          <div className="space-y-4">
+        <div className="bg-card p-8 rounded-[2rem] border border-border/50 shadow-xl shadow-primary/5 space-y-6">
+          <div className="space-y-5">
             <div className="space-y-2">
-              <label className="text-sm font-bold text-slate-700">Ismingiz</label>
+              <label className="text-sm font-bold text-foreground uppercase tracking-wider">Ismingiz</label>
               <input 
                 type="text" 
                 value={userName}
                 onChange={e => setUserName(e.target.value)}
-                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full p-4 bg-background border border-border/50 rounded-2xl focus:ring-2 focus:ring-primary/50 outline-none transition-all shadow-inner text-foreground placeholder:text-foreground/40"
                 placeholder="Ismingizni kiriting"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-bold text-slate-700">Familiyangiz</label>
+              <label className="text-sm font-bold text-foreground uppercase tracking-wider">Familiyangiz</label>
               <input 
                 type="text" 
                 value={userSurname}
                 onChange={e => setUserSurname(e.target.value)}
-                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full p-4 bg-background border border-border/50 rounded-2xl focus:ring-2 focus:ring-primary/50 outline-none transition-all shadow-inner text-foreground placeholder:text-foreground/40"
                 placeholder="Familiyangizni kiriting"
               />
             </div>
           </div>
           <button 
             onClick={finishQuiz}
-            className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all"
+            className="w-full bg-primary text-primary-foreground py-4 rounded-2xl font-bold shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all hover:-translate-y-1"
           >
             Natijani ko'rish
           </button>
@@ -1401,34 +1440,34 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
   if (step === 'result') {
     return (
       <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="max-w-2xl mx-auto text-center space-y-8">
-        <div className="bg-white p-12 rounded-3xl border border-slate-100 shadow-xl space-y-8 relative overflow-hidden">
+        <div className="bg-card p-12 rounded-[2rem] border border-border/50 shadow-2xl shadow-primary/10 space-y-8 relative overflow-hidden">
           {percentage >= 80 && (
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-20">
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-10">
               <Sparkles className="w-full h-full text-emerald-500" />
             </div>
           )}
           
           <motion.div {...(animationProps as any)} className="space-y-4 relative z-10">
-            <h2 className={`text-4xl font-bold ${resultColor}`}>{resultMessage}</h2>
-            <p className="text-slate-600 text-lg">{userName} {userSurname}</p>
+            <h2 className={`text-5xl font-extrabold tracking-tight ${resultColor}`}>{resultMessage}</h2>
+            <p className="text-foreground/60 text-xl font-medium">{userName} {userSurname}</p>
           </motion.div>
           
           <div className="grid grid-cols-2 gap-6 relative z-10">
-            <div className="bg-slate-50 p-6 rounded-2xl">
-              <p className="text-slate-500 text-sm font-bold mb-1">To'g'ri javoblar</p>
-              <p className="text-4xl font-bold text-slate-900">{score} / {totalQuestions}</p>
+            <div className="bg-secondary/50 p-6 rounded-[2rem] border border-border/50">
+              <p className="text-foreground/50 text-sm font-bold mb-2 uppercase tracking-wider">To'g'ri javoblar</p>
+              <p className="text-5xl font-extrabold text-foreground">{score} <span className="text-2xl text-foreground/40">/ {totalQuestions}</span></p>
             </div>
-            <div className="bg-slate-50 p-6 rounded-2xl">
-              <p className="text-slate-500 text-sm font-bold mb-1">Foiz</p>
-              <p className="text-4xl font-bold text-slate-900">{percentage}%</p>
+            <div className="bg-secondary/50 p-6 rounded-[2rem] border border-border/50">
+              <p className="text-foreground/50 text-sm font-bold mb-2 uppercase tracking-wider">Foiz</p>
+              <p className="text-5xl font-extrabold text-foreground">{percentage}%</p>
             </div>
           </div>
           
-          <div className="pt-4 relative z-10 space-y-4">
-            <p className="text-sm text-slate-500">Natijangiz PDF formatida yuklab olinmoqda...</p>
+          <div className="pt-6 relative z-10 space-y-6">
+            <p className="text-sm font-medium text-foreground/50 bg-secondary w-fit mx-auto px-4 py-2 rounded-xl">Natijangiz PDF formatida yuklab olinmoqda...</p>
             <button 
               onClick={resetQuiz}
-              className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-bold hover:bg-slate-800 transition-all"
+              className="bg-foreground text-background px-10 py-4 rounded-2xl font-bold hover:bg-foreground/90 transition-all shadow-xl hover:-translate-y-1"
             >
               Boshqa mavzu
             </button>
@@ -1441,11 +1480,12 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
   return null;
 }
 
-function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings, library, onUpdate, onUpdateLibrary, themeColor, setThemeColor }: { 
+function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections, settings, library, onUpdate, onUpdateLibrary, themeColor, setThemeColor }: { 
   mnemonics: Mnemonic[], 
   questions: Question[], 
   symptoms: SymptomData[], 
   videos: VideoData[],
+  patients: Patient[],
   sections: Section[],
   settings: Setting[],
   library: any,
@@ -1454,7 +1494,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
   themeColor: string,
   setThemeColor: (color: string) => void
 }) {
-  const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'sections' | 'settings' | 'library'>('mnemonics');
+  const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'settings' | 'library'>('mnemonics');
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1470,6 +1510,10 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
       console.log("Logged in user UID:", user.uid);
 
       const userDoc = await getDoc(doc(db, 'users', user.uid));
+      console.log("User doc exists:", userDoc.exists());
+      if (userDoc.exists()) {
+        console.log("User doc data:", userDoc.data());
+      }
       if (userDoc.exists() && userDoc.data().role === 'admin') {
         setIsAdmin(true);
       } else {
@@ -1484,22 +1528,6 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
       setLoading(false);
     }
   };
-
-  if (!isAdmin) {
-    return (
-      <div className="max-w-md mx-auto mt-20 p-8 bg-white rounded-3xl border border-slate-100 shadow-sm text-center space-y-6">
-        <h2 className="text-2xl font-bold">Admin panelga kirish</h2>
-        {error && <p className="text-red-500">{error}</p>}
-        <button 
-          onClick={handleLogin}
-          disabled={loading}
-          className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all"
-        >
-          {loading ? 'Tekshirilmoqda...' : 'Google orqali kirish'}
-        </button>
-      </div>
-    );
-  }
 
   const deleteItem = async (type: string, id: number) => {
     if (!confirm('Haqiqatan ham o\'chirmoqchimisiz?')) return;
@@ -1525,9 +1553,14 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
       if (res.ok) {
         onUpdate();
         return true;
+      } else {
+        const errorData = await res.json();
+        console.error(`Error adding ${type}:`, errorData);
+        alert(`Xatolik yuz berdi: ${errorData.error || 'Noma\'lum xatolik'}`);
       }
     } catch (error) {
       console.error('Error adding:', error);
+      alert('Tarmoq xatoligi yuz berdi.');
     }
     return false;
   };
@@ -1578,6 +1611,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
                 { id: 'questions', label: 'Savollar', icon: CheckCircle2 },
                 { id: 'symptoms', label: 'Simptomlar', icon: Stethoscope },
                 { id: 'videos', label: 'Videolar', icon: Video },
+                { id: 'patients', label: 'Bemorlar', icon: Heart },
                 { id: 'library', label: 'Kutubxona', icon: BookOpen },
                 { id: 'sections', label: 'Bo\'limlar', icon: Plus },
                 { id: 'settings', label: 'Sozlamalar', icon: Settings },
@@ -1616,11 +1650,11 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
             <div className="xl:col-span-2 bg-card border border-border rounded-[32px] overflow-hidden shadow-sm h-fit">
               <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
                 <h3 className="font-bold text-foreground flex items-center gap-2">
-                  {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
-                  {activeTab === 'mnemonics' ? 'Mnemonikalar Ro\'yxati' : activeTab === 'questions' ? 'Savollar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : 'Tizim Sozlamalari'}
+                  {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'patients' ? <Heart className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
+                  {activeTab === 'mnemonics' ? 'Mnemonikalar Ro\'yxati' : activeTab === 'questions' ? 'Savollar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'patients' ? 'Bemorlar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : 'Tizim Sozlamalari'}
                 </h3>
                 <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">
-                  {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'library' ? library.subjects : sections).length} ta element
+                  {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : sections).length} ta element
                 </span>
               </div>
               
@@ -1682,6 +1716,17 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
                         </td>
                       </tr>
                     ))}
+                    {activeTab === 'patients' && patients.map(p => (
+                      <tr key={p.id} className="hover:bg-secondary/50 transition-colors group">
+                        <td className="px-6 py-4">
+                          <div className="font-bold text-foreground group-hover:text-primary transition-colors">{p.name} ({p.age} yosh)</div>
+                          <div className="text-xs text-foreground/60 mt-1">{p.symptoms} • {p.condition} • {p.healthScore}%</div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button onClick={() => deleteItem('patients', p.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                        </td>
+                      </tr>
+                    ))}
                     {activeTab === 'library' && library.subjects.map((sub: any) => (
                       <tr key={sub.id} className="hover:bg-secondary/50 transition-colors group">
                         <td className="px-6 py-4">
@@ -1732,6 +1777,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, sections, settings,
                 {activeTab === 'questions' && <QuestionForm onAdd={(data) => addItem('questions', data)} />}
                 {activeTab === 'symptoms' && <SymptomForm onAdd={(data) => addItem('symptoms', data)} />}
                 {activeTab === 'videos' && <VideoForm onAdd={(data) => addItem('videos', data)} />}
+                {activeTab === 'patients' && <PatientForm onAdd={(data) => addItem('patients', data)} />}
                 {activeTab === 'sections' && <SectionForm onAdd={(data) => addItem('sections', data)} />}
                 {activeTab === 'library' && <LibraryForm library={library} onUpdate={onUpdateLibrary} />}
                 {activeTab === 'settings' && <SettingsForm settings={settings} onUpdate={onUpdate} themeColor={themeColor} setThemeColor={setThemeColor} />}
@@ -1906,7 +1952,7 @@ function SettingsForm({ settings, onUpdate, themeColor, setThemeColor }: { setti
   return (
     <div className="space-y-8">
       <div className="space-y-4">
-        <h4 className="text-sm font-bold text-slate-900 border-b pb-2">Mavzu rangi</h4>
+        <h4 className="text-sm font-bold text-foreground border-b border-border pb-2">Mavzu rangi</h4>
         <div className="flex gap-3">
           {[
             { name: 'Ko\'k', color: '#007bff' },
@@ -1918,7 +1964,7 @@ function SettingsForm({ settings, onUpdate, themeColor, setThemeColor }: { setti
             <button
               key={c.color}
               onClick={() => setThemeColor(c.color)}
-              className={`w-10 h-10 rounded-full border-2 transition-all ${themeColor === c.color ? 'border-white ring-2 ring-blue-500 scale-110' : 'border-transparent'}`}
+              className={`w-10 h-10 rounded-full border-2 transition-all ${themeColor === c.color ? 'border-background ring-2 ring-primary scale-110' : 'border-transparent'}`}
               style={{ backgroundColor: c.color }}
               title={c.name}
             />
@@ -1927,34 +1973,34 @@ function SettingsForm({ settings, onUpdate, themeColor, setThemeColor }: { setti
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <h4 className="text-sm font-bold text-slate-900 border-b pb-2">Aloqa ma'lumotlari</h4>
+        <h4 className="text-sm font-bold text-foreground border-b border-border pb-2">Aloqa ma'lumotlari</h4>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-1">Email</label>
+            <label className="block text-sm font-bold text-foreground/70 mb-1">Email</label>
             <input 
-              className="w-full p-2 border rounded-lg" 
+              className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" 
               value={formData['contact_email'] || ''} 
               onChange={e => setFormData({...formData, 'contact_email': e.target.value})} 
             />
           </div>
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-1">Telegram (username)</label>
+            <label className="block text-sm font-bold text-foreground/70 mb-1">Telegram (username)</label>
             <input 
-              className="w-full p-2 border rounded-lg" 
+              className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" 
               value={formData['contact_telegram'] || ''} 
               onChange={e => setFormData({...formData, 'contact_telegram': e.target.value})} 
             />
           </div>
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-1">Telefon</label>
+            <label className="block text-sm font-bold text-foreground/70 mb-1">Telefon</label>
             <input 
-              className="w-full p-2 border rounded-lg" 
+              className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" 
               value={formData['contact_phone'] || ''} 
               onChange={e => setFormData({...formData, 'contact_phone': e.target.value})} 
             />
           </div>
         </div>
-        <button className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100">
+        <button className="w-full bg-primary text-primary-foreground py-3.5 rounded-xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
           Saqlash
         </button>
       </form>
@@ -1970,11 +2016,11 @@ function MnemonicForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
   };
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <input placeholder="Kategoriya" className="w-full p-2 border rounded-lg" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} required />
-      <input placeholder="Sarlavha" className="w-full p-2 border rounded-lg" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required />
-      <input placeholder="Mnemonika" className="w-full p-2 border rounded-lg" value={formData.mnemonic} onChange={e => setFormData({...formData, mnemonic: e.target.value})} required />
-      <textarea placeholder="Tushuntirish" className="w-full p-2 border rounded-lg" value={formData.explanation} onChange={e => setFormData({...formData, explanation: e.target.value})} required />
-      <button className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold">Qo'shish</button>
+      <input placeholder="Kategoriya" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} required />
+      <input placeholder="Sarlavha" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required />
+      <input placeholder="Mnemonika" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.mnemonic} onChange={e => setFormData({...formData, mnemonic: e.target.value})} required />
+      <textarea placeholder="Tushuntirish" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.explanation} onChange={e => setFormData({...formData, explanation: e.target.value})} required />
+      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-bold text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
     </form>
   );
 }
@@ -1998,37 +2044,37 @@ function QuestionForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <select className="w-full p-2 border rounded-lg text-sm" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value, topic: topics[e.target.value][0]})}>
+        <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value, topic: topics[e.target.value][0]})}>
           <option value="internal">Ichki kasalliklar</option>
           <option value="surgery">Xirurgiya</option>
           <option value="pediatrics">Pediatriya</option>
           <option value="obstetrics">Akusherlik</option>
           <option value="neurology">Nevrologiya</option>
         </select>
-        <select className="w-full p-2 border rounded-lg text-sm" value={formData.topic} onChange={e => setFormData({...formData, topic: e.target.value})}>
+        <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.topic} onChange={e => setFormData({...formData, topic: e.target.value})}>
           {topics[formData.subject]?.map(t => (
             <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1).replace('_', ' ')}</option>
           ))}
         </select>
       </div>
-      <select className="w-full p-2 border rounded-lg text-sm" value={formData.difficulty} onChange={e => setFormData({...formData, difficulty: e.target.value})}>
+      <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.difficulty} onChange={e => setFormData({...formData, difficulty: e.target.value})}>
         <option value="easy">Oson</option>
         <option value="medium">O'rta</option>
         <option value="hard">Qiyin</option>
       </select>
-      <textarea placeholder="Savol" className="w-full p-2 border rounded-lg" value={formData.question} onChange={e => setFormData({...formData, question: e.target.value})} required />
+      <textarea placeholder="Savol" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.question} onChange={e => setFormData({...formData, question: e.target.value})} required />
       {formData.options.map((opt, i) => (
-        <input key={i} placeholder={`Variant ${i+1}`} className="w-full p-2 border rounded-lg" value={opt} onChange={e => {
+        <input key={i} placeholder={`Variant ${i+1}`} className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={opt} onChange={e => {
           const newOpts = [...formData.options];
           newOpts[i] = e.target.value;
           setFormData({...formData, options: newOpts});
         }} required />
       ))}
-      <select className="w-full p-2 border rounded-lg" value={formData.correct} onChange={e => setFormData({...formData, correct: parseInt(e.target.value)})}>
+      <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.correct} onChange={e => setFormData({...formData, correct: parseInt(e.target.value)})}>
         {formData.options.map((_, i) => <option key={i} value={i}>To'g'ri javob: Variant {i+1}</option>)}
       </select>
-      <textarea placeholder="Tushuntirish" className="w-full p-2 border rounded-lg" value={formData.explanation} onChange={e => setFormData({...formData, explanation: e.target.value})} required />
-      <button className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold">Qo'shish</button>
+      <textarea placeholder="Tushuntirish" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.explanation} onChange={e => setFormData({...formData, explanation: e.target.value})} required />
+      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-bold text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
     </form>
   );
 }
@@ -2042,12 +2088,12 @@ function SymptomForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
   };
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <input placeholder="Simptomlar (vergul bilan ajrating)" className="w-full p-2 border rounded-lg" value={formData.symptoms} onChange={e => setFormData({...formData, symptoms: e.target.value})} required />
-      <input placeholder="Tashxis" className="w-full p-2 border rounded-lg" value={formData.diagnosis} onChange={e => setFormData({...formData, diagnosis: e.target.value})} required />
-      <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-        <input type="checkbox" checked={formData.redFlag} onChange={e => setFormData({...formData, redFlag: e.target.checked})} /> Qizil bayroq
+      <input placeholder="Simptomlar (vergul bilan ajrating)" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.symptoms} onChange={e => setFormData({...formData, symptoms: e.target.value})} required />
+      <input placeholder="Tashxis" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.diagnosis} onChange={e => setFormData({...formData, diagnosis: e.target.value})} required />
+      <label className="flex items-center gap-2 text-sm font-medium text-foreground/70">
+        <input type="checkbox" className="rounded border-border text-primary focus:ring-primary" checked={formData.redFlag} onChange={e => setFormData({...formData, redFlag: e.target.checked})} /> Qizil bayroq
       </label>
-      <button className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold">Qo'shish</button>
+      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-bold text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
     </form>
   );
 }
@@ -2060,14 +2106,14 @@ function VideoForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
   };
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <input placeholder="Sarlavha" className="w-full p-2 border rounded-lg" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required />
-      <input placeholder="Davomiyligi (masalan: 12:45)" className="w-full p-2 border rounded-lg" value={formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} required />
-      <input placeholder="Kategoriya" className="w-full p-2 border rounded-lg" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} required />
-      <input placeholder="Video URL (YouTube)" className="w-full p-2 border rounded-lg" value={formData.videoUrl} onChange={e => setFormData({...formData, videoUrl: e.target.value})} required />
-      <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-        <input type="checkbox" checked={formData.available} onChange={e => setFormData({...formData, available: e.target.checked})} /> Mavjud
+      <input placeholder="Sarlavha" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required />
+      <input placeholder="Davomiyligi (masalan: 12:45)" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} required />
+      <input placeholder="Kategoriya" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} required />
+      <input placeholder="Video URL (YouTube)" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.videoUrl} onChange={e => setFormData({...formData, videoUrl: e.target.value})} required />
+      <label className="flex items-center gap-2 text-sm font-medium text-foreground/70">
+        <input type="checkbox" className="rounded border-border text-primary focus:ring-primary" checked={formData.available} onChange={e => setFormData({...formData, available: e.target.checked})} /> Mavjud
       </label>
-      <button className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold">Qo'shish</button>
+      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-bold text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
     </form>
   );
 }
@@ -2080,16 +2126,16 @@ function SectionForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
   };
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <input placeholder="Sarlavha" className="w-full p-2 border rounded-lg" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required />
-      <textarea placeholder="Tavsif" className="w-full p-2 border rounded-lg" value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} required />
-      <input placeholder="Emoji Icon (masalan: ⭐)" className="w-full p-2 border rounded-lg" value={formData.icon} onChange={e => setFormData({...formData, icon: e.target.value})} required />
-      <select className="w-full p-2 border rounded-lg" value={formData.color} onChange={e => setFormData({...formData, color: e.target.value})}>
+      <input placeholder="Sarlavha" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required />
+      <textarea placeholder="Tavsif" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} required />
+      <input placeholder="Emoji Icon (masalan: ⭐)" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.icon} onChange={e => setFormData({...formData, icon: e.target.value})} required />
+      <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.color} onChange={e => setFormData({...formData, color: e.target.value})}>
         <option value="blue">Ko'k</option>
         <option value="purple">Binafsha</option>
         <option value="red">Qizil</option>
         <option value="emerald">Yashil</option>
       </select>
-      <button className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold">Qo'shish</button>
+      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-bold text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
     </form>
   );
 }
@@ -2186,37 +2232,37 @@ function AIPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <div className="text-center space-y-4">
-        <h2 className="text-3xl font-bold text-slate-900">AI Markazi</h2>
-        <p className="text-slate-500">Tibbiy ta'lim uchun sun'iy intellekt imkoniyatlaridan foydalaning</p>
+        <h2 className="text-4xl font-extrabold tracking-tight text-foreground">AI Markazi</h2>
+        <p className="text-foreground/60 font-medium text-lg">Tibbiy ta'lim uchun sun'iy intellekt imkoniyatlaridan foydalaning</p>
       </div>
 
-      <div className="flex justify-center gap-4">
-        <button onClick={() => setActiveTool('analysis')} className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all ${activeTool === 'analysis' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+      <div className="flex justify-center gap-4 flex-wrap">
+        <button onClick={() => setActiveTool('analysis')} className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all ${activeTool === 'analysis' ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'bg-card text-foreground/60 hover:bg-secondary border border-border/50'}`}>
           <Search className="w-5 h-5" /> Tahlil
         </button>
-        <button onClick={() => setActiveTool('image')} className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all ${activeTool === 'image' ? 'bg-purple-600 text-white shadow-lg' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+        <button onClick={() => setActiveTool('image')} className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all ${activeTool === 'image' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20' : 'bg-card text-foreground/60 hover:bg-secondary border border-border/50'}`}>
           <ImageIcon className="w-5 h-5" /> Rasm yaratish
         </button>
-        <button onClick={() => setActiveTool('video')} className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all ${activeTool === 'video' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+        <button onClick={() => setActiveTool('video')} className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all ${activeTool === 'video' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' : 'bg-card text-foreground/60 hover:bg-secondary border border-border/50'}`}>
           <Film className="w-5 h-5" /> Video yaratish
         </button>
       </div>
 
-      <div className="bg-white rounded-[32px] p-8 border border-slate-100 shadow-xl space-y-6">
+      <div className="bg-card rounded-[2rem] p-8 border border-border/50 shadow-xl shadow-primary/5 space-y-6">
         {activeTool === 'analysis' && (
           <div className="space-y-6">
-            <div className="border-2 border-dashed border-slate-200 rounded-3xl p-12 text-center space-y-4 hover:border-blue-400 transition-colors cursor-pointer relative">
+            <div className="border-2 border-dashed border-border rounded-[2rem] p-12 text-center space-y-4 hover:border-primary/50 transition-colors cursor-pointer relative bg-secondary/30">
               <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => setFile(e.target.files?.[0] || null)} />
-              <div className="bg-blue-50 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto">
-                <Upload className="w-8 h-8 text-blue-600" />
+              <div className="bg-primary/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                <Upload className="w-10 h-10 text-primary" />
               </div>
               <div>
-                <p className="font-bold text-slate-900">{file ? file.name : "Rasm yoki video yuklang"}</p>
-                <p className="text-sm text-slate-500">Rentgen, MRT yoki boshqa tibbiy tasvirlar</p>
+                <p className="font-bold text-foreground text-lg">{file ? file.name : "Rasm yoki video yuklang"}</p>
+                <p className="text-sm text-foreground/60 font-medium mt-1">Rentgen, MRT yoki boshqa tibbiy tasvirlar</p>
               </div>
             </div>
-            <textarea placeholder="AI ga savol bering (ixtiyoriy)..." className="w-full p-4 rounded-2xl border border-slate-100 focus:ring-2 focus:ring-blue-600/20 outline-none h-32" value={prompt} onChange={e => setPrompt(e.target.value)} />
-            <button onClick={handleAnalysis} disabled={loading || !file} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+            <textarea placeholder="AI ga savol bering (ixtiyoriy)..." className="w-full p-5 rounded-2xl border border-border/50 bg-background text-foreground outline-none focus:ring-2 focus:ring-primary/50 h-32 shadow-inner placeholder:text-foreground/40" value={prompt} onChange={e => setPrompt(e.target.value)} />
+            <button onClick={handleAnalysis} disabled={loading || !file} className="w-full bg-primary text-primary-foreground py-4 rounded-2xl font-bold hover:bg-primary/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-xl shadow-primary/20 hover:-translate-y-1">
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />} Tahlilni boshlash
             </button>
           </div>
@@ -2224,26 +2270,29 @@ function AIPage() {
 
         {(activeTool === 'image' || activeTool === 'video') && (
           <div className="space-y-6">
-            <textarea placeholder={activeTool === 'image' ? "Qanday rasm yaratmoqchisiz? (masalan: Yurak anatomiyasi 3D)" : "Qanday video yaratmoqchisiz? (masalan: Qon aylanish jarayoni)"} className="w-full p-4 rounded-2xl border border-slate-100 focus:ring-2 focus:ring-blue-600/20 outline-none h-32" value={prompt} onChange={e => setPrompt(e.target.value)} />
-            <button onClick={activeTool === 'image' ? handleImageGen : handleVideoGen} disabled={loading || !prompt} className={`w-full py-4 rounded-2xl font-bold text-white transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${activeTool === 'image' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+            <textarea placeholder={activeTool === 'image' ? "Qanday rasm yaratmoqchisiz? (masalan: Yurak anatomiyasi 3D)" : "Qanday video yaratmoqchisiz? (masalan: Qon aylanish jarayoni)"} className="w-full p-5 rounded-2xl border border-border/50 bg-background text-foreground outline-none focus:ring-2 focus:ring-primary/50 h-32 shadow-inner placeholder:text-foreground/40" value={prompt} onChange={e => setPrompt(e.target.value)} />
+            <button onClick={activeTool === 'image' ? handleImageGen : handleVideoGen} disabled={loading || !prompt} className={`w-full py-4 rounded-2xl font-bold text-white transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-xl hover:-translate-y-1 ${activeTool === 'image' ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-600/20' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'}`}>
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />} {activeTool === 'image' ? "Rasm yaratish" : "Video yaratish"}
             </button>
           </div>
         )}
 
         {result && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-            <h4 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <Search className="w-4 h-4 text-blue-600" /> Tahlil natijasi:
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-8 bg-secondary/50 rounded-[2rem] border border-border/50 shadow-inner">
+            <h4 className="font-bold text-foreground mb-6 flex items-center gap-3 text-xl">
+              <div className="bg-primary/10 p-2 rounded-xl">
+                <Search className="w-5 h-5 text-primary" />
+              </div>
+              Tahlil natijasi:
             </h4>
-            <div className="prose prose-slate max-w-none">
+            <div className="prose prose-neutral max-w-none text-foreground/80">
               <Markdown>{result}</Markdown>
             </div>
           </motion.div>
         )}
 
         {generatedMedia && (
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="rounded-2xl overflow-hidden border border-slate-100 shadow-lg">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="rounded-[2rem] overflow-hidden border border-border/50 shadow-2xl shadow-primary/10">
             {activeTool === 'video' ? (
               <video src={generatedMedia} controls className="w-full" />
             ) : (
@@ -2556,6 +2605,30 @@ function LibraryPage({ data, handleAIExplain }: { data: any, handleAIExplain: (t
           </motion.div>
         )}
       </main>
+    </div>
+  );
+}
+
+function PatientsPage({ patients, onTreat }: { patients: Patient[], onTreat: (id: number, medication: string) => void }) {
+  return (
+    <div className="p-8 space-y-8">
+      <h2 className="text-3xl font-bold text-foreground">Bemorlar</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {patients.map(p => (
+          <div key={p.id} className="bg-card p-6 rounded-[32px] border border-border shadow-xl">
+            <h3 className="text-xl font-bold text-foreground">{p.name} ({p.age} yosh)</h3>
+            <p className="text-sm text-foreground/70 mt-2">Simptomlar: {p.symptoms}</p>
+            <p className="text-sm font-bold mt-4 text-foreground">Ahvoli: <span className="text-primary">{p.condition}</span></p>
+            <p className="text-sm font-bold text-foreground mt-1">Sog'liq: <span className="text-emerald-500">{p.healthScore}%</span></p>
+            <input type="text" placeholder="Dori yuborish (Enter bosing)" onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                onTreat(p.id!, e.currentTarget.value);
+                e.currentTarget.value = '';
+              }
+            }} className="w-full px-4 py-2.5 mt-4 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
