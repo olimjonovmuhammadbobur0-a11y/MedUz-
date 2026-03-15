@@ -51,7 +51,7 @@ import { Mnemonic, Question, SymptomData, VideoData, Section, Setting, Patient }
 import { explainMedicalTopic } from './services/aiService';
 import { quizData } from './quizData';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
 const getYouTubeEmbedUrl = (url: string) => {
@@ -62,6 +62,35 @@ const getYouTubeEmbedUrl = (url: string) => {
 };
 
 type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients';
+
+export function Modal({ isOpen, title, content, onClose, onConfirm, confirmText = "Tasdiqlash", cancelText = "Bekor qilish" }: { isOpen: boolean, title: string, content: string, onClose: () => void, onConfirm?: () => void, confirmText?: string, cancelText?: string }) {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-card w-full max-w-md rounded-3xl shadow-md border border-border overflow-hidden"
+      >
+        <div className="p-6">
+          <h3 className="text-xl font-medium text-foreground mb-2">{title}</h3>
+          <p className="text-foreground/70">{content}</p>
+        </div>
+        <div className="p-4 bg-secondary/50 border-t border-border flex justify-end gap-3">
+          <button onClick={onClose} className="px-5 py-2.5 rounded-xl font-medium text-sm text-foreground/70 hover:bg-secondary transition-all">
+            {onConfirm ? cancelText : 'Yopish'}
+          </button>
+          {onConfirm && (
+            <button onClick={() => { onConfirm(); onClose(); }} className="px-5 py-2.5 rounded-xl font-medium text-sm bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
+              {confirmText}
+            </button>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
@@ -95,9 +124,28 @@ export default function App() {
     return saved ? JSON.parse(saved) : initialMedicalData;
   });
 
-  useEffect(() => {
-    localStorage.setItem('meduz_library', JSON.stringify(libraryData));
-  }, [libraryData]);
+  const handleUpdateLibrary = async (data: any) => {
+    setLibraryData(data);
+    try {
+      await setDoc(doc(db, 'library', 'main'), { data });
+    } catch (error) {
+      console.error('Error updating library:', error);
+    }
+  };
+  const [modal, setModal] = useState<{ isOpen: boolean, title: string, content: string, onConfirm?: () => void, confirmText?: string, cancelText?: string }>({
+    isOpen: false,
+    title: '',
+    content: ''
+  });
+
+  const showAlert = (title: string, content: string) => {
+    setModal({ isOpen: true, title, content });
+  };
+
+  const showConfirm = (title: string, content: string, onConfirm: () => void) => {
+    setModal({ isOpen: true, title, content, onConfirm });
+  };
+
   const [aiModal, setAiModal] = useState<{ isOpen: boolean, title: string, content: string, loading: boolean }>({
     isOpen: false,
     title: '',
@@ -162,35 +210,35 @@ export default function App() {
 
   const fetchAllData = async () => {
     try {
-      console.log('Fetching all data...');
-      const [mRes, qRes, sRes, vRes, pRes, secRes, setRes] = await Promise.all([
-        fetch('/api/mnemonics'),
-        fetch('/api/questions'),
-        fetch('/api/symptoms'),
-        fetch('/api/videos'),
-        fetch('/api/patients'),
-        fetch('/api/sections'),
-        fetch('/api/settings')
-      ]);
-      console.log('Data fetched, parsing JSON...');
-      const [m, q, s, v, p, sec, sett] = await Promise.all([
-        mRes.json(), 
-        qRes.json(), 
-        sRes.json(),
-        vRes.json(),
-        pRes.json(),
-        secRes.json(),
-        setRes.json()
+      console.log('Fetching all data from Firestore...');
+      
+      const getCollectionData = async (colName: string) => {
+        const snapshot = await getDocs(collection(db, colName));
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      };
+
+      const [m, q, s, v, p, sec, sett, libDoc] = await Promise.all([
+        getCollectionData('mnemonics'),
+        getCollectionData('questions'),
+        getCollectionData('symptoms'),
+        getCollectionData('videos'),
+        getCollectionData('patients'),
+        getCollectionData('sections'),
+        getCollectionData('settings'),
+        getDoc(doc(db, 'library', 'main'))
       ]);
       
       console.log('Patients data:', p);
-      setMnemonicsData(m);
-      setQuestionsData(q);
-      setSymptomsData(s);
-      setVideosData(v);
-      setPatientsData(p);
-      setSectionsData(sec);
-      setSettingsData(sett);
+      setMnemonicsData(m as any);
+      setQuestionsData(q as any);
+      setSymptomsData(s as any);
+      setVideosData(v as any);
+      setPatientsData(p as any);
+      setSectionsData(sec as any);
+      setSettingsData(sett as any);
+      if (libDoc.exists()) {
+        setLibraryData(libDoc.data().data);
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
     }
@@ -206,7 +254,7 @@ export default function App() {
     window.scrollTo(0, 0);
   };
 
-  const handleTreatPatient = async (id: number, medication: string) => {
+  const handleTreatPatient = async (id: string, medication: string) => {
     const patient = patientsData.find(p => p.id === id);
     if (!patient) return;
 
@@ -223,10 +271,9 @@ export default function App() {
       const result = JSON.parse(response.text || '{}');
       
       // Update patient in DB
-      await fetch(`/api/patients/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...patient, healthScore: result.newHealthScore, medications: patient.medications + ', ' + medication })
+      await updateDoc(doc(db, 'patients', id), {
+        healthScore: result.newHealthScore,
+        medications: patient.medications ? patient.medications + ', ' + medication : medication
       });
       
       fetchAllData();
@@ -239,10 +286,10 @@ export default function App() {
       a.download = `feedback_${patient.name}.txt`;
       a.click();
       
-      alert(result.feedback);
+      showAlert('Natija', result.feedback);
     } catch (error) {
       console.error('Treatment error:', error);
-      alert('Davolashda xatolik yuz berdi.');
+      showAlert('Xatolik', 'Davolashda xatolik yuz berdi.');
     }
   };
 
@@ -256,7 +303,7 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.8, y: 20, x: -20 }}
               animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
               exit={{ opacity: 0, scale: 0.8, y: 20, x: -20 }}
-              className="bg-card rounded-3xl shadow-2xl w-[350px] sm:w-[400px] h-[500px] flex flex-col overflow-hidden border border-border/50 mb-4 backdrop-blur-xl"
+              className="bg-card rounded-3xl shadow-md w-[350px] sm:w-[400px] h-[500px] flex flex-col overflow-hidden border border-border/40 mb-4 backdrop-blur-xl"
             >
               <div className="p-4 bg-primary text-primary-foreground flex justify-between items-center">
                 <div className="flex items-center gap-2">
@@ -264,7 +311,7 @@ export default function App() {
                     <MessageSquare className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-sm">MedUz AI Yordamchi</h3>
+                    <h3 className="font-medium text-sm">MedUz AI Yordamchi</h3>
                     <p className="text-[10px] opacity-80">Tibbiy savollaringizga javob beraman</p>
                   </div>
                 </div>
@@ -284,14 +331,14 @@ export default function App() {
                 )}
                 {chatMessages.map((m, i) => (
                   <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] p-3.5 rounded-2xl text-sm leading-relaxed ${m.role === 'user' ? 'bg-primary text-primary-foreground rounded-tr-sm shadow-md shadow-primary/20' : 'bg-card text-foreground shadow-sm border border-border/50 rounded-tl-sm'}`}>
+                    <div className={`max-w-[85%] p-3.5 rounded-2xl text-sm leading-relaxed ${m.role === 'user' ? 'bg-primary text-primary-foreground rounded-tr-sm shadow-md shadow-primary/20' : 'bg-card text-foreground shadow-sm border border-border/40 rounded-tl-sm'}`}>
                       <Markdown>{m.text}</Markdown>
                     </div>
                   </div>
                 ))}
                 {isChatLoading && (
                   <div className="flex justify-start">
-                    <div className="bg-card p-3.5 rounded-2xl shadow-sm border border-border/50 rounded-tl-sm flex items-center gap-3">
+                    <div className="bg-card p-3.5 rounded-2xl shadow-sm border border-border/40 rounded-tl-sm flex items-center gap-3">
                       <Loader2 className="w-4 h-4 text-primary animate-spin" />
                       <span className="text-xs font-medium text-foreground/60">O'ylayapman...</span>
                     </div>
@@ -299,7 +346,7 @@ export default function App() {
                 )}
               </div>
 
-              <div className="p-4 border-t border-border/50 bg-card/80 backdrop-blur-md space-y-3">
+              <div className="p-4 border-t border-border/40 bg-card/80 backdrop-blur-md space-y-3">
                 <div className="flex items-center gap-4 px-2">
                   <label className="flex items-center gap-2 cursor-pointer group">
                     <input 
@@ -311,7 +358,7 @@ export default function App() {
                     <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isThinkingMode ? 'bg-purple-600 border-purple-600' : 'border-border'}`}>
                       {isThinkingMode && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
                     </div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-foreground/50 group-hover:text-purple-600 transition-colors">Thinking Mode</span>
+                    <span className="text-[10px] font-medium uppercase tracking-wider text-foreground/50 group-hover:text-purple-600 transition-colors">Thinking Mode</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer group">
                     <input 
@@ -323,7 +370,7 @@ export default function App() {
                     <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSearchEnabled ? 'bg-emerald-600 border-emerald-600' : 'border-border'}`}>
                       {isSearchEnabled && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
                     </div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-foreground/50 group-hover:text-emerald-600 transition-colors">Google Search</span>
+                    <span className="text-[10px] font-medium uppercase tracking-wider text-foreground/50 group-hover:text-emerald-600 transition-colors">Google Search</span>
                   </label>
                 </div>
                 <div className="flex gap-2">
@@ -349,11 +396,11 @@ export default function App() {
         </AnimatePresence>
         <button
           onClick={() => setIsChatOpen(!isChatOpen)}
-          className="bg-primary text-primary-foreground p-4 rounded-full shadow-xl shadow-primary/30 hover:scale-105 active:scale-95 transition-all flex items-center justify-center group relative"
+          className="bg-primary text-primary-foreground p-4 rounded-full shadow-sm shadow-primary/30 hover:scale-105 active:scale-95 transition-all flex items-center justify-center group relative"
         >
           {isChatOpen ? <X className="w-6 h-6" /> : <MessageSquare className="w-6 h-6" />}
           {!isChatOpen && (
-            <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-foreground text-background text-[10px] font-bold px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+            <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-foreground text-background text-[10px] font-medium px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
               AI Yordamchi
             </div>
           )}
@@ -361,7 +408,7 @@ export default function App() {
       </div>
 
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 bg-card/70 backdrop-blur-xl border-b border-border/50 shadow-sm transition-colors duration-300">
+      <nav className="sticky top-0 z-50 bg-card/70 backdrop-blur-xl border-b border-border/40 shadow-sm transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div 
@@ -371,7 +418,7 @@ export default function App() {
               <div className="bg-primary p-2 rounded-xl shadow-md shadow-primary/20 group-hover:scale-105 transition-transform">
                 <Heart className="w-5 h-5 text-primary-foreground" />
               </div>
-              <span className="text-2xl font-extrabold tracking-tight text-foreground group-hover:text-primary transition-colors">Med<span className="text-primary">Uz</span></span>
+              <span className="text-2xl font-semibold tracking-tight text-foreground group-hover:text-accent transition-colors">Med<span className="text-accent">Uz</span></span>
             </div>
 
             {/* Desktop Nav */}
@@ -383,7 +430,7 @@ export default function App() {
               <NavLink active={currentPage === 'patients'} onClick={() => navigate('patients')}>Bemorlar</NavLink>
               <NavLink active={currentPage === 'quiz'} onClick={() => navigate('quiz')}>Testlar</NavLink>
               <NavLink active={currentPage === 'ai'} onClick={() => navigate('ai')}>
-                <div className="flex items-center gap-1.5 text-accent font-bold">
+                <div className="flex items-center gap-1.5 text-accent font-medium">
                   <Sparkles className="w-4 h-4" />
                   AI Markazi
                 </div>
@@ -453,12 +500,12 @@ export default function App() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <AnimatePresence mode="wait">
-          {currentPage === 'home' && <HomePage onNavigate={navigate} sections={sectionsData} />}
+          {currentPage === 'home' && <HomePage onNavigate={navigate} sections={sectionsData} showAlert={showAlert} />}
           {currentPage === 'mnemonics' && <MnemonicsPage data={mnemonicsData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'videos' && <VideosPage data={videosData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'symptoms' && <SymptomsPage data={symptomsData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'patients' && <PatientsPage patients={patientsData} onTreat={handleTreatPatient} />}
-          {currentPage === 'quiz' && <QuizPage handleAIExplain={handleAIExplain} />}
+          {currentPage === 'quiz' && <QuizPage handleAIExplain={handleAIExplain} showAlert={showAlert} />}
           {currentPage === 'library' && <LibraryPage data={libraryData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'ai' && <AIPage />}
           {currentPage === 'admin' && <AdminPage 
@@ -471,12 +518,25 @@ export default function App() {
             settings={settingsData}
             library={libraryData}
             onUpdate={fetchAllData} 
-            onUpdateLibrary={setLibraryData}
+            onUpdateLibrary={handleUpdateLibrary}
             themeColor={themeColor}
             setThemeColor={setThemeColor}
+            showAlert={showAlert}
+            showConfirm={showConfirm}
           />}
         </AnimatePresence>
       </main>
+
+      {/* Modal */}
+      <Modal 
+        isOpen={modal.isOpen}
+        title={modal.title}
+        content={modal.content}
+        onClose={() => setModal({ ...modal, isOpen: false })}
+        onConfirm={modal.onConfirm}
+        confirmText={modal.confirmText}
+        cancelText={modal.cancelText}
+      />
 
       {/* AI Modal */}
       <AnimatePresence>
@@ -486,16 +546,16 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-card rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col border border-border/50"
+              className="bg-card rounded-2xl shadow-md w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col border border-border/40"
             >
-              <div className="p-6 border-b border-border/50 flex justify-between items-center bg-secondary/30">
+              <div className="p-6 border-b border-border/40 flex justify-between items-center bg-secondary/30">
                 <div className="flex items-center gap-3">
                   <div className="bg-primary p-2.5 rounded-xl shadow-md shadow-primary/20">
                     <Sparkles className="w-5 h-5 text-primary-foreground" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-foreground leading-tight">{aiModal.title}</h3>
-                    <p className="text-[10px] font-bold text-primary uppercase tracking-widest">AI Tibbiy Tushuntirish</p>
+                    <h3 className="font-medium text-foreground leading-tight">{aiModal.title}</h3>
+                    <p className="text-[10px] font-medium text-primary uppercase tracking-widest">AI Tibbiy Tushuntirish</p>
                   </div>
                 </div>
                 <button 
@@ -519,7 +579,7 @@ export default function App() {
                 )}
               </div>
               
-              <div className="p-4 bg-secondary/30 border-t border-border/50 text-center">
+              <div className="p-4 bg-secondary/30 border-t border-border/40 text-center">
                 <p className="text-[10px] text-foreground/40">
                   AI tomonidan yaratilgan ma'lumotlar xato bo'lishi mumkin. Har doim rasmiy darsliklarga tayanib ish ko'ring.
                 </p>
@@ -530,13 +590,13 @@ export default function App() {
       </AnimatePresence>
 
       {/* Footer */}
-      <footer className="bg-card border-t border-border/50 py-12 mt-20">
+      <footer className="bg-card border-t border-border/40 py-12 mt-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <Heart className="w-5 h-5 text-primary" />
-                <span className="text-xl font-bold text-primary">MedUz</span>
+                <span className="text-xl font-medium text-primary">MedUz</span>
               </div>
               <p className="text-foreground/60 text-sm leading-relaxed">
                 O'zbekiston tibbiyot talabalari uchun bepul va sifatli ta'lim platformasi. 
@@ -582,7 +642,7 @@ export default function App() {
               </div>
             </div>
           </div>
-          <div className="border-t border-border/50 mt-12 pt-8 text-center text-foreground/40 text-xs">
+          <div className="border-t border-border/40 mt-12 pt-8 text-center text-foreground/40 text-xs">
             © {new Date().getFullYear()} MedUz. Barcha huquqlar himoyalangan.
           </div>
         </div>
@@ -621,7 +681,7 @@ function MobileNavLink({ children, active, onClick }: { children: React.ReactNod
 
 /* --- PAGES --- */
 
-function HomePage({ onNavigate, sections }: { onNavigate: (page: Page) => void, sections: Section[] }) {
+function HomePage({ onNavigate, sections, showAlert }: { onNavigate: (page: Page) => void, sections: Section[], showAlert: (title: string, content: string) => void }) {
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -637,9 +697,9 @@ function HomePage({ onNavigate, sections }: { onNavigate: (page: Page) => void, 
         <motion.h1 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="text-5xl md:text-7xl font-extrabold tracking-tight text-foreground"
+          className="text-5xl md:text-7xl font-semibold tracking-tight text-foreground"
         >
-          MedUz – <span className="text-primary">Barcha tibbiyot</span> <br className="hidden md:block" /> talabalari uchun
+          MedUz – <span className="text-accent">Barcha tibbiyot</span> <br className="hidden md:block" /> talabalari uchun
         </motion.h1>
         <p className="text-lg md:text-xl text-foreground/60 max-w-2xl mx-auto font-medium">
           Bepul, o'zbek tilida, sifatli tibbiyot ta'limi. Bilimingizni mustahkamlang va imtihonlarga tayyorlaning.
@@ -647,13 +707,13 @@ function HomePage({ onNavigate, sections }: { onNavigate: (page: Page) => void, 
         <div className="flex flex-wrap justify-center gap-4 pt-8">
           <button 
             onClick={() => onNavigate('quiz')}
-            className="bg-primary text-primary-foreground px-8 py-4 rounded-2xl font-bold shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all transform hover:-translate-y-1"
+            className="bg-primary text-primary-foreground px-8 py-4 rounded-2xl font-medium shadow-sm shadow-primary/30 hover:bg-primary/90 transition-all transform hover:-translate-y-1"
           >
             Testni boshlash
           </button>
           <button 
             onClick={() => onNavigate('mnemonics')}
-            className="bg-card text-foreground border border-border/50 px-8 py-4 rounded-2xl font-bold hover:bg-secondary transition-all shadow-sm"
+            className="bg-card text-foreground border border-border/40 px-8 py-4 rounded-2xl font-medium hover:bg-secondary transition-all shadow-sm"
           >
             Mnemonikalarni ko'rish
           </button>
@@ -703,17 +763,17 @@ function HomePage({ onNavigate, sections }: { onNavigate: (page: Page) => void, 
             key={sec.id || idx}
             title={sec.title}
             description={sec.content}
-            onClick={() => alert(`Bu bo'lim tez kunda ishga tushadi: ${sec.title}`)}
+            onClick={() => showAlert('Tez kunda', `Bu bo'lim tez kunda ishga tushadi: ${sec.title}`)}
             color={sec.color}
           />
         ))}
       </section>
 
       {/* Coming Soon Section */}
-      <section className="bg-primary rounded-[2rem] p-8 md:p-12 text-primary-foreground overflow-hidden relative shadow-xl shadow-primary/20">
+      <section className="bg-primary rounded-2xl p-8 md:p-12 text-primary-foreground overflow-hidden relative shadow-sm shadow-primary/20">
         <div className="relative z-10 max-w-2xl">
-          <span className="inline-block bg-white/20 backdrop-blur-md text-xs font-bold px-3 py-1.5 rounded-full mb-6 uppercase tracking-wider">Tez kunda</span>
-          <h2 className="text-3xl md:text-4xl font-extrabold mb-4 tracking-tight">Virtual Bemor Simulyatori</h2>
+          <span className="inline-block bg-white/20 backdrop-blur-md text-xs font-medium px-3 py-1.5 rounded-full mb-6 uppercase tracking-wider">Tez kunda</span>
+          <h2 className="text-3xl md:text-4xl font-semibold mb-4 tracking-tight">Virtual Bemor Simulyatori</h2>
           <p className="text-primary-foreground/80 mb-8 text-lg leading-relaxed">
             Haqiqiy klinik holatlarni virtual muhitda boshqarish va qaror qabul qilish ko'nikmalarini rivojlantirish uchun yangi bo'lim ustida ishlayapmiz.
           </p>
@@ -743,11 +803,11 @@ const FeatureCard: React.FC<{ title: string, description: string, onClick: () =>
   return (
     <button 
       onClick={onClick}
-      className={`text-left p-8 bg-card border border-border/50 rounded-[2rem] shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group ${colorClass}`}
+      className={`text-left p-8 bg-card border border-border/40 rounded-2xl shadow-sm hover:shadow-sm hover:-translate-y-1 transition-all duration-300 group ${colorClass}`}
     >
-      <h3 className="text-2xl font-bold mb-3 text-foreground group-hover:text-primary transition-colors tracking-tight">{title}</h3>
+      <h3 className="text-2xl font-medium mb-3 text-foreground group-hover:text-primary transition-colors tracking-tight">{title}</h3>
       <p className="text-foreground/60 text-sm leading-relaxed mb-6 font-medium">{description}</p>
-      <div className="flex items-center text-primary text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-[-10px] group-hover:translate-x-0 duration-300">
+      <div className="flex items-center text-primary text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-[-10px] group-hover:translate-x-0 duration-300">
         Batafsil <ChevronRight className="w-4 h-4 ml-1" />
       </div>
     </button>
@@ -782,7 +842,7 @@ function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIEx
     >
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-2">
-          <h2 className="text-4xl font-extrabold tracking-tight text-foreground">Tibbiy Mnemonikalar</h2>
+          <h2 className="text-4xl font-semibold tracking-tight text-foreground">Tibbiy Mnemonikalar</h2>
           <p className="text-foreground/60 font-medium text-lg">Murakkab tushunchalarni oson eslab qolishga yordam beruvchi iboralar.</p>
         </div>
         <div className="relative w-full md:w-96">
@@ -790,7 +850,7 @@ function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIEx
           <input 
             type="text" 
             placeholder="Qidirish..." 
-            className="w-full pl-12 pr-4 py-3.5 bg-card border border-border/50 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all shadow-sm placeholder:text-foreground/40 text-foreground"
+            className="w-full pl-12 pr-4 py-3.5 bg-card border border-border/40 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all shadow-sm placeholder:text-foreground/40 text-foreground"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -802,7 +862,7 @@ function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIEx
           <button 
             key={cat}
             onClick={() => setSelectedCategory(cat)}
-            className={`px-5 py-2 rounded-full text-sm font-bold transition-all duration-300 ${selectedCategory === cat ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-105' : 'bg-card text-foreground/70 border border-border/50 hover:bg-secondary hover:text-foreground'}`}
+            className={`px-5 py-2 rounded-full text-sm font-medium transition-all duration-300 ${selectedCategory === cat ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-105' : 'bg-card text-foreground/70 border border-border/40 hover:bg-secondary hover:text-foreground'}`}
           >
             {cat}
           </button>
@@ -814,10 +874,10 @@ function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIEx
           <motion.div 
             layout
             key={idx}
-            className="bg-card border border-border/50 rounded-[2rem] p-8 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group"
+            className="bg-card border border-border/40 rounded-2xl p-8 shadow-sm hover:shadow-sm hover:-translate-y-1 transition-all duration-300 group"
           >
             <div className="flex justify-between items-start mb-6">
-              <span className="text-xs font-extrabold text-primary bg-primary/10 px-3 py-1.5 rounded-lg uppercase tracking-wider">{m.category}</span>
+              <span className="text-xs font-semibold text-primary bg-primary/10 px-3 py-1.5 rounded-lg uppercase tracking-wider">{m.category}</span>
               <div className="flex gap-2">
                 <button 
                   onClick={() => handleAIExplain(m.title, `Mnemonika: ${m.mnemonic}. Izoh: ${m.explanation}`)}
@@ -835,9 +895,9 @@ function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIEx
                 </button>
               </div>
             </div>
-            <h3 className="text-2xl font-bold mb-4 text-foreground tracking-tight">{m.title}</h3>
+            <h3 className="text-2xl font-medium mb-4 text-foreground tracking-tight">{m.title}</h3>
             <div className="bg-secondary/50 p-5 rounded-2xl mb-5 border-l-4 border-primary">
-              <p className="text-xl font-mono font-bold text-primary">{m.mnemonic}</p>
+              <p className="text-xl font-mono font-medium text-primary">{m.mnemonic}</p>
             </div>
             <p className="text-foreground/70 text-sm leading-relaxed font-medium">{m.explanation}</p>
           </motion.div>
@@ -845,23 +905,26 @@ function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIEx
       </div>
 
       {filteredMnemonics.length === 0 && (
-        <div className="text-center py-24 bg-card rounded-[2rem] border border-border/50">
+        <div className="text-center py-24 bg-card rounded-2xl border border-border/40">
           <div className="bg-secondary w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
             <Search className="w-10 h-10 text-foreground/40" />
           </div>
-          <h3 className="text-2xl font-bold text-foreground mb-2">Hech narsa topilmadi</h3>
+          <h3 className="text-2xl font-medium text-foreground mb-2">Hech narsa topilmadi</h3>
           <p className="text-foreground/60 font-medium">Boshqa kalit so'z bilan qidirib ko'ring.</p>
         </div>
       )}
 
-      <div className="bg-foreground rounded-[2rem] p-12 text-background text-center relative overflow-hidden">
+      <div className="bg-foreground rounded-2xl p-12 text-background text-center relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent opacity-50" />
         <div className="relative z-10">
-          <h3 className="text-3xl font-extrabold mb-4 tracking-tight">O'z mnemonikangiz bormi?</h3>
+          <h3 className="text-3xl font-semibold mb-4 tracking-tight">O'z mnemonikangiz bormi?</h3>
           <p className="text-background/70 mb-8 max-w-md mx-auto text-lg font-medium">Bizning platformaga o'z hissangizni qo'shing va boshqalarga yordam bering.</p>
-          <button className="bg-background text-foreground px-8 py-4 rounded-2xl font-bold hover:bg-background/90 transition-all shadow-xl hover:-translate-y-1">
+          <a 
+            href="mailto:muhammadboburolimjonov2@gmail.com?subject=Yangi Mnemonic Taklifi&body=Mnemonic nomi:%0A%0AMnemonic:%0A%0ATushuntirish:%0A"
+            className="inline-block bg-background text-foreground px-8 py-4 rounded-2xl font-medium hover:bg-background/90 transition-all shadow-sm hover:-translate-y-1"
+          >
             Yuborish
-          </button>
+          </a>
         </div>
       </div>
     </motion.div>
@@ -884,7 +947,7 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
       className="space-y-8"
     >
       <div className="space-y-2">
-        <h2 className="text-4xl font-extrabold tracking-tight text-foreground">Video Kutubxona</h2>
+        <h2 className="text-4xl font-semibold tracking-tight text-foreground">Video Kutubxona</h2>
         <p className="text-foreground/60 font-medium text-lg">Klinik ko'nikmalarni vizual tarzda o'rganing.</p>
       </div>
 
@@ -893,7 +956,7 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
           <button 
             key={f}
             onClick={() => setSelectedFilter(f)}
-            className={`px-5 py-2 rounded-full text-sm font-bold transition-all duration-300 ${selectedFilter === f ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-105' : 'bg-card text-foreground/70 border border-border/50 hover:bg-secondary hover:text-foreground'}`}
+            className={`px-5 py-2 rounded-full text-sm font-medium transition-all duration-300 ${selectedFilter === f ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-105' : 'bg-card text-foreground/70 border border-border/40 hover:bg-secondary hover:text-foreground'}`}
           >
             {f}
           </button>
@@ -903,7 +966,7 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredVideos.map((v, idx) => (
           <div key={idx} className="group cursor-pointer" onClick={() => v.available && setActiveVideo(v)}>
-            <div className="relative aspect-video rounded-3xl overflow-hidden mb-4 bg-secondary flex items-center justify-center border border-border/50 shadow-sm group-hover:shadow-xl group-hover:-translate-y-1 transition-all duration-300">
+            <div className="relative aspect-video rounded-3xl overflow-hidden mb-4 bg-secondary flex items-center justify-center border border-border/40 shadow-sm group-hover:shadow-sm group-hover:-translate-y-1 transition-all duration-300">
               <div className="absolute inset-0 bg-gradient-to-br from-secondary to-card" />
               <Video className="w-12 h-12 text-foreground/20 relative z-10" />
               {v.available ? (
@@ -911,15 +974,15 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
                   <PlayCircle className="w-16 h-16 text-white" />
                 </div>
               ) : (
-                <div className="absolute top-4 right-4 bg-background/80 backdrop-blur-md text-foreground text-[10px] font-extrabold px-3 py-1.5 rounded-lg uppercase tracking-wider z-20 shadow-sm">
+                <div className="absolute top-4 right-4 bg-background/80 backdrop-blur-md text-foreground text-[10px] font-semibold px-3 py-1.5 rounded-lg uppercase tracking-wider z-20 shadow-sm">
                   Tez kunda
                 </div>
               )}
-              <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-md text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 z-20">
+              <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-md text-white text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 z-20">
                 <Clock className="w-3.5 h-3.5" /> {v.duration}
               </div>
             </div>
-            <h4 className={`text-lg font-bold leading-tight mb-1.5 tracking-tight ${!v.available ? 'text-foreground/40' : 'text-foreground group-hover:text-primary transition-colors'}`}>{v.title}</h4>
+            <h4 className={`text-lg font-medium leading-tight mb-1.5 tracking-tight ${!v.available ? 'text-foreground/40' : 'text-foreground group-hover:text-primary transition-colors'}`}>{v.title}</h4>
             <div className="flex justify-between items-center">
               <p className="text-sm text-foreground/60 font-medium">{v.category}</p>
               {v.available && (
@@ -938,7 +1001,7 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
           </div>
         ))}
         {filteredVideos.length === 0 && (
-          <div className="col-span-full text-center py-24 text-foreground/40 font-medium text-lg bg-card rounded-[2rem] border border-border/50">Hozircha videolar mavjud emas.</div>
+          <div className="col-span-full text-center py-24 text-foreground/40 font-medium text-lg bg-card rounded-2xl border border-border/40">Hozircha videolar mavjud emas.</div>
         )}
       </div>
 
@@ -950,7 +1013,7 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-black rounded-[2rem] shadow-2xl w-full max-w-5xl aspect-video overflow-hidden relative ring-1 ring-white/10"
+              className="bg-black rounded-2xl shadow-md w-full max-w-5xl aspect-video overflow-hidden relative ring-1 ring-white/10"
             >
               <button 
                 onClick={() => setActiveVideo(null)}
@@ -1000,7 +1063,7 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
         <div className="bg-emerald-500/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-inner">
           <Stethoscope className="w-10 h-10 text-emerald-500" />
         </div>
-        <h2 className="text-4xl font-extrabold tracking-tight text-foreground">Simptomlar Tekshiruvi</h2>
+        <h2 className="text-4xl font-semibold tracking-tight text-foreground">Simptomlar Tekshiruvi</h2>
         <p className="text-foreground/60 font-medium text-lg">Simptomlarni kiriting va ehtimoliy tashxislarni ko'ring.</p>
       </div>
 
@@ -1009,7 +1072,7 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
         <input 
           type="text" 
           placeholder="Masalan: ko'krak og'rig'i, isitma..." 
-          className="w-full pl-14 pr-4 py-4 bg-card border border-border/50 rounded-2xl shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-lg placeholder:text-foreground/40 text-foreground"
+          className="w-full pl-14 pr-4 py-4 bg-card border border-border/40 rounded-2xl shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-lg placeholder:text-foreground/40 text-foreground"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -1021,10 +1084,10 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             key={idx}
-            className={`p-8 rounded-[2rem] border ${res.redFlag ? 'bg-red-500/5 border-red-500/20 shadow-sm shadow-red-500/10' : 'bg-card border-border/50 shadow-sm hover:shadow-md'} transition-all duration-300`}
+            className={`p-8 rounded-2xl border ${res.redFlag ? 'bg-red-500/5 border-red-500/20 shadow-sm shadow-red-500/10' : 'bg-card border-border/40 shadow-sm hover:shadow-md'} transition-all duration-300`}
           >
             <div className="flex justify-between items-start mb-6">
-              <h3 className={`text-2xl font-bold tracking-tight ${res.redFlag ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>{res.diagnosis}</h3>
+              <h3 className={`text-2xl font-medium tracking-tight ${res.redFlag ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>{res.diagnosis}</h3>
               <div className="flex items-center gap-2">
                 <button 
                   onClick={() => handleAIExplain(res.diagnosis, `Simptomlar: ${res.symptoms.join(', ')}. Tashxis: ${res.diagnosis}`)}
@@ -1034,7 +1097,7 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
                   <Sparkles className="w-5 h-5" />
                 </button>
                 {res.redFlag && (
-                  <span className="flex items-center gap-1.5 text-xs font-extrabold bg-red-500 text-white px-3 py-1.5 rounded-lg uppercase tracking-wider shadow-sm shadow-red-500/20">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold bg-red-500 text-white px-3 py-1.5 rounded-lg uppercase tracking-wider shadow-sm shadow-red-500/20">
                     <AlertTriangle className="w-4 h-4" /> Qizil bayroq
                   </span>
                 )}
@@ -1042,28 +1105,28 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
             </div>
             <div className="flex flex-wrap gap-2 mb-6">
               {res.symptoms.map((s, i) => (
-                <span key={i} className="text-sm font-medium bg-secondary text-foreground/80 px-3 py-1.5 rounded-xl border border-border/50">{s}</span>
+                <span key={i} className="text-sm font-medium bg-secondary text-foreground/80 px-3 py-1.5 rounded-xl border border-border/40">{s}</span>
               ))}
             </div>
             {res.redFlag && (
               <p className="text-sm text-red-700 dark:text-red-300 font-medium bg-red-500/10 p-4 rounded-xl border border-red-500/20 leading-relaxed">
-                <strong className="font-bold">Diqqat:</strong> Bu holat shoshilinch tibbiy yordam talab qilishi mumkin. Darhol shifokorga murojaat qiling!
+                <strong className="font-medium">Diqqat:</strong> Bu holat shoshilinch tibbiy yordam talab qilishi mumkin. Darhol shifokorga murojaat qiling!
               </p>
             )}
           </motion.div>
         ))}
 
         {query && results.length === 0 && (
-          <div className="text-center py-16 bg-card rounded-[2rem] border border-dashed border-border/50">
+          <div className="text-center py-16 bg-card rounded-2xl border border-dashed border-border/40">
             <p className="text-foreground/50 font-medium text-lg">Ma'lumotlar bazasidan mos keladigan tashxis topilmadi.</p>
           </div>
         )}
       </div>
 
-      <div className="bg-amber-500/10 border border-amber-500/20 p-8 rounded-[2rem] flex gap-5">
+      <div className="bg-amber-500/10 border border-amber-500/20 p-8 rounded-2xl flex gap-5">
         <Info className="w-8 h-8 text-amber-500 shrink-0" />
         <p className="text-sm text-amber-700 dark:text-amber-300 leading-relaxed font-medium">
-          <strong className="font-bold">Rad etish:</strong> Ushbu vosita faqat ta'lim maqsadlari uchun mo'ljallangan. 
+          <strong className="font-medium">Rad etish:</strong> Ushbu vosita faqat ta'lim maqsadlari uchun mo'ljallangan. 
           U professional tibbiy maslahat, tashxis yoki davolash o'rnini bosa olmaydi. 
           Har qanday tibbiy holat bo'yicha har doim shifokoringiz bilan maslahatlashing.
         </p>
@@ -1072,7 +1135,7 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
   );
 }
 
-function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, context: string) => void }) {
+function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: string, context: string) => void, showAlert: (title: string, content: string) => void }) {
   const [step, setStep] = useState<'subjects' | 'topics' | 'quiz' | 'enter_name' | 'result'>('subjects');
   const [selectedSubject, setSelectedSubject] = useState<any>(null);
   const [selectedTopic, setSelectedTopic] = useState<any>(null);
@@ -1134,7 +1197,7 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
 
   const finishQuiz = () => {
     if (!userName.trim() || !userSurname.trim()) {
-      alert("Iltimos, ism va familiyangizni kiriting.");
+      showAlert("Xatolik", "Iltimos, ism va familiyangizni kiriting.");
       return;
     }
     const time = Math.floor((Date.now() - startTime) / 1000);
@@ -1265,7 +1328,7 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
           <div className="bg-primary/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-inner">
             <BookOpen className="w-10 h-10 text-primary" />
           </div>
-          <h2 className="text-4xl font-extrabold tracking-tight text-foreground">Fanlar sahifasi</h2>
+          <h2 className="text-4xl font-semibold tracking-tight text-foreground">Fanlar sahifasi</h2>
           <p className="text-foreground/60 font-medium text-lg">Test ishlash uchun fanni tanlang</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1275,10 +1338,10 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => handleSubjectSelect(subject)}
-              className="bg-card p-8 rounded-[2rem] border border-border/50 shadow-sm hover:shadow-xl transition-all flex flex-col items-center justify-center gap-5 text-center group"
+              className="bg-card p-8 rounded-2xl border border-border/40 shadow-sm hover:shadow-sm transition-all flex flex-col items-center justify-center gap-5 text-center group"
             >
               <div className="text-5xl group-hover:scale-110 transition-transform duration-300">{subject.icon}</div>
-              <h3 className="text-xl font-bold text-foreground group-hover:text-primary transition-colors tracking-tight">{subject.name}</h3>
+              <h3 className="text-xl font-medium text-foreground group-hover:text-primary transition-colors tracking-tight">{subject.name}</h3>
             </motion.button>
           ))}
         </div>
@@ -1293,7 +1356,7 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
           <button onClick={() => setStep('subjects')} className="p-3 hover:bg-secondary rounded-full transition-colors text-foreground/60 hover:text-foreground">
             <ChevronRight className="w-6 h-6 rotate-180" />
           </button>
-          <h2 className="text-3xl font-extrabold tracking-tight text-foreground">{selectedSubject.name} <span className="text-primary mx-2">&rarr;</span> Mavzular</h2>
+          <h2 className="text-3xl font-semibold tracking-tight text-foreground">{selectedSubject.name} <span className="text-primary mx-2">&rarr;</span> Mavzular</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {selectedSubject.topics.map((topic: any) => (
@@ -1302,10 +1365,10 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => handleTopicSelect(topic)}
-              className="bg-card p-8 rounded-[2rem] border border-border/50 shadow-sm hover:shadow-xl transition-all text-left flex justify-between items-center group"
+              className="bg-card p-8 rounded-2xl border border-border/40 shadow-sm hover:shadow-sm transition-all text-left flex justify-between items-center group"
             >
               <div>
-                <h3 className="text-xl font-bold text-foreground group-hover:text-primary transition-colors tracking-tight">{topic.name}</h3>
+                <h3 className="text-xl font-medium text-foreground group-hover:text-primary transition-colors tracking-tight">{topic.name}</h3>
                 <p className="text-sm text-foreground/50 mt-2 font-medium bg-secondary w-fit px-3 py-1 rounded-lg">{topic.questions.length} ta savol</p>
               </div>
               <ChevronRight className="w-6 h-6 text-foreground/30 group-hover:text-primary transition-colors group-hover:translate-x-1" />
@@ -1322,13 +1385,13 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
 
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-2xl mx-auto space-y-8">
-        <div className="flex justify-between items-center bg-card p-4 rounded-[2rem] border border-border/50 shadow-sm">
+        <div className="flex justify-between items-center bg-card p-4 rounded-2xl border border-border/40 shadow-sm">
           <div className="flex items-center gap-4 w-full">
-            <div className="w-14 h-14 bg-primary text-primary-foreground rounded-2xl flex items-center justify-center font-extrabold text-xl shadow-inner">
+            <div className="w-14 h-14 bg-primary text-primary-foreground rounded-2xl flex items-center justify-center font-semibold text-xl shadow-inner">
               {currentQuestionIdx + 1}
             </div>
             <div className="flex-1 pr-4">
-              <h2 className="font-bold text-foreground mb-2">Savol {currentQuestionIdx + 1} / {selectedTopic.questions.length}</h2>
+              <h2 className="font-medium text-foreground mb-2">Savol {currentQuestionIdx + 1} / {selectedTopic.questions.length}</h2>
               <div className="w-full h-2.5 bg-secondary rounded-full overflow-hidden">
                 <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} className="h-full bg-primary" />
               </div>
@@ -1336,16 +1399,16 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
           </div>
         </div>
 
-        <div className="bg-card border border-border/50 rounded-[2rem] p-8 md:p-10 shadow-xl shadow-primary/5 space-y-8">
-          <h3 className="text-2xl md:text-3xl font-extrabold text-foreground leading-tight tracking-tight">{currentQ.text}</h3>
+        <div className="bg-card border border-border/40 rounded-2xl p-8 md:p-10 shadow-sm shadow-primary/5 space-y-8">
+          <h3 className="text-2xl md:text-3xl font-semibold text-foreground leading-tight tracking-tight">{currentQ.text}</h3>
           
           <div className="grid grid-cols-1 gap-4">
             {currentQ.options.map((option: string, idx: number) => {
-              let stateClass = "border-border/50 hover:border-primary/50 hover:bg-primary/5 text-foreground";
+              let stateClass = "border-border/40 hover:border-primary/50 hover:bg-primary/5 text-foreground";
               if (isAnswered) {
                 if (idx === currentQ.correct) stateClass = "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shadow-sm shadow-emerald-500/10";
                 else if (idx === selectedOption) stateClass = "border-red-500 bg-red-500/10 text-red-600 dark:text-red-400 shadow-sm shadow-red-500/10";
-                else stateClass = "border-border/50 opacity-40 text-foreground";
+                else stateClass = "border-border/40 opacity-40 text-foreground";
               } else if (idx === selectedOption) {
                 stateClass = "border-primary bg-primary/10 text-primary shadow-sm shadow-primary/10";
               }
@@ -1355,7 +1418,7 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
                   key={idx}
                   onClick={() => handleAnswer(idx)}
                   disabled={isAnswered}
-                  className={`w-full text-left p-5 rounded-2xl border-2 font-bold transition-all duration-300 flex justify-between items-center group ${stateClass}`}
+                  className={`w-full text-left p-5 rounded-2xl border-2 font-medium transition-all duration-300 flex justify-between items-center group ${stateClass}`}
                 >
                   <span className="text-lg">{option}</span>
                   {isAnswered && idx === currentQ.correct && <CheckCircle2 className="w-6 h-6 text-emerald-500" />}
@@ -1367,10 +1430,10 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
 
           <AnimatePresence>
             {isAnswered && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pt-6 border-t border-border/50">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pt-6 border-t border-border/40">
                 <button 
                   onClick={nextQuestion}
-                  className="w-full bg-foreground text-background py-4 rounded-2xl font-bold hover:bg-foreground/90 transition-all flex items-center justify-center gap-2 shadow-xl hover:-translate-y-1"
+                  className="w-full bg-foreground text-background py-4 rounded-2xl font-medium hover:bg-foreground/90 transition-all flex items-center justify-center gap-2 shadow-sm hover:-translate-y-1"
                 >
                   {currentQuestionIdx === selectedTopic.questions.length - 1 ? 'Natijani ko\'rish' : 'Keyingi'}
                   <ChevronRight className="w-5 h-5" />
@@ -1383,7 +1446,7 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
             <button 
               onClick={checkAnswer}
               disabled={selectedOption === null}
-              className={`w-full py-4 rounded-2xl font-bold transition-all duration-300 ${selectedOption !== null ? 'bg-primary text-primary-foreground shadow-xl shadow-primary/30 hover:bg-primary/90 hover:-translate-y-1' : 'bg-secondary text-foreground/40 cursor-not-allowed'}`}
+              className={`w-full py-4 rounded-2xl font-medium transition-all duration-300 ${selectedOption !== null ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/30 hover:bg-primary/90 hover:-translate-y-1' : 'bg-secondary text-foreground/40 cursor-not-allowed'}`}
             >
               Javobni tasdiqlash
             </button>
@@ -1400,35 +1463,35 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
           <div className="bg-emerald-500/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-inner">
             <CheckCircle2 className="w-10 h-10 text-emerald-500" />
           </div>
-          <h2 className="text-4xl font-extrabold tracking-tight text-foreground">Test yakunlandi!</h2>
+          <h2 className="text-4xl font-semibold tracking-tight text-foreground">Test yakunlandi!</h2>
           <p className="text-foreground/60 font-medium text-lg">Natijani ko'rish va sertifikat yuklab olish uchun ismingizni kiriting</p>
         </div>
-        <div className="bg-card p-8 rounded-[2rem] border border-border/50 shadow-xl shadow-primary/5 space-y-6">
+        <div className="bg-card p-8 rounded-2xl border border-border/40 shadow-sm shadow-primary/5 space-y-6">
           <div className="space-y-5">
             <div className="space-y-2">
-              <label className="text-sm font-bold text-foreground uppercase tracking-wider">Ismingiz</label>
+              <label className="text-sm font-medium text-foreground uppercase tracking-wider">Ismingiz</label>
               <input 
                 type="text" 
                 value={userName}
                 onChange={e => setUserName(e.target.value)}
-                className="w-full p-4 bg-background border border-border/50 rounded-2xl focus:ring-2 focus:ring-primary/50 outline-none transition-all shadow-inner text-foreground placeholder:text-foreground/40"
+                className="w-full p-4 bg-background border border-border/40 rounded-2xl focus:ring-2 focus:ring-primary/50 outline-none transition-all shadow-inner text-foreground placeholder:text-foreground/40"
                 placeholder="Ismingizni kiriting"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-bold text-foreground uppercase tracking-wider">Familiyangiz</label>
+              <label className="text-sm font-medium text-foreground uppercase tracking-wider">Familiyangiz</label>
               <input 
                 type="text" 
                 value={userSurname}
                 onChange={e => setUserSurname(e.target.value)}
-                className="w-full p-4 bg-background border border-border/50 rounded-2xl focus:ring-2 focus:ring-primary/50 outline-none transition-all shadow-inner text-foreground placeholder:text-foreground/40"
+                className="w-full p-4 bg-background border border-border/40 rounded-2xl focus:ring-2 focus:ring-primary/50 outline-none transition-all shadow-inner text-foreground placeholder:text-foreground/40"
                 placeholder="Familiyangizni kiriting"
               />
             </div>
           </div>
           <button 
             onClick={finishQuiz}
-            className="w-full bg-primary text-primary-foreground py-4 rounded-2xl font-bold shadow-xl shadow-primary/30 hover:bg-primary/90 transition-all hover:-translate-y-1"
+            className="w-full bg-primary text-primary-foreground py-4 rounded-2xl font-medium shadow-sm shadow-primary/30 hover:bg-primary/90 transition-all hover:-translate-y-1"
           >
             Natijani ko'rish
           </button>
@@ -1440,7 +1503,7 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
   if (step === 'result') {
     return (
       <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="max-w-2xl mx-auto text-center space-y-8">
-        <div className="bg-card p-12 rounded-[2rem] border border-border/50 shadow-2xl shadow-primary/10 space-y-8 relative overflow-hidden">
+        <div className="bg-card p-12 rounded-2xl border border-border/40 shadow-md shadow-primary/10 space-y-8 relative overflow-hidden">
           {percentage >= 80 && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-10">
               <Sparkles className="w-full h-full text-emerald-500" />
@@ -1448,18 +1511,18 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
           )}
           
           <motion.div {...(animationProps as any)} className="space-y-4 relative z-10">
-            <h2 className={`text-5xl font-extrabold tracking-tight ${resultColor}`}>{resultMessage}</h2>
+            <h2 className={`text-5xl font-semibold tracking-tight ${resultColor}`}>{resultMessage}</h2>
             <p className="text-foreground/60 text-xl font-medium">{userName} {userSurname}</p>
           </motion.div>
           
           <div className="grid grid-cols-2 gap-6 relative z-10">
-            <div className="bg-secondary/50 p-6 rounded-[2rem] border border-border/50">
-              <p className="text-foreground/50 text-sm font-bold mb-2 uppercase tracking-wider">To'g'ri javoblar</p>
-              <p className="text-5xl font-extrabold text-foreground">{score} <span className="text-2xl text-foreground/40">/ {totalQuestions}</span></p>
+            <div className="bg-secondary/50 p-6 rounded-2xl border border-border/40">
+              <p className="text-foreground/50 text-sm font-medium mb-2 uppercase tracking-wider">To'g'ri javoblar</p>
+              <p className="text-5xl font-semibold text-foreground">{score} <span className="text-2xl text-foreground/40">/ {totalQuestions}</span></p>
             </div>
-            <div className="bg-secondary/50 p-6 rounded-[2rem] border border-border/50">
-              <p className="text-foreground/50 text-sm font-bold mb-2 uppercase tracking-wider">Foiz</p>
-              <p className="text-5xl font-extrabold text-foreground">{percentage}%</p>
+            <div className="bg-secondary/50 p-6 rounded-2xl border border-border/40">
+              <p className="text-foreground/50 text-sm font-medium mb-2 uppercase tracking-wider">Foiz</p>
+              <p className="text-5xl font-semibold text-foreground">{percentage}%</p>
             </div>
           </div>
           
@@ -1467,7 +1530,7 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
             <p className="text-sm font-medium text-foreground/50 bg-secondary w-fit mx-auto px-4 py-2 rounded-xl">Natijangiz PDF formatida yuklab olinmoqda...</p>
             <button 
               onClick={resetQuiz}
-              className="bg-foreground text-background px-10 py-4 rounded-2xl font-bold hover:bg-foreground/90 transition-all shadow-xl hover:-translate-y-1"
+              className="bg-foreground text-background px-10 py-4 rounded-2xl font-medium hover:bg-foreground/90 transition-all shadow-sm hover:-translate-y-1"
             >
               Boshqa mavzu
             </button>
@@ -1480,7 +1543,7 @@ function QuizPage({ handleAIExplain }: { handleAIExplain: (title: string, contex
   return null;
 }
 
-function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections, settings, library, onUpdate, onUpdateLibrary, themeColor, setThemeColor }: { 
+function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections, settings, library, onUpdate, onUpdateLibrary, themeColor, setThemeColor, showAlert, showConfirm }: { 
   mnemonics: Mnemonic[], 
   questions: Question[], 
   symptoms: SymptomData[], 
@@ -1492,7 +1555,9 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   onUpdate: () => void,
   onUpdateLibrary: (data: any) => void,
   themeColor: string,
-  setThemeColor: (color: string) => void
+  setThemeColor: (color: string) => void,
+  showAlert: (title: string, content: string) => void,
+  showConfirm: (title: string, content: string, onConfirm: () => void) => void
 }) {
   const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'settings' | 'library'>('mnemonics');
   const [isAdmin, setIsAdmin] = useState(false);
@@ -1529,40 +1594,28 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
     }
   };
 
-  const deleteItem = async (type: string, id: number) => {
-    if (!confirm('Haqiqatan ham o\'chirmoqchimisiz?')) return;
-    try {
-      await fetch(`/api/${type}/${id}`, { 
-        method: 'DELETE'
-      });
-      onUpdate();
-    } catch (error) {
-      console.error('Error deleting:', error);
-    }
+  const deleteItem = async (type: string, id: string) => {
+    showConfirm('O\'chirish', 'Haqiqatan ham o\'chirmoqchimisiz?', async () => {
+      try {
+        await deleteDoc(doc(db, type, id));
+        onUpdate();
+      } catch (error) {
+        console.error('Error deleting item:', error);
+        showAlert('Xatolik', 'O\'chirishda xatolik yuz berdi.');
+      }
+    });
   };
 
   const addItem = async (type: string, data: any) => {
     try {
-      const res = await fetch(`/api/${type}`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(data)
-      });
-      if (res.ok) {
-        onUpdate();
-        return true;
-      } else {
-        const errorData = await res.json();
-        console.error(`Error adding ${type}:`, errorData);
-        alert(`Xatolik yuz berdi: ${errorData.error || 'Noma\'lum xatolik'}`);
-      }
+      await addDoc(collection(db, type), data);
+      onUpdate();
+      return true;
     } catch (error) {
       console.error('Error adding:', error);
-      alert('Tarmoq xatoligi yuz berdi.');
+      showAlert('Xatolik', 'Tarmoq xatoligi yuz berdi yoki ruxsat yo\'q.');
+      return false;
     }
-    return false;
   };
 
   if (!isAdmin) {
@@ -1570,19 +1623,19 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="max-w-md mx-auto mt-20 p-8 bg-card rounded-[32px] shadow-xl border border-border"
+        className="max-w-md mx-auto mt-20 p-8 bg-card rounded-2xl shadow-sm border border-border"
       >
         <div className="flex justify-center mb-6">
           <div className="bg-primary/10 p-4 rounded-full">
             <Lock className="w-8 h-8 text-primary" />
           </div>
         </div>
-        <h2 className="text-2xl font-bold text-center mb-6 text-foreground">Admin Kirish</h2>
+        <h2 className="text-2xl font-medium text-center mb-6 text-foreground">Admin Kirish</h2>
         {error && <p className="text-red-500 text-sm font-medium text-center mb-4">{error}</p>}
         <button 
           onClick={handleLogin}
           disabled={loading}
-          className="w-full bg-primary text-primary-foreground py-3 rounded-xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+          className="w-full bg-primary text-primary-foreground py-3 rounded-xl font-medium hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
         >
           {loading ? 'Tekshirilmoqda...' : 'Google orqali kirish'}
         </button>
@@ -1599,9 +1652,9 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Sidebar Navigation */}
         <aside className="lg:w-72 flex-shrink-0">
-          <div className="bg-card border border-border rounded-[32px] p-4 sticky top-24 space-y-1 shadow-sm">
+          <div className="bg-card border border-border rounded-2xl p-4 sticky top-24 space-y-1 shadow-sm">
             <div className="px-4 py-4 mb-2">
-              <h2 className="text-2xl font-bold text-foreground">Admin Panel</h2>
+              <h2 className="text-2xl font-medium text-foreground">Admin Panel</h2>
               <p className="text-xs text-foreground/40 font-medium mt-1">Ma'lumotlarni boshqarish</p>
             </div>
             
@@ -1624,7 +1677,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                   <button 
                     key={id}
                     onClick={() => setActiveTab(id)}
-                    className={`w-full px-4 py-3.5 rounded-2xl text-sm font-bold transition-all flex items-center gap-3.5 ${activeTab === id ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'text-foreground/60 hover:bg-secondary hover:text-primary'}`}
+                    className={`w-full px-4 py-3.5 rounded-2xl text-sm font-medium transition-all flex items-center gap-3.5 ${activeTab === id ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'text-foreground/60 hover:bg-secondary hover:text-primary'}`}
                   >
                     <Icon className={`w-5 h-5 ${activeTab === id ? 'text-primary-foreground' : 'text-foreground/40'}`} />
                     {label}
@@ -1633,10 +1686,30 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
               })}
             </div>
 
-            <div className="pt-4 mt-4 border-t border-border">
+            <div className="pt-4 mt-4 border-t border-border space-y-2">
+              <button 
+                onClick={() => {
+                  showConfirm('Tiklash', 'Boshlang\'ich ma\'lumotlarni tiklashni xohlaysizmi?', async () => {
+                    try {
+                      const { mnemonics, questions, symptomCheckerData } = await import('./data');
+                      for (const m of mnemonics) await addDoc(collection(db, 'mnemonics'), m);
+                      for (const q of questions) await addDoc(collection(db, 'questions'), q);
+                      for (const s of symptomCheckerData) await addDoc(collection(db, 'symptoms'), s);
+                      showAlert('Muvaffaqiyat', 'Ma\'lumotlar muvaffaqiyatli tiklandi!');
+                      onUpdate();
+                    } catch(e) {
+                      console.error(e);
+                      showAlert('Xatolik', 'Xatolik yuz berdi');
+                    }
+                  });
+                }}
+                className="w-full px-4 py-3.5 rounded-2xl text-sm font-medium text-emerald-600 hover:bg-emerald-50 transition-all flex items-center gap-3.5"
+              >
+                <RefreshCw className="w-5 h-5" /> Ma'lumotlarni tiklash
+              </button>
               <button 
                 onClick={() => signOut(auth)}
-                className="w-full px-4 py-3.5 rounded-2xl text-sm font-bold text-red-600 hover:bg-red-50 transition-all flex items-center gap-3.5"
+                className="w-full px-4 py-3.5 rounded-2xl text-sm font-medium text-red-600 hover:bg-red-50 transition-all flex items-center gap-3.5"
               >
                 <LogOut className="w-5 h-5" /> Chiqish
               </button>
@@ -1647,13 +1720,13 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
         {/* Main Content Area */}
         <div className="flex-1 space-y-8">
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-            <div className="xl:col-span-2 bg-card border border-border rounded-[32px] overflow-hidden shadow-sm h-fit">
+            <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
               <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
-                <h3 className="font-bold text-foreground flex items-center gap-2">
+                <h3 className="font-medium text-foreground flex items-center gap-2">
                   {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'patients' ? <Heart className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
                   {activeTab === 'mnemonics' ? 'Mnemonikalar Ro\'yxati' : activeTab === 'questions' ? 'Savollar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'patients' ? 'Bemorlar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : 'Tizim Sozlamalari'}
                 </h3>
-                <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">
+                <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">
                   {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : sections).length} ta element
                 </span>
               </div>
@@ -1662,16 +1735,16 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                 <table className="w-full text-left border-collapse">
                   <thead className="bg-secondary/30 border-b border-border">
                     <tr>
-                      <th className="px-6 py-4 text-xs font-bold text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
-                      <th className="px-6 py-4 text-xs font-bold text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
+                      <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
+                      <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {activeTab === 'mnemonics' && mnemonics.map(m => (
                       <tr key={m.id} className="hover:bg-secondary/50 transition-colors group">
                         <td className="px-6 py-4">
-                          <div className="font-bold text-foreground group-hover:text-primary transition-colors">{m.title}</div>
-                          <div className="text-[10px] text-primary font-bold uppercase tracking-widest mt-0.5">{m.category}</div>
+                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{m.title}</div>
+                          <div className="text-[10px] text-primary font-medium uppercase tracking-widest mt-0.5">{m.category}</div>
                           <div className="text-sm text-foreground/60 mt-2 font-mono bg-secondary/50 p-2 rounded-lg border border-border">{m.mnemonic}</div>
                         </td>
                         <td className="px-6 py-4 text-right">
@@ -1682,8 +1755,8 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                     {activeTab === 'questions' && questions.map(q => (
                       <tr key={q.id} className="hover:bg-secondary/50 transition-colors group">
                         <td className="px-6 py-4">
-                          <div className="font-bold text-foreground group-hover:text-primary transition-colors">{q.question}</div>
-                          <div className="text-[10px] text-primary font-bold uppercase tracking-wider mt-1">{q.subject} • {q.topic} • {q.difficulty}</div>
+                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{q.question}</div>
+                          <div className="text-[10px] text-primary font-medium uppercase tracking-wider mt-1">{q.subject} • {q.topic} • {q.difficulty}</div>
                         </td>
                         <td className="px-6 py-4 text-right">
                           <button onClick={() => deleteItem('questions', q.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
@@ -1693,7 +1766,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                     {activeTab === 'symptoms' && symptoms.map(s => (
                       <tr key={s.id} className="hover:bg-secondary/50 transition-colors group">
                         <td className="px-6 py-4">
-                          <div className="font-bold text-foreground group-hover:text-primary transition-colors">{s.diagnosis}</div>
+                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{s.diagnosis}</div>
                           <div className="flex flex-wrap gap-1 mt-2">
                             {s.symptoms.map((sym, i) => (
                               <span key={i} className="text-[10px] bg-secondary px-2 py-0.5 rounded-full text-foreground/60 border border-border">{sym}</span>
@@ -1708,7 +1781,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                     {activeTab === 'videos' && videos.map(v => (
                       <tr key={v.id} className="hover:bg-secondary/50 transition-colors group">
                         <td className="px-6 py-4">
-                          <div className="font-bold text-foreground group-hover:text-primary transition-colors">{v.title}</div>
+                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{v.title}</div>
                           <div className="text-xs text-foreground/60 mt-1">{v.category} • {v.duration}</div>
                         </td>
                         <td className="px-6 py-4 text-right">
@@ -1719,7 +1792,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                     {activeTab === 'patients' && patients.map(p => (
                       <tr key={p.id} className="hover:bg-secondary/50 transition-colors group">
                         <td className="px-6 py-4">
-                          <div className="font-bold text-foreground group-hover:text-primary transition-colors">{p.name} ({p.age} yosh)</div>
+                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{p.name} ({p.age} yosh)</div>
                           <div className="text-xs text-foreground/60 mt-1">{p.symptoms} • {p.condition} • {p.healthScore}%</div>
                         </td>
                         <td className="px-6 py-4 text-right">
@@ -1730,16 +1803,16 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                     {activeTab === 'library' && library.subjects.map((sub: any) => (
                       <tr key={sub.id} className="hover:bg-secondary/50 transition-colors group">
                         <td className="px-6 py-4">
-                          <div className="font-bold text-foreground group-hover:text-primary transition-colors">{sub.name}</div>
+                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{sub.name}</div>
                           <div className="text-xs text-foreground/60 mt-1">{sub.topics.length} ta mavzu</div>
                         </td>
                         <td className="px-6 py-4 text-right">
                           <button 
                             onClick={() => {
-                              if(confirm('Ushbu fanni va uning barcha mavzularini o\'chirmoqchimisiz?')) {
+                              showConfirm('O\'chirish', 'Ushbu fanni va uning barcha mavzularini o\'chirmoqchimisiz?', () => {
                                 const newSubjects = library.subjects.filter((s: any) => s.id !== sub.id);
                                 onUpdateLibrary({ ...library, subjects: newSubjects });
-                              }
+                              });
                             }} 
                             className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
                           >
@@ -1751,7 +1824,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                     {activeTab === 'sections' && sections.map(sec => (
                       <tr key={sec.id} className="hover:bg-secondary/50 transition-colors group">
                         <td className="px-6 py-4">
-                          <div className="font-bold text-foreground group-hover:text-primary transition-colors">{sec.title}</div>
+                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{sec.title}</div>
                           <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{sec.content}</div>
                         </td>
                         <td className="px-6 py-4 text-right">
@@ -1764,8 +1837,8 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
               </div>
             </div>
 
-            <div className="bg-card border border-border rounded-[32px] p-8 shadow-sm h-fit sticky top-24">
-              <h3 className="font-bold text-foreground mb-8 flex items-center gap-3 text-xl">
+            <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
+              <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
                 <div className="bg-primary p-2 rounded-xl">
                   <Plus className="w-5 h-5 text-primary-foreground" />
                 </div>
@@ -1780,7 +1853,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                 {activeTab === 'patients' && <PatientForm onAdd={(data) => addItem('patients', data)} />}
                 {activeTab === 'sections' && <SectionForm onAdd={(data) => addItem('sections', data)} />}
                 {activeTab === 'library' && <LibraryForm library={library} onUpdate={onUpdateLibrary} />}
-                {activeTab === 'settings' && <SettingsForm settings={settings} onUpdate={onUpdate} themeColor={themeColor} setThemeColor={setThemeColor} />}
+                {activeTab === 'settings' && <SettingsForm settings={settings} onUpdate={onUpdate} themeColor={themeColor} setThemeColor={setThemeColor} showAlert={showAlert} />}
               </div>
             </div>
           </div>
@@ -1842,7 +1915,7 @@ function LibraryForm({ library, onUpdate }: { library: any, onUpdate: (data: any
     <div className="space-y-10">
       {/* Add Subject */}
       <form onSubmit={handleAddSubject} className="space-y-4 p-6 bg-secondary/30 rounded-2xl border border-border">
-        <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+        <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
           <Plus className="w-4 h-4 text-primary" /> Yangi Fan Qo'shish
         </h4>
         <div className="grid grid-cols-1 gap-4">
@@ -1865,7 +1938,7 @@ function LibraryForm({ library, onUpdate }: { library: any, onUpdate: (data: any
             <option value="Activity">Faollik</option>
             <option value="Thermometer">Termometr</option>
           </select>
-          <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-bold text-sm hover:bg-primary/90 transition-all">
+          <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-primary/90 transition-all">
             Fanni saqlash
           </button>
         </div>
@@ -1873,7 +1946,7 @@ function LibraryForm({ library, onUpdate }: { library: any, onUpdate: (data: any
 
       {/* Add Topic */}
       <form onSubmit={handleAddTopic} className="space-y-4 p-6 bg-secondary/30 rounded-2xl border border-border">
-        <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+        <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
           <Plus className="w-4 h-4 text-primary" /> Yangi Mavzu Qo'shish
         </h4>
         <div className="space-y-4">
@@ -1912,7 +1985,7 @@ function LibraryForm({ library, onUpdate }: { library: any, onUpdate: (data: any
             value={newTopic.questions}
             onChange={e => setNewTopic({ ...newTopic, questions: e.target.value })}
           />
-          <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-bold text-sm hover:bg-primary/90 transition-all">
+          <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-primary/90 transition-all">
             Mavzuni saqlash
           </button>
         </div>
@@ -1921,7 +1994,7 @@ function LibraryForm({ library, onUpdate }: { library: any, onUpdate: (data: any
   );
 }
 
-function SettingsForm({ settings, onUpdate, themeColor, setThemeColor }: { settings: Setting[], onUpdate: () => void, themeColor: string, setThemeColor: (color: string) => void }) {
+function SettingsForm({ settings, onUpdate, themeColor, setThemeColor, showAlert }: { settings: Setting[], onUpdate: () => void, themeColor: string, setThemeColor: (color: string) => void, showAlert: (title: string, content: string) => void }) {
   const [formData, setFormData] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -1934,25 +2007,20 @@ function SettingsForm({ settings, onUpdate, themeColor, setThemeColor }: { setti
     e.preventDefault();
     try {
       await Promise.all(Object.entries(formData).map(([key, value]) => 
-        fetch('/api/settings', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ key, value })
-        })
+        setDoc(doc(db, 'settings', key), { key, value })
       ));
       onUpdate();
-      alert('Sozlamalar saqlandi!');
+      showAlert("Muvaffaqiyat", "Sozlamalar saqlandi!");
     } catch (error) {
       console.error('Error saving settings:', error);
+      showAlert("Xatolik", "Sozlamalarni saqlashda xatolik yuz berdi.");
     }
   };
 
   return (
     <div className="space-y-8">
       <div className="space-y-4">
-        <h4 className="text-sm font-bold text-foreground border-b border-border pb-2">Mavzu rangi</h4>
+        <h4 className="text-sm font-medium text-foreground border-b border-border pb-2">Mavzu rangi</h4>
         <div className="flex gap-3">
           {[
             { name: 'Ko\'k', color: '#007bff' },
@@ -1973,10 +2041,10 @@ function SettingsForm({ settings, onUpdate, themeColor, setThemeColor }: { setti
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <h4 className="text-sm font-bold text-foreground border-b border-border pb-2">Aloqa ma'lumotlari</h4>
+        <h4 className="text-sm font-medium text-foreground border-b border-border pb-2">Aloqa ma'lumotlari</h4>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-bold text-foreground/70 mb-1">Email</label>
+            <label className="block text-sm font-medium text-foreground/70 mb-1">Email</label>
             <input 
               className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" 
               value={formData['contact_email'] || ''} 
@@ -1984,7 +2052,7 @@ function SettingsForm({ settings, onUpdate, themeColor, setThemeColor }: { setti
             />
           </div>
           <div>
-            <label className="block text-sm font-bold text-foreground/70 mb-1">Telegram (username)</label>
+            <label className="block text-sm font-medium text-foreground/70 mb-1">Telegram (username)</label>
             <input 
               className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" 
               value={formData['contact_telegram'] || ''} 
@@ -1992,7 +2060,7 @@ function SettingsForm({ settings, onUpdate, themeColor, setThemeColor }: { setti
             />
           </div>
           <div>
-            <label className="block text-sm font-bold text-foreground/70 mb-1">Telefon</label>
+            <label className="block text-sm font-medium text-foreground/70 mb-1">Telefon</label>
             <input 
               className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" 
               value={formData['contact_phone'] || ''} 
@@ -2000,7 +2068,7 @@ function SettingsForm({ settings, onUpdate, themeColor, setThemeColor }: { setti
             />
           </div>
         </div>
-        <button className="w-full bg-primary text-primary-foreground py-3.5 rounded-xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
+        <button className="w-full bg-primary text-primary-foreground py-3.5 rounded-xl font-medium hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
           Saqlash
         </button>
       </form>
@@ -2020,7 +2088,7 @@ function MnemonicForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
       <input placeholder="Sarlavha" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required />
       <input placeholder="Mnemonika" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.mnemonic} onChange={e => setFormData({...formData, mnemonic: e.target.value})} required />
       <textarea placeholder="Tushuntirish" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.explanation} onChange={e => setFormData({...formData, explanation: e.target.value})} required />
-      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-bold text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
+      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
     </form>
   );
 }
@@ -2074,7 +2142,7 @@ function QuestionForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
         {formData.options.map((_, i) => <option key={i} value={i}>To'g'ri javob: Variant {i+1}</option>)}
       </select>
       <textarea placeholder="Tushuntirish" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.explanation} onChange={e => setFormData({...formData, explanation: e.target.value})} required />
-      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-bold text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
+      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
     </form>
   );
 }
@@ -2093,7 +2161,7 @@ function SymptomForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
       <label className="flex items-center gap-2 text-sm font-medium text-foreground/70">
         <input type="checkbox" className="rounded border-border text-primary focus:ring-primary" checked={formData.redFlag} onChange={e => setFormData({...formData, redFlag: e.target.checked})} /> Qizil bayroq
       </label>
-      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-bold text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
+      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
     </form>
   );
 }
@@ -2113,7 +2181,7 @@ function VideoForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
       <label className="flex items-center gap-2 text-sm font-medium text-foreground/70">
         <input type="checkbox" className="rounded border-border text-primary focus:ring-primary" checked={formData.available} onChange={e => setFormData({...formData, available: e.target.checked})} /> Mavjud
       </label>
-      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-bold text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
+      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
     </form>
   );
 }
@@ -2135,18 +2203,17 @@ function SectionForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
         <option value="red">Qizil</option>
         <option value="emerald">Yashil</option>
       </select>
-      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-bold text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
+      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
     </form>
   );
 }
 
 function AIPage() {
-  const [activeTool, setActiveTool] = useState<'analysis' | 'image' | 'video'>('analysis');
+  const [activeTool, setActiveTool] = useState<'analysis' | 'image_search' | 'medical_search'>('analysis');
   const [prompt, setPrompt] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
-  const [generatedMedia, setGeneratedMedia] = useState<string | null>(null);
 
   const handleAnalysis = async () => {
     if (!file) return;
@@ -2178,53 +2245,48 @@ function AIPage() {
     }
   };
 
-  const handleImageGen = async () => {
+  const handleImageSearch = async () => {
     if (!prompt) return;
     setLoading(true);
+    setResult(null);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-image-preview',
-        contents: [{ parts: [{ text: prompt }] }],
-        config: { imageConfig: { aspectRatio: "1:1" } }
-      });
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-          setGeneratedMedia(`data:image/png;base64,${part.inlineData.data}`);
-          break;
+        model: 'gemini-3-flash-preview',
+        contents: `Qidiruv so'rovi: "${prompt}". Iltimos, ushbu mavzuga oid 6 ta yuqori sifatli va aniq rasmlarni toping. Natijani faqat Markdown formatida, rasmlar ro'yxati ko'rinishida qaytaring. Har bir rasm uchun: ![Rasm nomi](rasm_url) formatidan foydalaning. Hech qanday qo'shimcha matn yozmang, faqat rasmlar bo'lsin.`,
+        config: {
+          tools: [{ googleSearch: {} }]
         }
-      }
+      });
+      
+      setResult(response.text || "Rasmlar topilmadi.");
       setLoading(false);
     } catch (error) {
       console.error(error);
+      setResult("Xatolik yuz berdi.");
       setLoading(false);
     }
   };
 
-  const handleVideoGen = async () => {
+  const handleMedicalSearch = async () => {
     if (!prompt) return;
     setLoading(true);
+    setResult(null);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      let operation = await ai.models.generateVideos({
-        model: 'veo-3.1-fast-generate-preview',
-        prompt: prompt,
-        config: { numberOfVideos: 1, resolution: '720p', aspectRatio: '16:9' }
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Qidiruv so'rovi: "${prompt}". Iltimos, ushbu tibbiy mavzu yoki atama haqida batafsil, ishonchli va tushunarli ma'lumot bering. Javobni Markdown formatida qaytaring.`,
+        config: {
+          tools: [{ googleSearch: {} }]
+        }
       });
-      while (!operation.done) {
-        await new Promise(resolve => setTimeout(resolve, 10000));
-        operation = await ai.operations.getVideosOperation({ operation: operation });
-      }
-      const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-      const response = await fetch(downloadLink!, {
-        method: 'GET',
-        headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY! },
-      });
-      const blob = await response.blob();
-      setGeneratedMedia(URL.createObjectURL(blob));
+      
+      setResult(response.text || "Ma'lumot topilmadi.");
       setLoading(false);
     } catch (error) {
       console.error(error);
+      setResult("Xatolik yuz berdi.");
       setLoading(false);
     }
   };
@@ -2232,72 +2294,71 @@ function AIPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <div className="text-center space-y-4">
-        <h2 className="text-4xl font-extrabold tracking-tight text-foreground">AI Markazi</h2>
+        <h2 className="text-4xl font-semibold tracking-tight text-foreground">AI Markazi</h2>
         <p className="text-foreground/60 font-medium text-lg">Tibbiy ta'lim uchun sun'iy intellekt imkoniyatlaridan foydalaning</p>
       </div>
 
       <div className="flex justify-center gap-4 flex-wrap">
-        <button onClick={() => setActiveTool('analysis')} className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all ${activeTool === 'analysis' ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'bg-card text-foreground/60 hover:bg-secondary border border-border/50'}`}>
+        <button onClick={() => { setActiveTool('analysis'); setResult(null); setPrompt(''); }} className={`px-6 py-3 rounded-2xl font-medium flex items-center gap-2 transition-all ${activeTool === 'analysis' ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'bg-card text-foreground/60 hover:bg-secondary border border-border/40'}`}>
           <Search className="w-5 h-5" /> Tahlil
         </button>
-        <button onClick={() => setActiveTool('image')} className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all ${activeTool === 'image' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20' : 'bg-card text-foreground/60 hover:bg-secondary border border-border/50'}`}>
-          <ImageIcon className="w-5 h-5" /> Rasm yaratish
+        <button onClick={() => { setActiveTool('image_search'); setResult(null); setPrompt(''); }} className={`px-6 py-3 rounded-2xl font-medium flex items-center gap-2 transition-all ${activeTool === 'image_search' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20' : 'bg-card text-foreground/60 hover:bg-secondary border border-border/40'}`}>
+          <ImageIcon className="w-5 h-5" /> Rasm qidiruvi
         </button>
-        <button onClick={() => setActiveTool('video')} className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all ${activeTool === 'video' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' : 'bg-card text-foreground/60 hover:bg-secondary border border-border/50'}`}>
-          <Film className="w-5 h-5" /> Video yaratish
+        <button onClick={() => { setActiveTool('medical_search'); setResult(null); setPrompt(''); }} className={`px-6 py-3 rounded-2xl font-medium flex items-center gap-2 transition-all ${activeTool === 'medical_search' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' : 'bg-card text-foreground/60 hover:bg-secondary border border-border/40'}`}>
+          <BookOpen className="w-5 h-5" /> Tibbiy qidiruv
         </button>
       </div>
 
-      <div className="bg-card rounded-[2rem] p-8 border border-border/50 shadow-xl shadow-primary/5 space-y-6">
+      <div className="bg-card rounded-2xl p-8 border border-border/40 shadow-sm shadow-primary/5 space-y-6">
         {activeTool === 'analysis' && (
           <div className="space-y-6">
-            <div className="border-2 border-dashed border-border rounded-[2rem] p-12 text-center space-y-4 hover:border-primary/50 transition-colors cursor-pointer relative bg-secondary/30">
+            <div className="border-2 border-dashed border-border rounded-2xl p-12 text-center space-y-4 hover:border-primary/50 transition-colors cursor-pointer relative bg-secondary/30">
               <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => setFile(e.target.files?.[0] || null)} />
               <div className="bg-primary/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-inner">
                 <Upload className="w-10 h-10 text-primary" />
               </div>
               <div>
-                <p className="font-bold text-foreground text-lg">{file ? file.name : "Rasm yoki video yuklang"}</p>
+                <p className="font-medium text-foreground text-lg">{file ? file.name : "Rasm yoki video yuklang"}</p>
                 <p className="text-sm text-foreground/60 font-medium mt-1">Rentgen, MRT yoki boshqa tibbiy tasvirlar</p>
               </div>
             </div>
-            <textarea placeholder="AI ga savol bering (ixtiyoriy)..." className="w-full p-5 rounded-2xl border border-border/50 bg-background text-foreground outline-none focus:ring-2 focus:ring-primary/50 h-32 shadow-inner placeholder:text-foreground/40" value={prompt} onChange={e => setPrompt(e.target.value)} />
-            <button onClick={handleAnalysis} disabled={loading || !file} className="w-full bg-primary text-primary-foreground py-4 rounded-2xl font-bold hover:bg-primary/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-xl shadow-primary/20 hover:-translate-y-1">
+            <textarea placeholder="AI ga savol bering (ixtiyoriy)..." className="w-full p-5 rounded-2xl border border-border/40 bg-background text-foreground outline-none focus:ring-2 focus:ring-primary/50 h-32 shadow-inner placeholder:text-foreground/40" value={prompt} onChange={e => setPrompt(e.target.value)} />
+            <button onClick={handleAnalysis} disabled={loading || !file} className="w-full bg-primary text-primary-foreground py-4 rounded-2xl font-medium hover:bg-primary/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm shadow-primary/20 hover:-translate-y-1">
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />} Tahlilni boshlash
             </button>
           </div>
         )}
 
-        {(activeTool === 'image' || activeTool === 'video') && (
+        {activeTool === 'image_search' && (
           <div className="space-y-6">
-            <textarea placeholder={activeTool === 'image' ? "Qanday rasm yaratmoqchisiz? (masalan: Yurak anatomiyasi 3D)" : "Qanday video yaratmoqchisiz? (masalan: Qon aylanish jarayoni)"} className="w-full p-5 rounded-2xl border border-border/50 bg-background text-foreground outline-none focus:ring-2 focus:ring-primary/50 h-32 shadow-inner placeholder:text-foreground/40" value={prompt} onChange={e => setPrompt(e.target.value)} />
-            <button onClick={activeTool === 'image' ? handleImageGen : handleVideoGen} disabled={loading || !prompt} className={`w-full py-4 rounded-2xl font-bold text-white transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-xl hover:-translate-y-1 ${activeTool === 'image' ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-600/20' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'}`}>
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />} {activeTool === 'image' ? "Rasm yaratish" : "Video yaratish"}
+            <textarea placeholder="Qanday rasm qidirmoqchisiz? (masalan: Cardiovascular system, Brain anatomy)" className="w-full p-5 rounded-2xl border border-border/40 bg-background text-foreground outline-none focus:ring-2 focus:ring-primary/50 h-32 shadow-inner placeholder:text-foreground/40" value={prompt} onChange={e => setPrompt(e.target.value)} />
+            <button onClick={handleImageSearch} disabled={loading || !prompt} className="w-full py-4 rounded-2xl font-medium text-white transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm hover:-translate-y-1 bg-purple-600 hover:bg-purple-700 shadow-purple-600/20">
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />} Rasm qidirish
+            </button>
+          </div>
+        )}
+
+        {activeTool === 'medical_search' && (
+          <div className="space-y-6">
+            <textarea placeholder="Qanday tibbiy mavzu yoki atamani qidirmoqchisiz? (masalan: Qandli diabet, Gipertoniya, EKG asoslari)" className="w-full p-5 rounded-2xl border border-border/40 bg-background text-foreground outline-none focus:ring-2 focus:ring-primary/50 h-32 shadow-inner placeholder:text-foreground/40" value={prompt} onChange={e => setPrompt(e.target.value)} />
+            <button onClick={handleMedicalSearch} disabled={loading || !prompt} className="w-full py-4 rounded-2xl font-medium text-white transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm hover:-translate-y-1 bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20">
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <BookOpen className="w-5 h-5" />} Ma'lumot qidirish
             </button>
           </div>
         )}
 
         {result && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-8 bg-secondary/50 rounded-[2rem] border border-border/50 shadow-inner">
-            <h4 className="font-bold text-foreground mb-6 flex items-center gap-3 text-xl">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-8 bg-secondary/50 rounded-2xl border border-border/40 shadow-inner">
+            <h4 className="font-medium text-foreground mb-6 flex items-center gap-3 text-xl">
               <div className="bg-primary/10 p-2 rounded-xl">
-                <Search className="w-5 h-5 text-primary" />
+                <Sparkles className="w-5 h-5 text-primary" />
               </div>
-              Tahlil natijasi:
+              Natija:
             </h4>
-            <div className="prose prose-neutral max-w-none text-foreground/80">
+            <div className="prose prose-neutral max-w-none text-foreground/80 prose-img:rounded-2xl prose-img:shadow-lg prose-img:w-full prose-img:object-cover prose-img:max-h-[400px]">
               <Markdown>{result}</Markdown>
             </div>
-          </motion.div>
-        )}
-
-        {generatedMedia && (
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="rounded-[2rem] overflow-hidden border border-border/50 shadow-2xl shadow-primary/10">
-            {activeTool === 'video' ? (
-              <video src={generatedMedia} controls className="w-full" />
-            ) : (
-              <img src={generatedMedia} alt="Generated" className="w-full" />
-            )}
           </motion.div>
         )}
       </div>
@@ -2418,7 +2479,7 @@ function LibraryPage({ data, handleAIExplain }: { data: any, handleAIExplain: (t
     <div className="flex flex-col md:flex-row gap-8 min-h-[600px]">
       {/* Sidebar: Subjects */}
       <aside className="w-full md:w-64 space-y-4">
-        <h3 className="text-lg font-bold text-foreground mb-6 flex items-center gap-2">
+        <h3 className="text-lg font-medium text-foreground mb-6 flex items-center gap-2">
           <BookOpen className="w-5 h-5 text-primary" />
           Fanlar
         </h3>
@@ -2451,12 +2512,12 @@ function LibraryPage({ data, handleAIExplain }: { data: any, handleAIExplain: (t
       {/* Main Content: Topics and Resources */}
       <main className="flex-1 space-y-8">
         {!selectedSubject ? (
-          <div className="h-full flex flex-col items-center justify-center text-center space-y-4 bg-card rounded-[32px] border border-border p-12">
+          <div className="h-full flex flex-col items-center justify-center text-center space-y-4 bg-card rounded-2xl border border-border p-12">
             <div className="bg-primary/10 p-4 rounded-2xl">
               <BookOpen className="w-12 h-12 text-primary" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-foreground">Kutubxonaga xush kelibsiz</h3>
+              <h3 className="text-xl font-medium text-foreground">Kutubxonaga xush kelibsiz</h3>
               <p className="text-foreground/60 max-w-xs mx-auto mt-2">O'rganishni boshlash uchun chap tomondagi menyudan fanni tanlang.</p>
             </div>
           </div>
@@ -2471,7 +2532,7 @@ function LibraryPage({ data, handleAIExplain }: { data: any, handleAIExplain: (t
               <div className="bg-primary p-2 rounded-xl">
                 <SubjectIcon name={selectedSubject.icon} className="w-6 h-6 text-primary-foreground" />
               </div>
-              <h2 className="text-2xl font-bold text-foreground">{selectedSubject.name}</h2>
+              <h2 className="text-2xl font-medium text-foreground">{selectedSubject.name}</h2>
             </div>
 
             {/* Topics Grid */}
@@ -2486,8 +2547,8 @@ function LibraryPage({ data, handleAIExplain }: { data: any, handleAIExplain: (t
                       : 'bg-card border-border hover:border-primary/50 hover:shadow-md'
                   }`}
                 >
-                  <h4 className="font-bold text-foreground mb-1">{topic.name}</h4>
-                  <p className="text-xs text-foreground/50 uppercase tracking-widest font-bold">
+                  <h4 className="font-medium text-foreground mb-1">{topic.name}</h4>
+                  <p className="text-xs text-foreground/50 uppercase tracking-widest font-medium">
                     {Object.values(topic.resources).flat().length} ta resurs
                   </p>
                 </button>
@@ -2502,10 +2563,10 @@ function LibraryPage({ data, handleAIExplain }: { data: any, handleAIExplain: (t
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                   key={selectedTopic.id}
-                  className="bg-card rounded-[32px] p-8 border border-border shadow-xl space-y-8"
+                  className="bg-card rounded-2xl p-8 border border-border shadow-sm space-y-8"
                 >
                   <div className="flex items-center justify-between">
-                    <h3 className="text-xl font-bold text-foreground">{selectedTopic.name}</h3>
+                    <h3 className="text-xl font-medium text-foreground">{selectedTopic.name}</h3>
                     <button onClick={() => setSelectedTopic(null)} className="text-foreground/40 hover:text-foreground/60">
                       <X className="w-5 h-5" />
                     </button>
@@ -2516,20 +2577,20 @@ function LibraryPage({ data, handleAIExplain }: { data: any, handleAIExplain: (t
                     <div className="space-y-4">
                       <div className="flex items-center gap-2 text-primary">
                         <BookOpen className="w-5 h-5" />
-                        <h5 className="font-bold uppercase tracking-wider text-xs">Qo'llanmalar</h5>
+                        <h5 className="font-medium uppercase tracking-wider text-xs">Qo'llanmalar</h5>
                       </div>
                       <div className="space-y-3">
                         {selectedTopic.resources.manuals.map((item: string, i: number) => (
                           <div key={i} className="group p-4 bg-secondary rounded-2xl border border-border hover:border-primary/20 hover:bg-primary/5 transition-all">
                             <div className="flex items-start gap-3">
-                              <div className="mt-1 w-5 h-5 bg-primary/10 text-primary rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                              <div className="mt-1 w-5 h-5 bg-primary/10 text-primary rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0">
                                 {i + 1}
                               </div>
                               <div className="flex-1 space-y-3">
                                 <p className="text-sm text-foreground/80 font-medium leading-relaxed">{item}</p>
                                 <button 
                                   onClick={() => handleAIExplain(item, `Mavzu: ${selectedTopic.name}\nQo'llanma: ${item}\n\nIltimos, ushbu mavzu bo'yicha qisqacha konspekt va asosiy tushunchalarni tushuntirib bering.`)}
-                                  className="flex items-center gap-1.5 text-[11px] font-bold text-primary hover:text-primary/80 uppercase tracking-wider transition-colors"
+                                  className="flex items-center gap-1.5 text-[11px] font-medium text-primary hover:text-primary/80 uppercase tracking-wider transition-colors"
                                 >
                                   <Sparkles className="w-3 h-3" />
                                   AI Konspekt
@@ -2545,20 +2606,20 @@ function LibraryPage({ data, handleAIExplain }: { data: any, handleAIExplain: (t
                     <div className="space-y-4">
                       <div className="flex items-center gap-2 text-emerald-600">
                         <Stethoscope className="w-5 h-5" />
-                        <h5 className="font-bold uppercase tracking-wider text-xs">Klinik caselar</h5>
+                        <h5 className="font-medium uppercase tracking-wider text-xs">Klinik caselar</h5>
                       </div>
                       <div className="space-y-3">
                         {selectedTopic.resources.cases.map((item: string, i: number) => (
                           <div key={i} className="group p-4 bg-secondary rounded-2xl border border-border hover:border-emerald-200 hover:bg-emerald-50/30 transition-all">
                             <div className="flex items-start gap-3">
-                              <div className="mt-1 w-5 h-5 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                              <div className="mt-1 w-5 h-5 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0">
                                 {i + 1}
                               </div>
                               <div className="flex-1 space-y-3">
                                 <p className="text-sm text-foreground/80 font-medium leading-relaxed">{item}</p>
                                 <button 
                                   onClick={() => handleAIExplain("Klinik Case Tahlili", `Mavzu: ${selectedTopic.name}\nCase: ${item}\n\nIltimos, ushbu klinik holatni tahlil qiling, taxminiy tashxis qo'ying va davolash rejasini tushuntiring.`)}
-                                  className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 hover:text-emerald-700 uppercase tracking-wider transition-colors"
+                                  className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-600 hover:text-emerald-700 uppercase tracking-wider transition-colors"
                                 >
                                   <Sparkles className="w-3 h-3" />
                                   Case tahlili (AI)
@@ -2574,20 +2635,20 @@ function LibraryPage({ data, handleAIExplain }: { data: any, handleAIExplain: (t
                     <div className="space-y-4">
                       <div className="flex items-center gap-2 text-purple-600">
                         <Brain className="w-5 h-5" />
-                        <h5 className="font-bold uppercase tracking-wider text-xs">Savollar</h5>
+                        <h5 className="font-medium uppercase tracking-wider text-xs">Savollar</h5>
                       </div>
                       <div className="space-y-3">
                         {selectedTopic.resources.questions.map((item: string, i: number) => (
                           <div key={i} className="group p-4 bg-secondary rounded-2xl border border-border hover:border-purple-200 hover:bg-purple-50/30 transition-all">
                             <div className="flex items-start gap-3">
-                              <div className="mt-1 w-5 h-5 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                              <div className="mt-1 w-5 h-5 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0">
                                 {i + 1}
                               </div>
                               <div className="flex-1 space-y-3">
                                 <p className="text-sm text-foreground/80 font-medium leading-relaxed">{item}</p>
                                 <button 
                                   onClick={() => handleAIExplain(item, `Mavzu: ${selectedTopic.name}\nSavol: ${item}\n\nIltimos, ushbu savolga batafsil tibbiy javob bering va tushuntirib bering.`)}
-                                  className="flex items-center gap-1.5 text-[11px] font-bold text-purple-600 hover:text-purple-700 uppercase tracking-wider transition-colors"
+                                  className="flex items-center gap-1.5 text-[11px] font-medium text-purple-600 hover:text-purple-700 uppercase tracking-wider transition-colors"
                                 >
                                   <Sparkles className="w-3 h-3" />
                                   Javobni ko'rish (AI)
@@ -2609,17 +2670,17 @@ function LibraryPage({ data, handleAIExplain }: { data: any, handleAIExplain: (t
   );
 }
 
-function PatientsPage({ patients, onTreat }: { patients: Patient[], onTreat: (id: number, medication: string) => void }) {
+function PatientsPage({ patients, onTreat }: { patients: Patient[], onTreat: (id: string, medication: string) => void }) {
   return (
     <div className="p-8 space-y-8">
-      <h2 className="text-3xl font-bold text-foreground">Bemorlar</h2>
+      <h2 className="text-3xl font-medium text-foreground">Bemorlar</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {patients.map(p => (
-          <div key={p.id} className="bg-card p-6 rounded-[32px] border border-border shadow-xl">
-            <h3 className="text-xl font-bold text-foreground">{p.name} ({p.age} yosh)</h3>
+          <div key={p.id} className="bg-card p-6 rounded-2xl border border-border shadow-sm">
+            <h3 className="text-xl font-medium text-foreground">{p.name} ({p.age} yosh)</h3>
             <p className="text-sm text-foreground/70 mt-2">Simptomlar: {p.symptoms}</p>
-            <p className="text-sm font-bold mt-4 text-foreground">Ahvoli: <span className="text-primary">{p.condition}</span></p>
-            <p className="text-sm font-bold text-foreground mt-1">Sog'liq: <span className="text-emerald-500">{p.healthScore}%</span></p>
+            <p className="text-sm font-medium mt-4 text-foreground">Ahvoli: <span className="text-primary">{p.condition}</span></p>
+            <p className="text-sm font-medium text-foreground mt-1">Sog'liq: <span className="text-emerald-500">{p.healthScore}%</span></p>
             <input type="text" placeholder="Dori yuborish (Enter bosing)" onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 onTreat(p.id!, e.currentTarget.value);

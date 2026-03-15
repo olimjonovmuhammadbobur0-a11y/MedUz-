@@ -10,12 +10,140 @@
         "role": { "type": "string", "description": "User role (admin, user)" }
       },
       "required": ["uid", "email", "role"]
+    },
+    "Mnemonic": {
+      "title": "Mnemonic",
+      "description": "Medical mnemonic",
+      "type": "object",
+      "properties": {
+        "category": { "type": "string" },
+        "title": { "type": "string" },
+        "mnemonic": { "type": "string" },
+        "explanation": { "type": "string" }
+      },
+      "required": ["category", "title", "mnemonic", "explanation"]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "Quiz question",
+      "type": "object",
+      "properties": {
+        "subject": { "type": "string" },
+        "topic": { "type": "string" },
+        "difficulty": { "type": "string" },
+        "question": { "type": "string" },
+        "options": { "type": "array", "items": { "type": "string" } },
+        "correct": { "type": "number" },
+        "explanation": { "type": "string" }
+      },
+      "required": ["subject", "topic", "difficulty", "question", "options", "correct", "explanation"]
+    },
+    "Symptom": {
+      "title": "Symptom",
+      "description": "Symptom checker data",
+      "type": "object",
+      "properties": {
+        "symptoms": { "type": "array", "items": { "type": "string" } },
+        "diagnosis": { "type": "string" },
+        "redFlag": { "type": "boolean" }
+      },
+      "required": ["symptoms", "diagnosis", "redFlag"]
+    },
+    "Video": {
+      "title": "Video",
+      "description": "Educational video",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "duration": { "type": "string" },
+        "category": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "available": { "type": "boolean" }
+      },
+      "required": ["title", "duration", "category", "videoUrl", "available"]
+    },
+    "Patient": {
+      "title": "Patient",
+      "description": "Patient record",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "age": { "type": "number" },
+        "symptoms": { "type": "string" },
+        "condition": { "type": "string" },
+        "healthScore": { "type": "number" },
+        "medications": { "type": "string" }
+      },
+      "required": ["name", "age", "symptoms", "condition", "healthScore", "medications"]
+    },
+    "Section": {
+      "title": "Section",
+      "description": "Library section",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "icon": { "type": "string" },
+        "color": { "type": "string" }
+      },
+      "required": ["title", "content", "icon", "color"]
+    },
+    "Setting": {
+      "title": "Setting",
+      "description": "App setting",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "value": { "type": "string" }
+      },
+      "required": ["key", "value"]
+    },
+    "Library": {
+      "title": "Library",
+      "description": "Library data",
+      "type": "object",
+      "properties": {
+        "data": { "type": "object" }
+      },
+      "required": ["data"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": { "$ref": "User" },
       "description": "User profiles"
+    },
+    "/mnemonics/{mnemonicId}": {
+      "schema": { "$ref": "Mnemonic" },
+      "description": "Mnemonics"
+    },
+    "/questions/{questionId}": {
+      "schema": { "$ref": "Question" },
+      "description": "Questions"
+    },
+    "/symptoms/{symptomId}": {
+      "schema": { "$ref": "Symptom" },
+      "description": "Symptoms"
+    },
+    "/videos/{videoId}": {
+      "schema": { "$ref": "Video" },
+      "description": "Videos"
+    },
+    "/patients/{patientId}": {
+      "schema": { "$ref": "Patient" },
+      "description": "Patients"
+    },
+    "/sections/{sectionId}": {
+      "schema": { "$ref": "Section" },
+      "description": "Sections"
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "Setting" },
+      "description": "Settings"
+    },
+    "/library/{libraryId}": {
+      "schema": { "$ref": "Library" },
+      "description": "Library data"
     }
   }
 }

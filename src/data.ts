@@ -1,5 +1,5 @@
 export interface Mnemonic {
-  id?: number;
+  id?: string;
   category: string;
   title: string;
   mnemonic: string;
@@ -7,7 +7,7 @@ export interface Mnemonic {
 }
 
 export interface Question {
-  id?: number;
+  id?: string;
   subject: string;
   topic: string;
   difficulty: string;
@@ -18,14 +18,14 @@ export interface Question {
 }
 
 export interface SymptomData {
-  id?: number;
+  id?: string;
   symptoms: string[];
   diagnosis: string;
   redFlag: boolean;
 }
 
 export interface VideoData {
-  id?: number;
+  id?: string;
   title: string;
   duration: string;
   category: string;
@@ -34,7 +34,7 @@ export interface VideoData {
 }
 
 export interface Section {
-  id?: number;
+  id?: string;
   title: string;
   content: string;
   icon: string;
@@ -42,7 +42,7 @@ export interface Section {
 }
 
 export interface Patient {
-  id?: number;
+  id?: string;
   name: string;
   age: number;
   symptoms: string;

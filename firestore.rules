@@ -28,7 +28,8 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        (request.auth.token.email == "muhammadboburolimjonov2@gmail.com" && request.auth.token.email_verified == true));
     }
 
     // ===============================================================
@@ -39,6 +40,46 @@ service cloud.firestore {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId) && request.resource.data.role == 'user';
       allow update: if isOwner(userId) && request.resource.data.role == resource.data.role;
+    }
+
+    match /mnemonics/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /questions/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /symptoms/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /videos/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /patients/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /sections/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /library/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 }
