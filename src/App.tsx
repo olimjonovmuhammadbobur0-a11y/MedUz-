@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { PatientForm } from './components/PatientForm';
 import { 
   Heart, 
@@ -42,12 +42,14 @@ import {
   Scissors,
   Baby,
   Moon,
-  Sun
+  Sun,
+  GraduationCap,
+  FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { GoogleGenAI, ThinkingLevel, GenerateContentResponse } from "@google/genai";
-import { Mnemonic, Question, SymptomData, VideoData, Section, Setting, Patient } from './data';
+import { Mnemonic, Question, SymptomData, VideoData, Section, Setting, Patient, OSCEScenario } from './data';
 import { explainMedicalTopic } from './services/aiService';
 import { quizData } from './quizData';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
@@ -61,7 +63,7 @@ const getYouTubeEmbedUrl = (url: string) => {
   return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : url;
 };
 
-type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients';
+type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients' | 'osce' | 'tutor';
 
 export function Modal({ isOpen, title, content, onClose, onConfirm, confirmText = "Tasdiqlash", cancelText = "Bekor qilish" }: { isOpen: boolean, title: string, content: string, onClose: () => void, onConfirm?: () => void, confirmText?: string, cancelText?: string }) {
   if (!isOpen) return null;
@@ -117,6 +119,7 @@ export default function App() {
   const [symptomsData, setSymptomsData] = useState<SymptomData[]>([]);
   const [videosData, setVideosData] = useState<VideoData[]>([]);
   const [patientsData, setPatientsData] = useState<Patient[]>([]);
+  const [osceScenarios, setOsceScenarios] = useState<OSCEScenario[]>([]);
   const [sectionsData, setSectionsData] = useState<Section[]>([]);
   const [settingsData, setSettingsData] = useState<Setting[]>([]);
   const [libraryData, setLibraryData] = useState<any>(() => {
@@ -217,7 +220,7 @@ export default function App() {
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       };
 
-      const [m, q, s, v, p, sec, sett, libDoc] = await Promise.all([
+      const [m, q, s, v, p, sec, sett, libDoc, osce] = await Promise.all([
         getCollectionData('mnemonics'),
         getCollectionData('questions'),
         getCollectionData('symptoms'),
@@ -225,7 +228,8 @@ export default function App() {
         getCollectionData('patients'),
         getCollectionData('sections'),
         getCollectionData('settings'),
-        getDoc(doc(db, 'library', 'main'))
+        getDoc(doc(db, 'library', 'main')),
+        getCollectionData('osce_scenarios')
       ]);
       
       console.log('Patients data:', p);
@@ -236,6 +240,7 @@ export default function App() {
       setPatientsData(p as any);
       setSectionsData(sec as any);
       setSettingsData(sett as any);
+      setOsceScenarios(osce as any);
       if (libDoc.exists()) {
         setLibraryData(libDoc.data().data);
       }
@@ -273,7 +278,8 @@ export default function App() {
       // Update patient in DB
       await updateDoc(doc(db, 'patients', id), {
         healthScore: result.newHealthScore,
-        medications: patient.medications ? patient.medications + ', ' + medication : medication
+        medications: patient.medications ? patient.medications + ', ' + medication : medication,
+        aiAdvice: result.feedback
       });
       
       fetchAllData();
@@ -428,7 +434,9 @@ export default function App() {
               <NavLink active={currentPage === 'videos'} onClick={() => navigate('videos')}>Videolar</NavLink>
               <NavLink active={currentPage === 'symptoms'} onClick={() => navigate('symptoms')}>Simptomlar</NavLink>
               <NavLink active={currentPage === 'patients'} onClick={() => navigate('patients')}>Bemorlar</NavLink>
+              <NavLink active={currentPage === 'osce'} onClick={() => navigate('osce')}>OSCE</NavLink>
               <NavLink active={currentPage === 'quiz'} onClick={() => navigate('quiz')}>Testlar</NavLink>
+              <NavLink active={currentPage === 'tutor'} onClick={() => navigate('tutor')}>AI Tutor</NavLink>
               <NavLink active={currentPage === 'ai'} onClick={() => navigate('ai')}>
                 <div className="flex items-center gap-1.5 text-accent font-medium">
                   <Sparkles className="w-4 h-4" />
@@ -488,7 +496,9 @@ export default function App() {
                 <MobileNavLink active={currentPage === 'videos'} onClick={() => { navigate('videos'); setIsMenuOpen(false); }}>Videolar</MobileNavLink>
                 <MobileNavLink active={currentPage === 'symptoms'} onClick={() => { navigate('symptoms'); setIsMenuOpen(false); }}>Simptomlar</MobileNavLink>
                 <MobileNavLink active={currentPage === 'patients'} onClick={() => { navigate('patients'); setIsMenuOpen(false); }}>Bemorlar</MobileNavLink>
+                <MobileNavLink active={currentPage === 'osce'} onClick={() => { navigate('osce'); setIsMenuOpen(false); }}>OSCE</MobileNavLink>
                 <MobileNavLink active={currentPage === 'quiz'} onClick={() => { navigate('quiz'); setIsMenuOpen(false); }}>Testlar</MobileNavLink>
+                <MobileNavLink active={currentPage === 'tutor'} onClick={() => { navigate('tutor'); setIsMenuOpen(false); }}>AI Tutor</MobileNavLink>
                 <MobileNavLink active={currentPage === 'ai'} onClick={() => { navigate('ai'); setIsMenuOpen(false); }}>AI Markazi</MobileNavLink>
                 <MobileNavLink active={currentPage === 'admin'} onClick={() => { navigate('admin'); setIsMenuOpen(false); }}>Admin Panel</MobileNavLink>
               </div>
@@ -505,7 +515,9 @@ export default function App() {
           {currentPage === 'videos' && <VideosPage data={videosData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'symptoms' && <SymptomsPage data={symptomsData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'patients' && <PatientsPage patients={patientsData} onTreat={handleTreatPatient} />}
+          {currentPage === 'osce' && <OSCEPage scenarios={osceScenarios} />}
           {currentPage === 'quiz' && <QuizPage handleAIExplain={handleAIExplain} showAlert={showAlert} />}
+          {currentPage === 'tutor' && <TutorPage />}
           {currentPage === 'library' && <LibraryPage data={libraryData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'ai' && <AIPage />}
           {currentPage === 'admin' && <AdminPage 
@@ -517,6 +529,7 @@ export default function App() {
             sections={sectionsData}
             settings={settingsData}
             library={libraryData}
+            osceScenarios={osceScenarios}
             onUpdate={fetchAllData} 
             onUpdateLibrary={handleUpdateLibrary}
             themeColor={themeColor}
@@ -757,6 +770,12 @@ function HomePage({ onNavigate, sections, showAlert }: { onNavigate: (page: Page
           description="Sun'iy intellekt yordamida tahlil va media yaratish."
           onClick={() => onNavigate('ai')}
           color="purple"
+        />
+        <FeatureCard 
+          title="Virtual OSCE"
+          description="Klinik tarix yig'ish ko'nikmalaringizni virtual bemor bilan sinab ko'ring."
+          onClick={() => onNavigate('osce')}
+          color="emerald"
         />
         {sections.map((sec, idx) => (
           <FeatureCard 
@@ -1543,7 +1562,7 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
   return null;
 }
 
-function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections, settings, library, onUpdate, onUpdateLibrary, themeColor, setThemeColor, showAlert, showConfirm }: { 
+function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections, settings, library, osceScenarios, onUpdate, onUpdateLibrary, themeColor, setThemeColor, showAlert, showConfirm }: { 
   mnemonics: Mnemonic[], 
   questions: Question[], 
   symptoms: SymptomData[], 
@@ -1552,6 +1571,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   sections: Section[],
   settings: Setting[],
   library: any,
+  osceScenarios: OSCEScenario[],
   onUpdate: () => void,
   onUpdateLibrary: (data: any) => void,
   themeColor: string,
@@ -1559,7 +1579,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   showAlert: (title: string, content: string) => void,
   showConfirm: (title: string, content: string, onConfirm: () => void) => void
 }) {
-  const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'settings' | 'library'>('mnemonics');
+  const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'settings' | 'library' | 'osce'>('mnemonics');
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1666,6 +1686,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                 { id: 'videos', label: 'Videolar', icon: Video },
                 { id: 'patients', label: 'Bemorlar', icon: Heart },
                 { id: 'library', label: 'Kutubxona', icon: BookOpen },
+                { id: 'osce', label: 'OSCE Ssenariylari', icon: Stethoscope },
                 { id: 'sections', label: 'Bo\'limlar', icon: Plus },
                 { id: 'settings', label: 'Sozlamalar', icon: Settings },
               ].map(tab => {
@@ -1691,10 +1712,11 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                 onClick={() => {
                   showConfirm('Tiklash', 'Boshlang\'ich ma\'lumotlarni tiklashni xohlaysizmi?', async () => {
                     try {
-                      const { mnemonics, questions, symptomCheckerData } = await import('./data');
+                      const { mnemonics, questions, symptomCheckerData, osceScenarios } = await import('./data');
                       for (const m of mnemonics) await addDoc(collection(db, 'mnemonics'), m);
                       for (const q of questions) await addDoc(collection(db, 'questions'), q);
                       for (const s of symptomCheckerData) await addDoc(collection(db, 'symptoms'), s);
+                      for (const o of osceScenarios) await addDoc(collection(db, 'osce_scenarios'), o);
                       showAlert('Muvaffaqiyat', 'Ma\'lumotlar muvaffaqiyatli tiklandi!');
                       onUpdate();
                     } catch(e) {
@@ -1723,11 +1745,11 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
             <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
               <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
                 <h3 className="font-medium text-foreground flex items-center gap-2">
-                  {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'patients' ? <Heart className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
-                  {activeTab === 'mnemonics' ? 'Mnemonikalar Ro\'yxati' : activeTab === 'questions' ? 'Savollar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'patients' ? 'Bemorlar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : 'Tizim Sozlamalari'}
+                  {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'patients' ? <Heart className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'osce' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
+                  {activeTab === 'mnemonics' ? 'Mnemonikalar Ro\'yxati' : activeTab === 'questions' ? 'Savollar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'patients' ? 'Bemorlar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'osce' ? 'OSCE Ssenariylari' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : 'Tizim Sozlamalari'}
                 </h3>
                 <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">
-                  {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : sections).length} ta element
+                  {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : activeTab === 'osce' ? osceScenarios : sections).length} ta element
                 </span>
               </div>
               
@@ -1832,6 +1854,17 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                         </td>
                       </tr>
                     ))}
+                    {activeTab === 'osce' && osceScenarios.map(osce => (
+                      <tr key={osce.id} className="hover:bg-secondary/50 transition-colors group">
+                        <td className="px-6 py-4">
+                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{osce.title}</div>
+                          <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{osce.description}</div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button onClick={() => deleteItem('osce_scenarios', osce.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -1852,6 +1885,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                 {activeTab === 'videos' && <VideoForm onAdd={(data) => addItem('videos', data)} />}
                 {activeTab === 'patients' && <PatientForm onAdd={(data) => addItem('patients', data)} />}
                 {activeTab === 'sections' && <SectionForm onAdd={(data) => addItem('sections', data)} />}
+                {activeTab === 'osce' && <OSCEForm onAdd={(data) => addItem('osce_scenarios', data)} />}
                 {activeTab === 'library' && <LibraryForm library={library} onUpdate={onUpdateLibrary} />}
                 {activeTab === 'settings' && <SettingsForm settings={settings} onUpdate={onUpdate} themeColor={themeColor} setThemeColor={setThemeColor} showAlert={showAlert} />}
               </div>
@@ -2205,6 +2239,177 @@ function SectionForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
       </select>
       <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
     </form>
+  );
+}
+
+function OSCEForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
+  const [formData, setFormData] = useState({ title: '', description: '', systemInstruction: '', initialMessage: '' });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (await onAdd(formData)) setFormData({ title: '', description: '', systemInstruction: '', initialMessage: '' });
+  };
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <input placeholder="Ssenariy nomi" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required />
+      <textarea placeholder="Qisqacha tavsif" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} required />
+      <textarea placeholder="AI uchun tizim ko'rsatmalari (System Instruction)" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-48" value={formData.systemInstruction} onChange={e => setFormData({...formData, systemInstruction: e.target.value})} required />
+      <textarea placeholder="Bemorning birinchi gapi" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.initialMessage} onChange={e => setFormData({...formData, initialMessage: e.target.value})} required />
+      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
+    </form>
+  );
+}
+
+function TutorPage() {
+  const [caseText, setCaseText] = useState('');
+  const [answerText, setAnswerText] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const handleEvaluate = async () => {
+    if (!caseText.trim() || !answerText.trim()) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const prompt = `You are an advanced AI tutor designed to help medical students improve their clinical reasoning and medical knowledge.
+
+IMPORTANT LANGUAGE RULE:
+All responses must be written ONLY in Uzbek language.
+Never respond in English or any other language.
+
+YOUR TASK:
+
+When a student submits an answer to a clinical case, you must:
+
+1. Analyze the student's reasoning.
+2. Evaluate the accuracy of the diagnosis.
+3. Evaluate the treatment plan.
+4. Identify mistakes clearly.
+5. Provide personalized learning recommendations.
+
+SCORING SYSTEM:
+
+Clinical Reasoning: score from 1 to 10
+Diagnosis Accuracy: score from 1 to 10
+Treatment Planning: score from 1 to 10
+
+OUTPUT FORMAT (always follow this structure):
+
+Klinik fikrlash bahosi: X/10  
+Tashxis aniqligi: X/10  
+Davolash rejasi: X/10  
+
+Asosiy xatolar:
+- mistake 1
+- mistake 2
+
+Talaba yaxshi bajargan jihatlar:
+- point 1
+- point 2
+
+Tavsiya etilgan o‘qish mavzulari:
+- topic 1
+- topic 2
+- topic 3
+
+RESPONSE STYLE:
+
+- Be clear and educational
+- Encourage clinical thinking
+- Keep explanations concise but helpful
+
+---
+KLINIK HOLAT:
+${caseText}
+
+TALABA JAVOBI:
+${answerText}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: prompt
+      });
+      setResult(response.text || "Xatolik yuz berdi.");
+    } catch (error) {
+      console.error(error);
+      setResult("Xatolik yuz berdi. Iltimos qayta urinib ko'ring.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-8 p-4 md:p-8">
+      <div className="text-center space-y-4 mb-12">
+        <div className="inline-flex items-center justify-center p-3 bg-primary/10 rounded-2xl mb-4">
+          <GraduationCap className="w-8 h-8 text-primary" />
+        </div>
+        <h2 className="text-4xl font-semibold tracking-tight text-foreground">AI Personal Medical Tutor</h2>
+        <p className="text-foreground/60 font-medium text-lg max-w-2xl mx-auto">
+          Klinik holatni va o'z javobingizni kiriting. AI sizning klinik fikrlashingizni baholaydi va xatolaringizni tushuntirib beradi.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6">
+        <div className="bg-card p-6 rounded-3xl border border-border shadow-sm space-y-6">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground flex items-center gap-2">
+              <FileText className="w-4 h-4 text-primary" />
+              Klinik holat (Bemor shikoyati, anamnez, ko'rik natijalari)
+            </label>
+            <textarea
+              value={caseText}
+              onChange={(e) => setCaseText(e.target.value)}
+              placeholder="Bemor 45 yoshli erkak, ko'krak qafasidagi og'riq bilan keldi..."
+              className="w-full h-32 px-4 py-3 bg-background border border-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-foreground resize-none"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground flex items-center gap-2">
+              <Stethoscope className="w-4 h-4 text-primary" />
+              Sizning javobingiz (Tashxis, tekshiruvlar, davolash)
+            </label>
+            <textarea
+              value={answerText}
+              onChange={(e) => setAnswerText(e.target.value)}
+              placeholder="Mening taxminiy tashxisim: Miokard infarkti. Birinchi navbatda EKG qilish kerak..."
+              className="w-full h-40 px-4 py-3 bg-background border border-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-foreground resize-none"
+            />
+          </div>
+
+          <button
+            onClick={handleEvaluate}
+            disabled={loading || !caseText.trim() || !answerText.trim()}
+            className="w-full py-4 bg-primary text-primary-foreground rounded-2xl font-medium hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md shadow-primary/20"
+          >
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+            Javobni baholash
+          </button>
+        </div>
+
+        {result && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-card p-8 rounded-3xl border border-border shadow-sm"
+          >
+            <div className="flex items-center gap-3 mb-6 pb-6 border-b border-border">
+              <div className="bg-primary/10 p-3 rounded-2xl">
+                <CheckCircle2 className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-foreground">Tutor Xulosasi</h3>
+                <p className="text-sm text-foreground/60">Sizning javobingiz tahlili</p>
+              </div>
+            </div>
+            <div className="markdown-body prose prose-neutral dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-foreground/80 prose-strong:text-foreground prose-ul:list-disc">
+              <Markdown>{result}</Markdown>
+            </div>
+          </motion.div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -2681,6 +2886,15 @@ function PatientsPage({ patients, onTreat }: { patients: Patient[], onTreat: (id
             <p className="text-sm text-foreground/70 mt-2">Simptomlar: {p.symptoms}</p>
             <p className="text-sm font-medium mt-4 text-foreground">Ahvoli: <span className="text-primary">{p.condition}</span></p>
             <p className="text-sm font-medium text-foreground mt-1">Sog'liq: <span className="text-emerald-500">{p.healthScore}%</span></p>
+            {p.aiAdvice && (
+              <div className="mt-4 bg-primary/10 p-4 rounded-xl border border-primary/20">
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-medium text-primary">AI Tahlili va Maslahat</span>
+                </div>
+                <p className="text-sm text-foreground/80 leading-relaxed">{p.aiAdvice}</p>
+              </div>
+            )}
             <input type="text" placeholder="Dori yuborish (Enter bosing)" onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 onTreat(p.id!, e.currentTarget.value);
@@ -2689,6 +2903,461 @@ function PatientsPage({ patients, onTreat }: { patients: Patient[], onTreat: (id
             }} className="w-full px-4 py-2.5 mt-4 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function OSCEPage({ scenarios }: { scenarios: OSCEScenario[] }) {
+  const [selectedScenario, setSelectedScenario] = useState<OSCEScenario | null>(null);
+  const [messages, setMessages] = useState<{role: 'user' | 'model', text: string}[]>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [evaluation, setEvaluation] = useState<string | null>(null);
+  const [evaluating, setEvaluating] = useState(false);
+  const [timer, setTimer] = useState(0);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (selectedScenario && !evaluation) {
+      interval = setInterval(() => {
+        setTimer(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [selectedScenario, evaluation]);
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const startScenario = (scenario: OSCEScenario) => {
+    setSelectedScenario(scenario);
+    setMessages([{ role: 'model', text: scenario.initialMessage }]);
+    setEvaluation(null);
+    setTimer(0);
+  };
+
+  const handleSend = async () => {
+    if (!input.trim() || loading || evaluating || evaluation) return;
+    
+    const userMessage = input.trim();
+    setInput('');
+    setMessages(prev => [...prev, { role: 'user', text: userMessage }]);
+    setLoading(true);
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      
+      const systemInstruction = selectedScenario!.systemInstruction + `
+      
+IMPORTANT INSTRUCTION FOR ENDING CONSULTATION:
+If the student clearly explains the diagnosis and proposed treatment plan, you MUST end the consultation by praising the student in Uzbek (e.g., "Rahmat doktor, juda tushunarli qilib tushuntirdingiz. Ajoyib ishladingiz!") AND you MUST include the exact string "[END_CONSULTATION]" at the very end of your response.`;
+
+      const contents = messages.map(msg => ({
+        role: msg.role,
+        parts: [{ text: msg.text }]
+      }));
+      contents.push({ role: 'user', parts: [{ text: userMessage }] });
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-lite-preview',
+        contents: contents,
+        config: {
+          systemInstruction,
+        }
+      });
+
+      const responseText = response.text || "Kechirasiz, tushunmadim.";
+      
+      if (responseText.includes('[END_CONSULTATION]')) {
+        const cleanText = responseText.replace('[END_CONSULTATION]', '').trim();
+        setMessages(prev => [...prev, { role: 'model', text: cleanText }]);
+        await handleEvaluate([...messages, { role: 'user', text: userMessage }, { role: 'model', text: cleanText }]);
+      } else {
+        setMessages(prev => [...prev, { role: 'model', text: responseText }]);
+      }
+    } catch (error) {
+      console.error(error);
+      setMessages(prev => [...prev, { role: 'model', text: "Xatolik yuz berdi. Iltimos qayta urinib ko'ring." }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEvaluate = async (currentMessages = messages) => {
+    setEvaluating(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      
+      const transcript = currentMessages.map(m => `${m.role === 'user' ? 'Talaba' : 'Bemor'}: ${m.text}`).join('\n');
+      
+      const prompt = `You are an expert medical examiner evaluating a medical student's OSCE performance.
+Here is the transcript of the consultation:
+
+${transcript}
+
+Based on this interaction, generate a structured clinical report and evaluation in UZBEK language.
+Format the output EXACTLY as follows using Markdown:
+
+# OSCE Klinik Hisobot va Baholash
+
+## 1. Bemor haqida umumiy ma'lumot
+[Ma'lumot]
+
+## 2. Asosiy shikoyat
+[Shikoyat]
+
+## 3. Anamnesis Morbi (Kasallik tarixi)
+[Tarix]
+
+## 4. Anamnesis Vitae (Hayot tarixi)
+[Tarix]
+
+## 5. Risk omillari
+[Omillar]
+
+## 6. Taxminiy tashxis
+[Tashxis]
+
+## 7. Differensial tashxis
+[Tashxislar]
+
+## 8. Tavsiya etilgan tekshiruvlar
+[Tekshiruvlar]
+
+## 9. Davolash rejasi
+[Reja]
+
+## 10. Feedback (Fikr-mulohaza)
+**Talabaning kuchli tomonlari:**
+- ...
+
+**Yaxshilanishi kerak bo'lgan jihatlar:**
+- ...
+
+## 11. Yakuniy Baho (100 ballik tizim)
+- Anamnez yig'ish sifati: [X] / 30
+- Simptomlarni aniqlash: [X] / 20
+- Klinik fikrlash: [X] / 20
+- Bemor bilan muloqot: [X] / 15
+- Davolash rejasini tushuntirish: [X] / 15
+
+**UMUMIY BALL: [X] / 100**`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: prompt
+      });
+
+      setEvaluation(response.text || "Baholashda xatolik yuz berdi.");
+    } catch (error) {
+      console.error(error);
+      setEvaluation("Baholashda xatolik yuz berdi.");
+    } finally {
+      setEvaluating(false);
+    }
+  };
+
+  const downloadPDF = async () => {
+    if (!evaluation || !selectedScenario) return;
+    try {
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF('p', 'mm', 'a4');
+      
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 20;
+      const maxLineWidth = pageWidth - margin * 2;
+      
+      let y = margin;
+      
+      // Title
+      doc.setFontSize(22);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42); // Slate 900
+      doc.text('OSCE Natijasi', margin, y);
+      y += 10;
+      
+      // Subtitle
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 116, 139); // Slate 500
+      
+      const titleLines = doc.splitTextToSize(selectedScenario.title, maxLineWidth);
+      doc.text(titleLines, margin, y);
+      y += titleLines.length * 7 + 10;
+      
+      // Content
+      doc.setTextColor(15, 23, 42);
+      const lines = evaluation.split('\n');
+      
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i].trim();
+        if (!line) {
+          y += 4;
+          continue;
+        }
+        
+        let isBold = false;
+        let fontSize = 11;
+        let indent = 0;
+        
+        if (line.startsWith('# ')) {
+          fontSize = 18;
+          isBold = true;
+          line = line.replace('# ', '');
+          y += 6;
+        } else if (line.startsWith('## ')) {
+          fontSize = 14;
+          isBold = true;
+          line = line.replace('## ', '');
+          y += 6;
+        } else if (line.startsWith('### ')) {
+          fontSize = 12;
+          isBold = true;
+          line = line.replace('### ', '');
+          y += 4;
+        } else if (line.startsWith('- ')) {
+          fontSize = 11;
+          line = '•  ' + line.replace('- ', '');
+          indent = 5;
+        } else if (line.match(/^\d+\.\s/)) {
+          fontSize = 11;
+          indent = 5;
+        }
+        
+        // Handle bold text markers
+        if (line.startsWith('**') && line.endsWith('**')) {
+          isBold = true;
+          line = line.replace(/\*\*/g, '');
+        } else {
+          line = line.replace(/\*\*/g, ''); // Strip bold markers inside text
+        }
+        
+        doc.setFontSize(fontSize);
+        doc.setFont('helvetica', isBold ? 'bold' : 'normal');
+        
+        const splitLines = doc.splitTextToSize(line, maxLineWidth - indent);
+        
+        // Check page break
+        if (y + (splitLines.length * (fontSize * 0.4)) > pageHeight - margin) {
+          doc.addPage();
+          y = margin;
+        }
+        
+        doc.text(splitLines, margin + indent, y);
+        y += splitLines.length * (fontSize * 0.5) + 2;
+      }
+      
+      doc.save('OSCE_Hisobot.pdf');
+    } catch (error) {
+      console.error('PDF generation failed', error);
+      alert("PDF yaratishda xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.");
+    }
+  };
+
+  if (!selectedScenario) {
+    return (
+      <div className="max-w-5xl mx-auto space-y-8 p-4 md:p-8">
+        <div className="text-center space-y-4 mb-12">
+          <div className="inline-flex items-center justify-center p-3 bg-primary/10 rounded-2xl mb-4">
+            <Stethoscope className="w-8 h-8 text-primary" />
+          </div>
+          <h2 className="text-4xl font-semibold tracking-tight text-foreground">Virtual OSCE Bemor</h2>
+          <p className="text-foreground/60 font-medium text-lg max-w-2xl mx-auto">
+            Klinik tarix yig'ish ko'nikmalaringizni sun'iy intellekt yordamida sinab ko'ring. Bemor bilan muloqot qiling, tashxis qo'ying va baholaning.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {scenarios.map(scenario => (
+            <motion.div 
+              whileHover={{ y: -4 }}
+              key={scenario.id} 
+              className="bg-card p-6 rounded-3xl border border-border shadow-sm hover:shadow-xl transition-all cursor-pointer flex flex-col h-full" 
+              onClick={() => startScenario(scenario)}
+            >
+              <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center mb-6">
+                <Heart className="w-6 h-6 text-primary" />
+              </div>
+              <h3 className="text-xl font-semibold text-foreground mb-3">{scenario.title}</h3>
+              <p className="text-sm text-foreground/70 line-clamp-3 mb-6 flex-1">{scenario.description}</p>
+              <div className="flex items-center text-primary font-medium text-sm mt-auto">
+                Ssenariyni boshlash <ChevronRight className="w-4 h-4 ml-1" />
+              </div>
+            </motion.div>
+          ))}
+          {scenarios.length === 0 && (
+            <div className="col-span-full text-center py-16 bg-secondary/30 rounded-3xl border border-dashed border-border">
+              <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle className="w-8 h-8 text-foreground/40" />
+              </div>
+              <p className="text-foreground/60 font-medium">Hozircha ssenariylar yo'q. Admin paneldan qo'shing.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto flex flex-col p-4 md:p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => setSelectedScenario(null)} 
+            className="p-2.5 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 transition-all"
+          >
+            <ChevronRight className="w-5 h-5 rotate-180" />
+          </button>
+          <div>
+            <h2 className="text-2xl font-semibold text-foreground">{selectedScenario.title}</h2>
+            <div className="flex items-center gap-2 text-sm text-foreground/60 mt-1">
+              <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> {formatTime(timer)}</span>
+              <span>•</span>
+              <span>Virtual Bemor</span>
+            </div>
+          </div>
+        </div>
+        {evaluation && (
+          <button onClick={downloadPDF} className="px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-all flex items-center gap-2 shadow-lg shadow-primary/20">
+            <Upload className="w-4 h-4" />
+            PDF Yuklab olish
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Left Sidebar - Patient Info */}
+        <div className="hidden lg:flex flex-col gap-6 col-span-1">
+          <div className="bg-card border border-border rounded-3xl p-6 shadow-sm">
+            <div className="w-20 h-20 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
+              <Baby className="w-10 h-10 text-foreground/40" />
+            </div>
+            <h3 className="text-center font-semibold text-lg text-foreground mb-2">Bemor Ma'lumotlari</h3>
+            <p className="text-sm text-foreground/70 text-center mb-6">{selectedScenario.description}</p>
+            
+            <div className="space-y-4">
+              <div className="bg-secondary/50 p-4 rounded-2xl">
+                <div className="text-xs text-foreground/50 font-medium uppercase tracking-wider mb-1">Vazifa</div>
+                <div className="text-sm font-medium text-foreground">Anamnez yig'ish, tashxis qo'yish va davolash rejasini tushuntirish.</div>
+              </div>
+              <div className="bg-emerald-500/10 p-4 rounded-2xl">
+                <div className="text-xs text-emerald-600/70 font-medium uppercase tracking-wider mb-1">Holat</div>
+                <div className="text-sm font-medium text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Suhbat davom etmoqda
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Area - Chat or Evaluation */}
+        <div className="col-span-1 lg:col-span-3 flex flex-col bg-card border border-border rounded-3xl shadow-sm overflow-hidden h-[65vh] min-h-[500px] max-h-[800px]">
+          {!evaluation ? (
+            <>
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                {messages.map((msg, idx) => (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    key={idx} 
+                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div className={`flex gap-3 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground/60'}`}>
+                        {msg.role === 'user' ? <Stethoscope className="w-4 h-4" /> : <Baby className="w-4 h-4" />}
+                      </div>
+                      <div className={`p-4 rounded-2xl ${msg.role === 'user' ? 'bg-primary text-primary-foreground rounded-tr-sm shadow-md shadow-primary/10' : 'bg-secondary text-foreground rounded-tl-sm'}`}>
+                        <p className="whitespace-pre-wrap leading-relaxed text-[15px]">{msg.text}</p>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+                {loading && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
+                    <div className="flex gap-3 max-w-[85%]">
+                      <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 mt-1">
+                        <Baby className="w-4 h-4 text-foreground/60" />
+                      </div>
+                      <div className="bg-secondary text-foreground p-4 rounded-2xl rounded-tl-sm flex items-center gap-2 h-[52px]">
+                        <div className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce" />
+                        <div className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                        <div className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+              
+              <div className="p-4 bg-background/50 border-t border-border backdrop-blur-md">
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                    placeholder="Bemorga savol bering..."
+                    className="flex-1 px-5 py-3.5 bg-card border border-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-foreground shadow-sm"
+                    disabled={loading || evaluating}
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={loading || evaluating || !input.trim()}
+                    className="px-6 py-3.5 bg-primary text-primary-foreground rounded-2xl font-medium hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md shadow-primary/20"
+                  >
+                    <Send className="w-5 h-5" />
+                    <span className="hidden sm:inline">Yuborish</span>
+                  </button>
+                </div>
+                <div className="flex justify-between items-center mt-4 px-2">
+                  <p className="text-xs text-foreground/40 font-medium">
+                    Tashxisni aytganingizdan so'ng, AI suhbatni avtomatik yakunlaydi.
+                  </p>
+                  <button
+                    onClick={() => handleEvaluate()}
+                    disabled={loading || evaluating || messages.length < 3}
+                    className="px-4 py-2 bg-emerald-500/10 text-emerald-600 rounded-xl text-xs font-medium hover:bg-emerald-500/20 transition-all disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {evaluating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                    Suhbatni yakunlash
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-secondary/10">
+              <div ref={reportRef} className="bg-card border border-border text-foreground p-8 md:p-12 rounded-3xl shadow-sm max-w-4xl mx-auto">
+                <div className="flex items-center gap-3 mb-8 pb-6 border-b border-border">
+                  <div className="bg-primary/10 p-3 rounded-2xl">
+                    <Sparkles className="w-6 h-6 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-foreground">OSCE Natijasi</h3>
+                    <p className="text-foreground/60 font-medium">{selectedScenario.title}</p>
+                  </div>
+                </div>
+                <div className="markdown-body prose prose-neutral dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-foreground/80 prose-strong:text-foreground prose-ul:list-disc">
+                  <Markdown>{evaluation}</Markdown>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
