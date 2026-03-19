@@ -57,6 +57,36 @@ export interface Setting {
   value: string;
 }
 
+export interface Guide {
+  id: string;
+  title: string;
+  description?: string;
+  driveLink: string;
+}
+
+export interface VideoLecture {
+  id: string;
+  title: string;
+  description?: string;
+  videoUrl: string;
+}
+
+export interface Topic {
+  id: string;
+  title: string;
+  description?: string;
+  videos: VideoLecture[];
+  guides: Guide[];
+}
+
+export interface Subject {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  topics: Topic[];
+}
+
 export interface OSCEScenario {
   id?: string;
   title: string;
@@ -268,3 +298,31 @@ export const symptomCheckerData: SymptomData[] = [
     redFlag: false
   }
 ];
+
+export const initialFanlar: Subject[] = [
+  {
+    id: '1',
+    title: 'Anatomiya',
+    description: 'Odam anatomiyasi bo\'yicha to\'liq kurs',
+    icon: 'Brain',
+    topics: [
+      {
+        id: 't1',
+        title: 'Suyaklar sistemasi (Osteologiya)',
+        videos: [
+          { id: 'v1', title: 'Kalla suyaklari', videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' }
+        ],
+        guides: [
+          { id: 'g1', title: 'Osteologiya qo\'llanma', driveLink: 'https://drive.google.com/file/d/12345/view' }
+        ]
+      }
+    ]
+  }
+];
+
+export const initialSettings = {
+  creatorName: 'Olimjonov Muhammadbobur',
+  creatorImage: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Muhammadbobur',
+  gradientFrom: '#3b82f6',
+  gradientTo: '#8b5cf6',
+};

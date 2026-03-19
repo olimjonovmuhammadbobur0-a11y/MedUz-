@@ -5,6 +5,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { PatientForm } from './components/PatientForm';
+import * as Icons from 'lucide-react';
 import { 
   Heart, 
   Brain, 
@@ -44,12 +45,18 @@ import {
   Moon,
   Sun,
   GraduationCap,
-  FileText
+  FileText,
+  Pill,
+  Download,
+  ArrowLeft,
+  ArrowRight,
+  Play,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { GoogleGenAI, ThinkingLevel, GenerateContentResponse } from "@google/genai";
-import { Mnemonic, Question, SymptomData, VideoData, Section, Setting, Patient, OSCEScenario } from './data';
+import { Mnemonic, Question, SymptomData, VideoData, Section, Setting, Patient, OSCEScenario, Subject, Topic, initialFanlar, initialSettings } from './data';
 import { explainMedicalTopic } from './services/aiService';
 import { quizData } from './quizData';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
@@ -63,7 +70,7 @@ const getYouTubeEmbedUrl = (url: string) => {
   return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : url;
 };
 
-type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients' | 'osce' | 'tutor';
+type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients' | 'osce' | 'tutor' | 'pharma' | 'fanlar';
 
 export function Modal({ isOpen, title, content, onClose, onConfirm, confirmText = "Tasdiqlash", cancelText = "Bekor qilish" }: { isOpen: boolean, title: string, content: string, onClose: () => void, onConfirm?: () => void, confirmText?: string, cancelText?: string }) {
   if (!isOpen) return null;
@@ -126,6 +133,24 @@ export default function App() {
     const saved = localStorage.getItem('meduz_library');
     return saved ? JSON.parse(saved) : initialMedicalData;
   });
+
+  const [fanlarData, setFanlarData] = useState<Subject[]>(() => {
+    const saved = localStorage.getItem('meduz_fanlar');
+    return saved ? JSON.parse(saved) : initialFanlar;
+  });
+
+  const [appSettings, setAppSettings] = useState(() => {
+    const saved = localStorage.getItem('meduz_app_settings');
+    return saved ? JSON.parse(saved) : initialSettings;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('meduz_fanlar', JSON.stringify(fanlarData));
+  }, [fanlarData]);
+
+  useEffect(() => {
+    localStorage.setItem('meduz_app_settings', JSON.stringify(appSettings));
+  }, [appSettings]);
 
   const handleUpdateLibrary = async (data: any) => {
     setLibraryData(data);
@@ -437,6 +462,8 @@ export default function App() {
               <NavLink active={currentPage === 'osce'} onClick={() => navigate('osce')}>OSCE</NavLink>
               <NavLink active={currentPage === 'quiz'} onClick={() => navigate('quiz')}>Testlar</NavLink>
               <NavLink active={currentPage === 'tutor'} onClick={() => navigate('tutor')}>AI Tutor</NavLink>
+              <NavLink active={currentPage === 'pharma'} onClick={() => navigate('pharma')}>Farmakologiya</NavLink>
+              <NavLink active={currentPage === 'fanlar'} onClick={() => navigate('fanlar')}>Fanlar</NavLink>
               <NavLink active={currentPage === 'ai'} onClick={() => navigate('ai')}>
                 <div className="flex items-center gap-1.5 text-accent font-medium">
                   <Sparkles className="w-4 h-4" />
@@ -499,6 +526,8 @@ export default function App() {
                 <MobileNavLink active={currentPage === 'osce'} onClick={() => { navigate('osce'); setIsMenuOpen(false); }}>OSCE</MobileNavLink>
                 <MobileNavLink active={currentPage === 'quiz'} onClick={() => { navigate('quiz'); setIsMenuOpen(false); }}>Testlar</MobileNavLink>
                 <MobileNavLink active={currentPage === 'tutor'} onClick={() => { navigate('tutor'); setIsMenuOpen(false); }}>AI Tutor</MobileNavLink>
+                <MobileNavLink active={currentPage === 'pharma'} onClick={() => { navigate('pharma'); setIsMenuOpen(false); }}>Farmakologiya</MobileNavLink>
+                <MobileNavLink active={currentPage === 'fanlar'} onClick={() => { navigate('fanlar'); setIsMenuOpen(false); }}>Fanlar</MobileNavLink>
                 <MobileNavLink active={currentPage === 'ai'} onClick={() => { navigate('ai'); setIsMenuOpen(false); }}>AI Markazi</MobileNavLink>
                 <MobileNavLink active={currentPage === 'admin'} onClick={() => { navigate('admin'); setIsMenuOpen(false); }}>Admin Panel</MobileNavLink>
               </div>
@@ -510,7 +539,7 @@ export default function App() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <AnimatePresence mode="wait">
-          {currentPage === 'home' && <HomePage onNavigate={navigate} sections={sectionsData} showAlert={showAlert} />}
+          {currentPage === 'home' && <HomePage onNavigate={navigate} sections={sectionsData} showAlert={showAlert} appSettings={appSettings} />}
           {currentPage === 'mnemonics' && <MnemonicsPage data={mnemonicsData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'videos' && <VideosPage data={videosData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'symptoms' && <SymptomsPage data={symptomsData} handleAIExplain={handleAIExplain} />}
@@ -518,6 +547,8 @@ export default function App() {
           {currentPage === 'osce' && <OSCEPage scenarios={osceScenarios} />}
           {currentPage === 'quiz' && <QuizPage handleAIExplain={handleAIExplain} showAlert={showAlert} />}
           {currentPage === 'tutor' && <TutorPage />}
+          {currentPage === 'pharma' && <PharmaPage />}
+          {currentPage === 'fanlar' && <FanlarPage data={fanlarData} />}
           {currentPage === 'library' && <LibraryPage data={libraryData} handleAIExplain={handleAIExplain} />}
           {currentPage === 'ai' && <AIPage />}
           {currentPage === 'admin' && <AdminPage 
@@ -530,6 +561,10 @@ export default function App() {
             settings={settingsData}
             library={libraryData}
             osceScenarios={osceScenarios}
+            fanlar={fanlarData}
+            setFanlar={setFanlarData}
+            appSettings={appSettings}
+            setAppSettings={setAppSettings}
             onUpdate={fetchAllData} 
             onUpdateLibrary={handleUpdateLibrary}
             themeColor={themeColor}
@@ -694,7 +729,7 @@ function MobileNavLink({ children, active, onClick }: { children: React.ReactNod
 
 /* --- PAGES --- */
 
-function HomePage({ onNavigate, sections, showAlert }: { onNavigate: (page: Page) => void, sections: Section[], showAlert: (title: string, content: string) => void }) {
+function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate: (page: Page) => void, sections: Section[], showAlert: (title: string, content: string) => void, appSettings: any }) {
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -702,10 +737,21 @@ function HomePage({ onNavigate, sections, showAlert }: { onNavigate: (page: Page
       exit={{ opacity: 0, y: -20 }}
       className="space-y-16"
     >
+      {/* Creator Info Section */}
+      <div className="flex justify-center mb-8">
+        <div className="flex items-center gap-4 bg-card/50 backdrop-blur-md p-4 rounded-full border border-border shadow-sm">
+          <img src={appSettings.creatorImage} alt={appSettings.creatorName} className="w-12 h-12 rounded-full object-cover border-2 border-primary/20" />
+          <div className="pr-4">
+            <p className="text-xs text-foreground/60 font-medium uppercase tracking-wider">Ilova yaratuvchisi</p>
+            <p className="text-sm font-bold text-foreground">{appSettings.creatorName}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Hero Section */}
-      <section className="text-center space-y-6 py-16 relative">
+      <section className="text-center space-y-6 py-8 relative">
         <div className="absolute inset-0 -z-10 flex items-center justify-center opacity-30">
-          <div className="w-[600px] h-[600px] bg-primary/20 rounded-full blur-[120px]" />
+          <div className="w-[600px] h-[600px] rounded-full blur-[120px]" style={{ background: `linear-gradient(to right, ${appSettings.gradientFrom}, ${appSettings.gradientTo})` }} />
         </div>
         <motion.h1 
           initial={{ opacity: 0, scale: 0.9 }}
@@ -736,56 +782,74 @@ function HomePage({ onNavigate, sections, showAlert }: { onNavigate: (page: Page
       {/* Features Grid */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <FeatureCard 
+          title="Fanlar"
+          description="Tibbiyot fanlari bo'yicha video darslar va qo'llanmalar to'plami."
+          onClick={() => onNavigate('fanlar')}
+          color="emerald"
+          icon={<BookOpen />}
+        />
+        <FeatureCard 
           title="Kutubxona"
           description="Fanlar, mavzular va resurslarning iyerarxik to'plami."
           onClick={() => onNavigate('library')}
           color="blue"
+          icon={<BookOpen />}
         />
         <FeatureCard 
           title="Mnemonikalar"
           description="Murakkab mavzularni oson eslab qolish uchun maxsus iboralar to'plami."
           onClick={() => onNavigate('mnemonics')}
           color="purple"
+          icon={<Brain />}
         />
         <FeatureCard 
           title="Video Kutubxona"
           description="Klinik ko'nikmalar va amaliyotlar bo'yicha video darslar."
           onClick={() => onNavigate('videos')}
           color="red"
+          icon={<Video />}
         />
         <FeatureCard 
           title="Simptomlar"
           description="Simptomlar asosida taxminiy tashxislar va 'Qizil bayroqlar'."
           onClick={() => onNavigate('symptoms')}
           color="emerald"
+          icon={<Stethoscope />}
         />
         <FeatureCard 
           title="Kunlik Test"
           description="Bilimingizni sinash uchun har kuni yangi savollar to'plami."
           onClick={() => onNavigate('quiz')}
           color="blue"
+          icon={<CheckCircle2 />}
         />
         <FeatureCard 
           title="AI Markazi"
           description="Sun'iy intellekt yordamida tahlil va media yaratish."
           onClick={() => onNavigate('ai')}
           color="purple"
+          icon={<Sparkles />}
         />
         <FeatureCard 
           title="Virtual OSCE"
           description="Klinik tarix yig'ish ko'nikmalaringizni virtual bemor bilan sinab ko'ring."
           onClick={() => onNavigate('osce')}
           color="emerald"
+          icon={<Stethoscope />}
         />
-        {sections.map((sec, idx) => (
-          <FeatureCard 
-            key={sec.id || idx}
-            title={sec.title}
-            description={sec.content}
-            onClick={() => showAlert('Tez kunda', `Bu bo'lim tez kunda ishga tushadi: ${sec.title}`)}
-            color={sec.color}
-          />
-        ))}
+        {sections.map((sec, idx) => {
+          const Icon = (Icons[sec.icon as keyof typeof Icons] as React.ElementType) || Plus;
+          return (
+            <FeatureCard 
+              key={sec.id || idx}
+              title={sec.title}
+              description={sec.content}
+              onClick={() => showAlert('Tez kunda', `Bu bo'lim tez kunda ishga tushadi: ${sec.title}`)}
+              color={sec.color}
+              icon={<Icon />}
+            />
+          );
+        })}
       </section>
 
       {/* Coming Soon Section */}
@@ -809,12 +873,12 @@ function HomePage({ onNavigate, sections, showAlert }: { onNavigate: (page: Page
   );
 }
 
-const FeatureCard: React.FC<{ title: string, description: string, onClick: () => void, color: string }> = ({ title, description, onClick, color }) => {
+const FeatureCard: React.FC<{ title: string, description: string, onClick: () => void, color: string, icon?: React.ReactNode }> = ({ title, description, onClick, color, icon }) => {
   const colors: Record<string, string> = {
-    purple: 'hover:border-purple-300 hover:bg-purple-50/50 dark:hover:bg-purple-900/20',
-    red: 'hover:border-red-300 hover:bg-red-50/50 dark:hover:bg-red-900/20',
-    emerald: 'hover:border-emerald-300 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/20',
-    blue: 'hover:border-blue-300 hover:bg-blue-50/50 dark:hover:bg-blue-900/20',
+    purple: 'hover:border-purple-300 hover:bg-purple-50/50 dark:hover:bg-purple-900/20 text-purple-500',
+    red: 'hover:border-red-300 hover:bg-red-50/50 dark:hover:bg-red-900/20 text-red-500',
+    emerald: 'hover:border-emerald-300 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/20 text-emerald-500',
+    blue: 'hover:border-blue-300 hover:bg-blue-50/50 dark:hover:bg-blue-900/20 text-blue-500',
   };
 
   const colorClass = colors[color] || colors.blue;
@@ -822,10 +886,16 @@ const FeatureCard: React.FC<{ title: string, description: string, onClick: () =>
   return (
     <button 
       onClick={onClick}
-      className={`text-left p-8 bg-card border border-border/40 rounded-2xl shadow-sm hover:shadow-sm hover:-translate-y-1 transition-all duration-300 group ${colorClass}`}
+      className={`text-left p-8 bg-card border border-border/40 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group relative overflow-hidden`}
     >
-      <h3 className="text-2xl font-medium mb-3 text-foreground group-hover:text-primary transition-colors tracking-tight">{title}</h3>
-      <p className="text-foreground/60 text-sm leading-relaxed mb-6 font-medium">{description}</p>
+      <div className={`absolute top-0 right-0 w-32 h-32 opacity-5 rounded-bl-full -z-10 transition-colors ${colorClass.split(' ')[0].replace('hover:border-', 'bg-')}`} />
+      {icon && (
+        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-6 transition-transform group-hover:scale-110 bg-secondary ${colorClass.split(' ').pop()}`}>
+          {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-7 h-7' })}
+        </div>
+      )}
+      <h3 className="text-2xl font-bold mb-3 text-foreground group-hover:text-primary transition-colors tracking-tight">{title}</h3>
+      <p className="text-foreground/60 text-sm leading-relaxed mb-6 font-medium line-clamp-2">{description}</p>
       <div className="flex items-center text-primary text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-[-10px] group-hover:translate-x-0 duration-300">
         Batafsil <ChevronRight className="w-4 h-4 ml-1" />
       </div>
@@ -1562,7 +1632,179 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
   return null;
 }
 
-function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections, settings, library, osceScenarios, onUpdate, onUpdateLibrary, themeColor, setThemeColor, showAlert, showConfirm }: { 
+function FanlarPage({ data }: { data: Subject[] }) {
+  const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
+  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
+  const [activeTab, setActiveTab] = useState<'videos' | 'guides'>('videos');
+
+  if (selectedTopic) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -20 }}
+        className="space-y-6"
+      >
+        <button 
+          onClick={() => setSelectedTopic(null)}
+          className="flex items-center gap-2 text-primary hover:text-primary/80 transition-colors bg-primary/10 px-4 py-2 rounded-xl font-medium w-fit"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          Orqaga
+        </button>
+
+        <div className="bg-card border border-border rounded-3xl p-8 shadow-sm">
+          <h2 className="text-3xl font-bold text-foreground mb-4">{selectedTopic.title}</h2>
+          <p className="text-foreground/60 text-lg leading-relaxed mb-8">{selectedTopic.description}</p>
+
+          <div className="flex gap-4 border-b border-border mb-8">
+            <button
+              onClick={() => setActiveTab('videos')}
+              className={`pb-4 px-4 font-medium transition-colors relative ${activeTab === 'videos' ? 'text-primary' : 'text-foreground/60 hover:text-foreground'}`}
+            >
+              Video Darslar
+              {activeTab === 'videos' && (
+                <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('guides')}
+              className={`pb-4 px-4 font-medium transition-colors relative ${activeTab === 'guides' ? 'text-primary' : 'text-foreground/60 hover:text-foreground'}`}
+            >
+              Qo'llanmalar
+              {activeTab === 'guides' && (
+                <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
+              )}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {activeTab === 'videos' && selectedTopic.videos.map(video => (
+              <div key={video.id} className="bg-secondary/30 rounded-2xl overflow-hidden border border-border group">
+                <div className="aspect-video bg-black/5 relative group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                  <Play className="w-12 h-12 text-primary opacity-80 group-hover:scale-110 transition-transform" />
+                </div>
+                <div className="p-6">
+                  <h3 className="font-bold text-foreground text-lg mb-2">{video.title}</h3>
+                  <p className="text-foreground/60 text-sm mb-4 line-clamp-2">{video.description}</p>
+                  <a 
+                    href={video.videoUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-primary font-medium hover:text-primary/80 transition-colors"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Videoni ko'rish
+                  </a>
+                </div>
+              </div>
+            ))}
+
+            {activeTab === 'guides' && selectedTopic.guides.map(guide => (
+              <div key={guide.id} className="bg-secondary/30 rounded-2xl p-6 border border-border group hover:border-primary/30 transition-colors flex flex-col h-full">
+                <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center mb-4 text-primary">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <h3 className="font-bold text-foreground text-lg mb-2">{guide.title}</h3>
+                <p className="text-foreground/60 text-sm mb-6 flex-grow">{guide.description}</p>
+                <a 
+                  href={guide.driveLink} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="w-full py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+                >
+                  <Download className="w-5 h-5" />
+                  Ushbu havolaning ustiga bosing
+                </a>
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (selectedSubject) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -20 }}
+        className="space-y-6"
+      >
+        <button 
+          onClick={() => setSelectedSubject(null)}
+          className="flex items-center gap-2 text-primary hover:text-primary/80 transition-colors bg-primary/10 px-4 py-2 rounded-xl font-medium w-fit"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          Orqaga
+        </button>
+
+        <div className="bg-card border border-border rounded-3xl p-8 shadow-sm mb-8">
+          <h2 className="text-3xl font-bold text-foreground mb-4">{selectedSubject.title}</h2>
+          <p className="text-foreground/60 text-lg leading-relaxed">{selectedSubject.description}</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {selectedSubject.topics.map(topic => (
+            <button
+              key={topic.id}
+              onClick={() => setSelectedTopic(topic)}
+              className="text-left bg-card border border-border rounded-3xl p-6 shadow-sm hover:shadow-md hover:border-primary/30 transition-all group"
+            >
+              <h3 className="text-xl font-bold text-foreground mb-3 group-hover:text-primary transition-colors">{topic.title}</h3>
+              <p className="text-foreground/60 text-sm line-clamp-2 mb-6">{topic.description}</p>
+              <div className="flex items-center gap-4 text-sm font-medium text-foreground/50">
+                <span className="flex items-center gap-1.5"><Video className="w-4 h-4" /> {topic.videos.length} ta video</span>
+                <span className="flex items-center gap-1.5"><FileText className="w-4 h-4" /> {topic.guides.length} ta qo'llanma</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="space-y-8"
+    >
+      <div className="text-center max-w-2xl mx-auto mb-12">
+        <h1 className="text-4xl font-bold text-foreground mb-4">Fanlar</h1>
+        <p className="text-lg text-foreground/60">Tibbiyot fanlari bo'yicha video darslar va qo'llanmalar to'plami</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {data.map(subject => {
+          const Icon = (Icons[subject.icon as keyof typeof Icons] as React.ElementType) || BookOpen;
+          return (
+            <button
+              key={subject.id}
+              onClick={() => setSelectedSubject(subject)}
+              className="text-left bg-card border border-border rounded-3xl p-8 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group relative overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-bl-full -z-10 group-hover:bg-primary/10 transition-colors" />
+              <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-6 text-primary group-hover:scale-110 transition-transform">
+                <Icon className="w-8 h-8" />
+              </div>
+              <h3 className="text-2xl font-bold text-foreground mb-3 group-hover:text-primary transition-colors">{subject.title}</h3>
+              <p className="text-foreground/60 leading-relaxed mb-6 line-clamp-2">{subject.description}</p>
+              <div className="flex items-center gap-2 text-primary font-medium">
+                <span>{subject.topics.length} ta mavzu</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
+
+function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections, settings, library, osceScenarios, fanlar, setFanlar, appSettings, setAppSettings, onUpdate, onUpdateLibrary, themeColor, setThemeColor, showAlert, showConfirm }: { 
   mnemonics: Mnemonic[], 
   questions: Question[], 
   symptoms: SymptomData[], 
@@ -1572,6 +1814,10 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   settings: Setting[],
   library: any,
   osceScenarios: OSCEScenario[],
+  fanlar: Subject[],
+  setFanlar: (data: Subject[]) => void,
+  appSettings: any,
+  setAppSettings: (data: any) => void,
   onUpdate: () => void,
   onUpdateLibrary: (data: any) => void,
   themeColor: string,
@@ -1579,7 +1825,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   showAlert: (title: string, content: string) => void,
   showConfirm: (title: string, content: string, onConfirm: () => void) => void
 }) {
-  const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'settings' | 'library' | 'osce'>('mnemonics');
+  const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'settings' | 'library' | 'osce' | 'fanlar' | 'appSettings'>('mnemonics');
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1688,6 +1934,8 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                 { id: 'library', label: 'Kutubxona', icon: BookOpen },
                 { id: 'osce', label: 'OSCE Ssenariylari', icon: Stethoscope },
                 { id: 'sections', label: 'Bo\'limlar', icon: Plus },
+                { id: 'fanlar', label: 'Fanlar', icon: BookOpen },
+                { id: 'appSettings', label: 'Ilova Sozlamalari', icon: Settings },
                 { id: 'settings', label: 'Sozlamalar', icon: Settings },
               ].map(tab => {
                 const Icon = tab.icon;
@@ -1745,11 +1993,11 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
             <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
               <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
                 <h3 className="font-medium text-foreground flex items-center gap-2">
-                  {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'patients' ? <Heart className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'osce' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
-                  {activeTab === 'mnemonics' ? 'Mnemonikalar Ro\'yxati' : activeTab === 'questions' ? 'Savollar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'patients' ? 'Bemorlar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'osce' ? 'OSCE Ssenariylari' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : 'Tizim Sozlamalari'}
+                  {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'patients' ? <Heart className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'osce' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : activeTab === 'fanlar' ? <BookOpen className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
+                  {activeTab === 'mnemonics' ? 'Mnemonikalar Ro\'yxati' : activeTab === 'questions' ? 'Savollar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'patients' ? 'Bemorlar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'osce' ? 'OSCE Ssenariylari' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : activeTab === 'fanlar' ? 'Fanlar Ro\'yxati' : activeTab === 'appSettings' ? 'Ilova Sozlamalari' : 'Tizim Sozlamalari'}
                 </h3>
                 <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">
-                  {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : activeTab === 'osce' ? osceScenarios : sections).length} ta element
+                  {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : activeTab === 'osce' ? osceScenarios : activeTab === 'fanlar' ? fanlar : activeTab === 'appSettings' ? [] : sections).length} ta element
                 </span>
               </div>
               
@@ -1865,6 +2113,85 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                         </td>
                       </tr>
                     ))}
+                    {activeTab === 'fanlar' && fanlar.map(fan => (
+                      <React.Fragment key={fan.id}>
+                        <tr className="hover:bg-secondary/50 transition-colors group bg-secondary/10">
+                          <td className="px-6 py-4">
+                            <div className="font-bold text-foreground group-hover:text-primary transition-colors flex items-center gap-2">
+                              <BookOpen className="w-4 h-4" /> {fan.title}
+                            </div>
+                            <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{fan.description}</div>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <button onClick={() => {
+                              showConfirm('O\'chirish', 'Ushbu fanni o\'chirmoqchimisiz?', () => {
+                                setFanlar(fanlar.filter(f => f.id !== fan.id));
+                              });
+                            }} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                          </td>
+                        </tr>
+                        {fan.topics.map(topic => (
+                          <React.Fragment key={topic.id}>
+                            <tr className="hover:bg-secondary/50 transition-colors group">
+                              <td className="px-6 py-3 pl-12 border-l-2 border-primary/20">
+                                <div className="font-medium text-foreground/90 group-hover:text-primary transition-colors flex items-center gap-2">
+                                  <ChevronRight className="w-3 h-3" /> {topic.title}
+                                </div>
+                              </td>
+                              <td className="px-6 py-3 text-right">
+                                <button onClick={() => {
+                                  showConfirm('O\'chirish', 'Ushbu mavzuni o\'chirmoqchimisiz?', () => {
+                                    setFanlar(fanlar.map(f => f.id === fan.id ? { ...f, topics: f.topics.filter(t => t.id !== topic.id) } : f));
+                                  });
+                                }} className="p-2 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4 h-4" /></button>
+                              </td>
+                            </tr>
+                            {topic.videos.map(video => (
+                              <tr key={video.id} className="hover:bg-secondary/50 transition-colors group">
+                                <td className="px-6 py-2 pl-20 border-l-2 border-primary/20">
+                                  <div className="text-sm text-foreground/80 group-hover:text-primary transition-colors flex items-center gap-2">
+                                    <Video className="w-3 h-3" /> {video.title}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-2 text-right">
+                                  <button onClick={() => {
+                                    showConfirm('O\'chirish', 'Ushbu videoni o\'chirmoqchimisiz?', () => {
+                                      setFanlar(fanlar.map(f => f.id === fan.id ? { ...f, topics: f.topics.map(t => t.id === topic.id ? { ...t, videos: t.videos.filter(v => v.id !== video.id) } : t) } : f));
+                                    });
+                                  }} className="p-1.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
+                                </td>
+                              </tr>
+                            ))}
+                            {topic.guides.map(guide => (
+                              <tr key={guide.id} className="hover:bg-secondary/50 transition-colors group">
+                                <td className="px-6 py-2 pl-20 border-l-2 border-primary/20">
+                                  <div className="text-sm text-foreground/80 group-hover:text-primary transition-colors flex items-center gap-2">
+                                    <FileText className="w-3 h-3" /> {guide.title}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-2 text-right">
+                                  <button onClick={() => {
+                                    showConfirm('O\'chirish', 'Ushbu qo\'llanmani o\'chirmoqchimisiz?', () => {
+                                      setFanlar(fanlar.map(f => f.id === fan.id ? { ...f, topics: f.topics.map(t => t.id === topic.id ? { ...t, guides: t.guides.filter(g => g.id !== guide.id) } : t) } : f));
+                                    });
+                                  }} className="p-1.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
+                                </td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        ))}
+                      </React.Fragment>
+                    ))}
+                    {activeTab === 'appSettings' && (
+                      <tr className="hover:bg-secondary/50 transition-colors group">
+                        <td className="px-6 py-4">
+                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">Ilova Yaratuvchisi</div>
+                          <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{appSettings.creatorName}</div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1887,6 +2214,8 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                 {activeTab === 'sections' && <SectionForm onAdd={(data) => addItem('sections', data)} />}
                 {activeTab === 'osce' && <OSCEForm onAdd={(data) => addItem('osce_scenarios', data)} />}
                 {activeTab === 'library' && <LibraryForm library={library} onUpdate={onUpdateLibrary} />}
+                {activeTab === 'fanlar' && <FanlarForm fanlar={fanlar} setFanlar={setFanlar} />}
+                {activeTab === 'appSettings' && <AppSettingsForm appSettings={appSettings} setAppSettings={setAppSettings} />}
                 {activeTab === 'settings' && <SettingsForm settings={settings} onUpdate={onUpdate} themeColor={themeColor} setThemeColor={setThemeColor} showAlert={showAlert} />}
               </div>
             </div>
@@ -1894,6 +2223,365 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
         </div>
       </div>
     </motion.div>
+  );
+}
+
+function AppSettingsForm({ appSettings, setAppSettings }: { appSettings: any, setAppSettings: (data: any) => void }) {
+  const [formData, setFormData] = useState(appSettings);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAppSettings(formData);
+    alert('Sozlamalar saqlandi!');
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-foreground mb-1">Ilova Yaratuvchisi</label>
+        <input
+          type="text"
+          value={formData.creatorName}
+          onChange={e => setFormData({ ...formData, creatorName: e.target.value })}
+          className="w-full px-4 py-2 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+          required
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-foreground mb-1">Yaratuvchi Rasmi (URL)</label>
+        <input
+          type="url"
+          value={formData.creatorImage}
+          onChange={e => setFormData({ ...formData, creatorImage: e.target.value })}
+          className="w-full px-4 py-2 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+          required
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-1">Gradient Boshlanishi</label>
+          <input
+            type="color"
+            value={formData.gradientFrom}
+            onChange={e => setFormData({ ...formData, gradientFrom: e.target.value })}
+            className="w-full h-10 rounded-xl cursor-pointer"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-1">Gradient Tugashi</label>
+          <input
+            type="color"
+            value={formData.gradientTo}
+            onChange={e => setFormData({ ...formData, gradientTo: e.target.value })}
+            className="w-full h-10 rounded-xl cursor-pointer"
+          />
+        </div>
+      </div>
+      <button type="submit" className="w-full py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20">
+        Saqlash
+      </button>
+    </form>
+  );
+}
+
+function FanlarForm({ fanlar, setFanlar }: { fanlar: Subject[], setFanlar: (data: Subject[]) => void }) {
+  const [newSubject, setNewSubject] = useState({ title: '', description: '', icon: 'BookOpen' });
+  const [newTopic, setNewTopic] = useState({ subjectId: '', title: '', description: '' });
+  const [newVideo, setNewVideo] = useState({ subjectId: '', topicId: '', title: '', description: '', videoUrl: '' });
+  const [newGuide, setNewGuide] = useState({ subjectId: '', topicId: '', title: '', description: '', driveLink: '' });
+
+  const handleAddSubject = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSubject.title) return;
+    const subject: Subject = {
+      id: Date.now().toString(),
+      title: newSubject.title,
+      description: newSubject.description,
+      icon: newSubject.icon,
+      topics: []
+    };
+    setFanlar([...fanlar, subject]);
+    setNewSubject({ title: '', description: '', icon: 'BookOpen' });
+    alert('Fan qo\'shildi!');
+  };
+
+  const handleAddTopic = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTopic.subjectId || !newTopic.title) return;
+    const updatedFanlar = fanlar.map(sub => {
+      if (sub.id === newTopic.subjectId) {
+        return {
+          ...sub,
+          topics: [
+            ...sub.topics,
+            {
+              id: Date.now().toString(),
+              title: newTopic.title,
+              description: newTopic.description,
+              videos: [],
+              guides: []
+            }
+          ]
+        };
+      }
+      return sub;
+    });
+    setFanlar(updatedFanlar);
+    setNewTopic({ subjectId: '', title: '', description: '' });
+    alert('Mavzu qo\'shildi!');
+  };
+
+  const handleAddVideo = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newVideo.subjectId || !newVideo.topicId || !newVideo.title || !newVideo.videoUrl) return;
+    const updatedFanlar = fanlar.map(sub => {
+      if (sub.id === newVideo.subjectId) {
+        return {
+          ...sub,
+          topics: sub.topics.map(top => {
+            if (top.id === newVideo.topicId) {
+              return {
+                ...top,
+                videos: [
+                  ...top.videos,
+                  {
+                    id: Date.now().toString(),
+                    title: newVideo.title,
+                    description: newVideo.description,
+                    videoUrl: newVideo.videoUrl
+                  }
+                ]
+              };
+            }
+            return top;
+          })
+        };
+      }
+      return sub;
+    });
+    setFanlar(updatedFanlar);
+    setNewVideo({ subjectId: '', topicId: '', title: '', description: '', videoUrl: '' });
+    alert('Video qo\'shildi!');
+  };
+
+  const handleAddGuide = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newGuide.subjectId || !newGuide.topicId || !newGuide.title || !newGuide.driveLink) return;
+    const updatedFanlar = fanlar.map(sub => {
+      if (sub.id === newGuide.subjectId) {
+        return {
+          ...sub,
+          topics: sub.topics.map(top => {
+            if (top.id === newGuide.topicId) {
+              return {
+                ...top,
+                guides: [
+                  ...top.guides,
+                  {
+                    id: Date.now().toString(),
+                    title: newGuide.title,
+                    description: newGuide.description,
+                    driveLink: newGuide.driveLink
+                  }
+                ]
+              };
+            }
+            return top;
+          })
+        };
+      }
+      return sub;
+    });
+    setFanlar(updatedFanlar);
+    setNewGuide({ subjectId: '', topicId: '', title: '', description: '', driveLink: '' });
+    alert('Qo\'llanma qo\'shildi!');
+  };
+
+  const selectedSubjectForTopic = fanlar.find(s => s.id === newTopic.subjectId);
+  const selectedSubjectForVideo = fanlar.find(s => s.id === newVideo.subjectId);
+  const selectedSubjectForGuide = fanlar.find(s => s.id === newGuide.subjectId);
+
+  return (
+    <div className="space-y-10">
+      {/* Add Subject */}
+      <form onSubmit={handleAddSubject} className="space-y-4 p-6 bg-secondary/30 rounded-2xl border border-border">
+        <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
+          <Plus className="w-4 h-4 text-primary" /> Yangi Fan Qo'shish
+        </h4>
+        <div className="grid grid-cols-1 gap-4">
+          <input 
+            type="text" 
+            placeholder="Fan nomi" 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={newSubject.title}
+            onChange={e => setNewSubject({...newSubject, title: e.target.value})}
+            required
+          />
+          <textarea 
+            placeholder="Fan tavsifi" 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary min-h-[80px]"
+            value={newSubject.description}
+            onChange={e => setNewSubject({...newSubject, description: e.target.value})}
+            required
+          />
+          <input 
+            type="text" 
+            placeholder="Ikonka (Lucide React nomi, masalan: BookOpen)" 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={newSubject.icon}
+            onChange={e => setNewSubject({...newSubject, icon: e.target.value})}
+            required
+          />
+          <button type="submit" className="w-full py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors">
+            Fanni Saqlash
+          </button>
+        </div>
+      </form>
+
+      {/* Add Topic */}
+      <form onSubmit={handleAddTopic} className="space-y-4 p-6 bg-secondary/30 rounded-2xl border border-border">
+        <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
+          <Plus className="w-4 h-4 text-primary" /> Yangi Mavzu Qo'shish
+        </h4>
+        <div className="grid grid-cols-1 gap-4">
+          <select 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={newTopic.subjectId}
+            onChange={e => setNewTopic({...newTopic, subjectId: e.target.value})}
+            required
+          >
+            <option value="">Fanni tanlang...</option>
+            {fanlar.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+          </select>
+          <input 
+            type="text" 
+            placeholder="Mavzu nomi" 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={newTopic.title}
+            onChange={e => setNewTopic({...newTopic, title: e.target.value})}
+            required
+          />
+          <textarea 
+            placeholder="Mavzu tavsifi" 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary min-h-[80px]"
+            value={newTopic.description}
+            onChange={e => setNewTopic({...newTopic, description: e.target.value})}
+            required
+          />
+          <button type="submit" className="w-full py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors">
+            Mavzuni Saqlash
+          </button>
+        </div>
+      </form>
+
+      {/* Add Video */}
+      <form onSubmit={handleAddVideo} className="space-y-4 p-6 bg-secondary/30 rounded-2xl border border-border">
+        <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
+          <Video className="w-4 h-4 text-primary" /> Yangi Video Dars Qo'shish
+        </h4>
+        <div className="grid grid-cols-1 gap-4">
+          <select 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={newVideo.subjectId}
+            onChange={e => setNewVideo({...newVideo, subjectId: e.target.value, topicId: ''})}
+            required
+          >
+            <option value="">Fanni tanlang...</option>
+            {fanlar.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+          </select>
+          <select 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={newVideo.topicId}
+            onChange={e => setNewVideo({...newVideo, topicId: e.target.value})}
+            required
+            disabled={!newVideo.subjectId}
+          >
+            <option value="">Mavzuni tanlang...</option>
+            {selectedSubjectForVideo?.topics.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+          </select>
+          <input 
+            type="text" 
+            placeholder="Video nomi" 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={newVideo.title}
+            onChange={e => setNewVideo({...newVideo, title: e.target.value})}
+            required
+          />
+          <textarea 
+            placeholder="Video tavsifi" 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary min-h-[80px]"
+            value={newVideo.description}
+            onChange={e => setNewVideo({...newVideo, description: e.target.value})}
+            required
+          />
+          <input 
+            type="url" 
+            placeholder="Video URL (YouTube)" 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={newVideo.videoUrl}
+            onChange={e => setNewVideo({...newVideo, videoUrl: e.target.value})}
+            required
+          />
+          <button type="submit" className="w-full py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors">
+            Videoni Saqlash
+          </button>
+        </div>
+      </form>
+
+      {/* Add Guide */}
+      <form onSubmit={handleAddGuide} className="space-y-4 p-6 bg-secondary/30 rounded-2xl border border-border">
+        <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
+          <FileText className="w-4 h-4 text-primary" /> Yangi Qo'llanma Qo'shish
+        </h4>
+        <div className="grid grid-cols-1 gap-4">
+          <select 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={newGuide.subjectId}
+            onChange={e => setNewGuide({...newGuide, subjectId: e.target.value, topicId: ''})}
+            required
+          >
+            <option value="">Fanni tanlang...</option>
+            {fanlar.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+          </select>
+          <select 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={newGuide.topicId}
+            onChange={e => setNewGuide({...newGuide, topicId: e.target.value})}
+            required
+            disabled={!newGuide.subjectId}
+          >
+            <option value="">Mavzuni tanlang...</option>
+            {selectedSubjectForGuide?.topics.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+          </select>
+          <input 
+            type="text" 
+            placeholder="Qo'llanma nomi" 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={newGuide.title}
+            onChange={e => setNewGuide({...newGuide, title: e.target.value})}
+            required
+          />
+          <textarea 
+            placeholder="Qo'llanma tavsifi" 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary min-h-[80px]"
+            value={newGuide.description}
+            onChange={e => setNewGuide({...newGuide, description: e.target.value})}
+            required
+          />
+          <input 
+            type="url" 
+            placeholder="Google Drive URL" 
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={newGuide.driveLink}
+            onChange={e => setNewGuide({...newGuide, driveLink: e.target.value})}
+            required
+          />
+          <button type="submit" className="w-full py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors">
+            Qo'llanmani Saqlash
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -2256,6 +2944,184 @@ function OSCEForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
       <textarea placeholder="Bemorning birinchi gapi" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.initialMessage} onChange={e => setFormData({...formData, initialMessage: e.target.value})} required />
       <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
     </form>
+  );
+}
+
+function PharmaPage() {
+  const [drugName, setDrugName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const handleSearch = async () => {
+    if (!drugName.trim()) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const prompt = `You are a virtual pharmacology assistant that provides complete and accurate information about medications searched by a medical student.
+
+RULES:
+
+1. The student will search for a drug by name. You must always respond in **Uzbek language**. Never respond in English or any other language.
+2. For each drug, provide the following information clearly:
+   - Drug name
+   - Indications
+   - Dosage (adult/children)
+   - Side effects
+   - Contraindications
+   - Warnings / Additional information
+3. Keep the response concise, professional, and easy to understand for a medical student.
+4. The output must be in a **format suitable for PDF export**.
+5. Never provide unnecessary extra information. Focus only on the requested drug.
+6. Always ensure the information is accurate and evidence-based.
+
+OUTPUT EXAMPLE:
+
+Dori nomi: Aspirin  
+Indikatsiya: Yurak kasalliklarini oldini olish, og‘riqni kamaytirish  
+Doza: 75–100 mg kuniga 1 marta (profilaktika)  
+Yon ta’siri: Oshqozon bezovtaligi, qon ketish xavfi  
+Kontrendikatsiya: Oshqozon yarasi, allergiya  
+Ogohlantirishlar: Suv bilan qabul qilish, bolalarda shifokor nazorati talab qilinadi
+
+---
+QIDIRILAYOTGAN DORI:
+${drugName}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: prompt
+      });
+      setResult(response.text || "Ma'lumot topilmadi.");
+    } catch (error) {
+      console.error(error);
+      setResult("Xatolik yuz berdi. Iltimos qayta urinib ko'ring.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const downloadPDF = async () => {
+    if (!result || !drugName) return;
+    try {
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF('p', 'mm', 'a4');
+      
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 20;
+      const maxLineWidth = pageWidth - margin * 2;
+      
+      let y = margin;
+      
+      const addText = (text: string, fontSize: number, isBold: boolean = false, color: number[] = [0, 0, 0]) => {
+        doc.setFontSize(fontSize);
+        doc.setFont("helvetica", isBold ? "bold" : "normal");
+        doc.setTextColor(color[0], color[1], color[2]);
+        
+        const lines = doc.splitTextToSize(text, maxLineWidth);
+        
+        for (let i = 0; i < lines.length; i++) {
+          if (y > pageHeight - margin) {
+            doc.addPage();
+            y = margin;
+          }
+          doc.text(lines[i], margin, y);
+          y += fontSize * 0.5;
+        }
+        y += 5;
+      };
+
+      addText(`Dori: ${drugName}`, 24, true, [37, 99, 235]);
+      y += 5;
+      
+      const dateStr = new Date().toLocaleDateString('uz-UZ', { 
+        year: 'numeric', month: 'long', day: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+      addText(`Sana: ${dateStr}`, 10, false, [100, 116, 139]);
+      y += 10;
+      
+      doc.setDrawColor(226, 232, 240);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 10;
+
+      const cleanText = result.replace(/\*\*/g, '').replace(/\*/g, '').replace(/#/g, '');
+      addText(cleanText, 12, false, [51, 65, 85]);
+      
+      doc.save(`${drugName}-malumot.pdf`);
+    } catch (error) {
+      console.error("PDF yaratishda xatolik:", error);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-8 p-4 md:p-8">
+      <div className="text-center space-y-4 mb-12">
+        <div className="inline-flex items-center justify-center p-3 bg-primary/10 rounded-2xl mb-4">
+          <Pill className="w-8 h-8 text-primary" />
+        </div>
+        <h2 className="text-4xl font-semibold tracking-tight text-foreground">AI Pharmacology Assistant</h2>
+        <p className="text-foreground/60 font-medium text-lg max-w-2xl mx-auto">
+          Dori nomini kiriting va u haqida to'liq, ishonchli ma'lumot oling.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6">
+        <div className="bg-card p-6 rounded-3xl border border-border shadow-sm space-y-6">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground flex items-center gap-2">
+              <Search className="w-4 h-4 text-primary" />
+              Dori nomi
+            </label>
+            <input
+              type="text"
+              value={drugName}
+              onChange={(e) => setDrugName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              placeholder="Masalan: Aspirin, Paratsetamol..."
+              className="w-full px-4 py-3 bg-background border border-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-foreground"
+            />
+          </div>
+
+          <button
+            onClick={handleSearch}
+            disabled={loading || !drugName.trim()}
+            className="w-full py-4 bg-primary text-primary-foreground rounded-2xl font-medium hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md shadow-primary/20"
+          >
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+            Ma'lumot izlash
+          </button>
+        </div>
+
+        {result && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-card p-8 rounded-3xl border border-border shadow-sm"
+          >
+            <div className="flex items-center justify-between mb-6 pb-6 border-b border-border">
+              <div className="flex items-center gap-3">
+                <div className="bg-primary/10 p-3 rounded-2xl">
+                  <CheckCircle2 className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-foreground">Dori Ma'lumotlari</h3>
+                  <p className="text-sm text-foreground/60">{drugName} haqida</p>
+                </div>
+              </div>
+              <button onClick={downloadPDF} className="px-4 py-2 bg-secondary text-foreground rounded-xl text-sm font-medium hover:bg-secondary/80 transition-all flex items-center gap-2">
+                <Upload className="w-4 h-4" />
+                PDF Yuklab olish
+              </button>
+            </div>
+            <div className="markdown-body prose prose-neutral dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-foreground/80 prose-strong:text-foreground prose-ul:list-disc">
+              <Markdown>{result}</Markdown>
+            </div>
+          </motion.div>
+        )}
+      </div>
+    </div>
   );
 }
 
