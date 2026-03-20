@@ -85,10 +85,23 @@
 
 .custom-scrollbar::-webkit-scrollbar {
   width: 4px;
+  height: 4px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
   @apply bg-transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
   @apply bg-border rounded-full hover:bg-foreground/20 transition-colors;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.mask-linear-fade {
+  mask-image: linear-gradient(to right, transparent, black 20px, black calc(100% - 20px), transparent);
 }

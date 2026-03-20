@@ -51,12 +51,14 @@ import {
   ArrowLeft,
   ArrowRight,
   Play,
-  ExternalLink
+  ExternalLink,
+  Globe,
+  Link as LinkIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { GoogleGenAI, ThinkingLevel, GenerateContentResponse } from "@google/genai";
-import { Mnemonic, Question, SymptomData, VideoData, Section, Setting, Patient, OSCEScenario, Subject, Topic, initialFanlar, initialSettings } from './data';
+import { Mnemonic, Question, SymptomData, VideoData, Section, Setting, Patient, OSCEScenario, Subject, Topic, NewsItem, JournalItem, initialFanlar, initialSettings, initialNews, initialJournals } from './data';
 import { explainMedicalTopic } from './services/aiService';
 import { quizData } from './quizData';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
@@ -70,7 +72,7 @@ const getYouTubeEmbedUrl = (url: string) => {
   return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : url;
 };
 
-type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients' | 'osce' | 'tutor' | 'pharma' | 'fanlar';
+type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients' | 'osce' | 'tutor' | 'pharma' | 'fanlar' | 'news' | 'journals';
 
 export function Modal({ isOpen, title, content, onClose, onConfirm, confirmText = "Tasdiqlash", cancelText = "Bekor qilish" }: { isOpen: boolean, title: string, content: string, onClose: () => void, onConfirm?: () => void, confirmText?: string, cancelText?: string }) {
   if (!isOpen) return null;
@@ -101,11 +103,15 @@ export function Modal({ isOpen, title, content, onClose, onConfirm, confirmText 
   );
 }
 
+import { useTranslation, Language } from './i18n';
+
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('meduz_dark_mode') === 'true');
   const [themeColor, setThemeColor] = useState(() => localStorage.getItem('meduz_theme') || '#2563eb');
+  
+  const { t, language, setLanguage } = useTranslation();
 
   useEffect(() => {
     if (isDarkMode) {
@@ -143,6 +149,24 @@ export default function App() {
     const saved = localStorage.getItem('meduz_app_settings');
     return saved ? JSON.parse(saved) : initialSettings;
   });
+
+  const [newsData, setNewsData] = useState<NewsItem[]>(() => {
+    const saved = localStorage.getItem('meduz_news');
+    return saved ? JSON.parse(saved) : initialNews;
+  });
+
+  const [journalsData, setJournalsData] = useState<JournalItem[]>(() => {
+    const saved = localStorage.getItem('meduz_journals');
+    return saved ? JSON.parse(saved) : initialJournals;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('meduz_news', JSON.stringify(newsData));
+  }, [newsData]);
+
+  useEffect(() => {
+    localStorage.setItem('meduz_journals', JSON.stringify(journalsData));
+  }, [journalsData]);
 
   useEffect(() => {
     localStorage.setItem('meduz_fanlar', JSON.stringify(fanlarData));
@@ -441,9 +465,9 @@ export default function App() {
       {/* Navigation */}
       <nav className="sticky top-0 z-50 bg-card/70 backdrop-blur-xl border-b border-border/40 shadow-sm transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
+          <div className="flex justify-between min-h-[64px] py-2 items-center">
             <div 
-              className="flex items-center gap-3 cursor-pointer group" 
+              className="flex items-center gap-3 cursor-pointer group shrink-0" 
               onClick={() => navigate('home')}
             >
               <div className="bg-primary p-2 rounded-xl shadow-md shadow-primary/20 group-hover:scale-105 transition-transform">
@@ -453,26 +477,37 @@ export default function App() {
             </div>
 
             {/* Desktop Nav */}
-            <div className="hidden md:flex items-center gap-6">
-              <NavLink active={currentPage === 'library'} onClick={() => navigate('library')}>Kutubxona</NavLink>
-              <NavLink active={currentPage === 'mnemonics'} onClick={() => navigate('mnemonics')}>Mnemonikalar</NavLink>
-              <NavLink active={currentPage === 'videos'} onClick={() => navigate('videos')}>Videolar</NavLink>
-              <NavLink active={currentPage === 'symptoms'} onClick={() => navigate('symptoms')}>Simptomlar</NavLink>
-              <NavLink active={currentPage === 'patients'} onClick={() => navigate('patients')}>Bemorlar</NavLink>
-              <NavLink active={currentPage === 'osce'} onClick={() => navigate('osce')}>OSCE</NavLink>
-              <NavLink active={currentPage === 'quiz'} onClick={() => navigate('quiz')}>Testlar</NavLink>
-              <NavLink active={currentPage === 'tutor'} onClick={() => navigate('tutor')}>AI Tutor</NavLink>
-              <NavLink active={currentPage === 'pharma'} onClick={() => navigate('pharma')}>Farmakologiya</NavLink>
-              <NavLink active={currentPage === 'fanlar'} onClick={() => navigate('fanlar')}>Fanlar</NavLink>
+            <div className="hidden md:flex flex-wrap items-center justify-center gap-2 flex-1 mx-6 px-2 py-1">
+              <NavLink active={currentPage === 'library'} onClick={() => navigate('library')}>{t('library')}</NavLink>
+              <NavLink active={currentPage === 'mnemonics'} onClick={() => navigate('mnemonics')}>{t('mnemonics')}</NavLink>
+              <NavLink active={currentPage === 'videos'} onClick={() => navigate('videos')}>{t('videos')}</NavLink>
+              <NavLink active={currentPage === 'symptoms'} onClick={() => navigate('symptoms')}>{t('symptoms')}</NavLink>
+              <NavLink active={currentPage === 'patients'} onClick={() => navigate('patients')}>{t('patients')}</NavLink>
+              <NavLink active={currentPage === 'osce'} onClick={() => navigate('osce')}>{t('osce')}</NavLink>
+              <NavLink active={currentPage === 'quiz'} onClick={() => navigate('quiz')}>{t('quiz')}</NavLink>
+              <NavLink active={currentPage === 'tutor'} onClick={() => navigate('tutor')}>{t('tutor')}</NavLink>
+              <NavLink active={currentPage === 'pharma'} onClick={() => navigate('pharma')}>{t('pharma')}</NavLink>
+              <NavLink active={currentPage === 'fanlar'} onClick={() => navigate('fanlar')}>{t('subjects')}</NavLink>
+              <NavLink active={currentPage === 'news'} onClick={() => navigate('news')}>{t('news_title')}</NavLink>
+              <NavLink active={currentPage === 'journals'} onClick={() => navigate('journals')}>Jurnallar</NavLink>
               <NavLink active={currentPage === 'ai'} onClick={() => navigate('ai')}>
-                <div className="flex items-center gap-1.5 text-accent font-medium">
-                  <Sparkles className="w-4 h-4" />
-                  AI Markazi
-                </div>
+                <Sparkles className="w-4 h-4" />
+                {t('aiCenter')}
               </NavLink>
+            </div>
+            
+            <div className="hidden md:flex items-center gap-3 shrink-0">
               
-              <div className="h-6 w-px bg-border mx-2" />
-              
+              <select 
+                value={language}
+                onChange={(e) => setLanguage(e.target.value as Language)}
+                className="p-2 rounded-xl bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground transition-all outline-none cursor-pointer text-sm font-medium appearance-none text-center"
+              >
+                <option value="uz">UZ</option>
+                <option value="ru">RU</option>
+                <option value="en">EN</option>
+              </select>
+
               <button 
                 onClick={() => setIsDarkMode(!isDarkMode)}
                 className="p-2 rounded-xl bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground transition-all"
@@ -492,6 +527,15 @@ export default function App() {
 
             {/* Mobile Menu Button */}
             <div className="md:hidden flex items-center gap-2">
+              <select 
+                value={language}
+                onChange={(e) => setLanguage(e.target.value as Language)}
+                className="p-2 rounded-xl bg-secondary text-foreground outline-none cursor-pointer text-sm font-medium appearance-none text-center"
+              >
+                <option value="uz">UZ</option>
+                <option value="ru">RU</option>
+                <option value="en">EN</option>
+              </select>
               <button 
                 onClick={() => setIsDarkMode(!isDarkMode)}
                 className="p-2 rounded-xl bg-secondary text-foreground"
@@ -518,18 +562,20 @@ export default function App() {
               className="md:hidden bg-card border-t border-border overflow-hidden"
             >
               <div className="px-4 py-4 space-y-2">
-                <MobileNavLink active={currentPage === 'library'} onClick={() => { navigate('library'); setIsMenuOpen(false); }}>Kutubxona</MobileNavLink>
-                <MobileNavLink active={currentPage === 'mnemonics'} onClick={() => { navigate('mnemonics'); setIsMenuOpen(false); }}>Mnemonikalar</MobileNavLink>
-                <MobileNavLink active={currentPage === 'videos'} onClick={() => { navigate('videos'); setIsMenuOpen(false); }}>Videolar</MobileNavLink>
-                <MobileNavLink active={currentPage === 'symptoms'} onClick={() => { navigate('symptoms'); setIsMenuOpen(false); }}>Simptomlar</MobileNavLink>
-                <MobileNavLink active={currentPage === 'patients'} onClick={() => { navigate('patients'); setIsMenuOpen(false); }}>Bemorlar</MobileNavLink>
-                <MobileNavLink active={currentPage === 'osce'} onClick={() => { navigate('osce'); setIsMenuOpen(false); }}>OSCE</MobileNavLink>
-                <MobileNavLink active={currentPage === 'quiz'} onClick={() => { navigate('quiz'); setIsMenuOpen(false); }}>Testlar</MobileNavLink>
-                <MobileNavLink active={currentPage === 'tutor'} onClick={() => { navigate('tutor'); setIsMenuOpen(false); }}>AI Tutor</MobileNavLink>
-                <MobileNavLink active={currentPage === 'pharma'} onClick={() => { navigate('pharma'); setIsMenuOpen(false); }}>Farmakologiya</MobileNavLink>
-                <MobileNavLink active={currentPage === 'fanlar'} onClick={() => { navigate('fanlar'); setIsMenuOpen(false); }}>Fanlar</MobileNavLink>
-                <MobileNavLink active={currentPage === 'ai'} onClick={() => { navigate('ai'); setIsMenuOpen(false); }}>AI Markazi</MobileNavLink>
-                <MobileNavLink active={currentPage === 'admin'} onClick={() => { navigate('admin'); setIsMenuOpen(false); }}>Admin Panel</MobileNavLink>
+                <MobileNavLink active={currentPage === 'library'} onClick={() => { navigate('library'); setIsMenuOpen(false); }}>{t('library')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'mnemonics'} onClick={() => { navigate('mnemonics'); setIsMenuOpen(false); }}>{t('mnemonics')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'videos'} onClick={() => { navigate('videos'); setIsMenuOpen(false); }}>{t('videos')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'symptoms'} onClick={() => { navigate('symptoms'); setIsMenuOpen(false); }}>{t('symptoms')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'patients'} onClick={() => { navigate('patients'); setIsMenuOpen(false); }}>{t('patients')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'osce'} onClick={() => { navigate('osce'); setIsMenuOpen(false); }}>{t('osce')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'quiz'} onClick={() => { navigate('quiz'); setIsMenuOpen(false); }}>{t('quiz')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'tutor'} onClick={() => { navigate('tutor'); setIsMenuOpen(false); }}>{t('tutor')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'pharma'} onClick={() => { navigate('pharma'); setIsMenuOpen(false); }}>{t('pharma')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'fanlar'} onClick={() => { navigate('fanlar'); setIsMenuOpen(false); }}>{t('subjects')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'news'} onClick={() => { navigate('news'); setIsMenuOpen(false); }}>{t('news_title')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'journals'} onClick={() => { navigate('journals'); setIsMenuOpen(false); }}>Jurnallar</MobileNavLink>
+                <MobileNavLink active={currentPage === 'ai'} onClick={() => { navigate('ai'); setIsMenuOpen(false); }}>{t('aiCenter')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'admin'} onClick={() => { navigate('admin'); setIsMenuOpen(false); }}>{t('adminPanel')}</MobileNavLink>
               </div>
             </motion.div>
           )}
@@ -565,6 +611,10 @@ export default function App() {
             setFanlar={setFanlarData}
             appSettings={appSettings}
             setAppSettings={setAppSettings}
+            news={newsData}
+            setNews={setNewsData}
+            journals={journalsData}
+            setJournals={setJournalsData}
             onUpdate={fetchAllData} 
             onUpdateLibrary={handleUpdateLibrary}
             themeColor={themeColor}
@@ -572,6 +622,8 @@ export default function App() {
             showAlert={showAlert}
             showConfirm={showConfirm}
           />}
+          {currentPage === 'news' && <NewsPage news={newsData} />}
+          {currentPage === 'journals' && <JournalsPage journals={journalsData} />}
         </AnimatePresence>
       </main>
 
@@ -703,13 +755,18 @@ function NavLink({ children, active, onClick }: { children: React.ReactNode, act
   return (
     <button 
       onClick={onClick}
-      className={`text-sm font-medium transition-all hover:text-primary relative py-2 ${active ? 'text-primary' : 'text-foreground/70'}`}
+      className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition-colors relative ${
+        active 
+          ? 'text-primary-foreground' 
+          : 'text-foreground/70 hover:bg-secondary hover:text-foreground'
+      }`}
     >
-      {children}
+      <span className="relative z-10 flex items-center gap-1.5">{children}</span>
       {active && (
         <motion.div 
-          layoutId="activeNav"
-          className="absolute -bottom-[21px] left-0 right-0 h-0.5 bg-primary"
+          layoutId="activeNavPill"
+          className="absolute inset-0 rounded-full bg-primary"
+          transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
         />
       )}
     </button>
@@ -730,6 +787,8 @@ function MobileNavLink({ children, active, onClick }: { children: React.ReactNod
 /* --- PAGES --- */
 
 function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate: (page: Page) => void, sections: Section[], showAlert: (title: string, content: string) => void, appSettings: any }) {
+  const { t } = useTranslation();
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -739,10 +798,13 @@ function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate
     >
       {/* Creator Info Section */}
       <div className="flex justify-center mb-8">
-        <div className="flex items-center gap-4 bg-card/50 backdrop-blur-md p-4 rounded-full border border-border shadow-sm">
-          <img src={appSettings.creatorImage} alt={appSettings.creatorName} className="w-12 h-12 rounded-full object-cover border-2 border-primary/20" />
+        <div className="flex items-center gap-3 bg-card/80 backdrop-blur-xl p-3 rounded-full border border-primary/20 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 cursor-pointer">
+          <div className="relative">
+            <img src={appSettings.creatorImage} alt={appSettings.creatorName} className="w-12 h-12 rounded-full object-cover border-2 border-background shadow-sm" />
+            <div className="absolute inset-0 rounded-full ring-1 ring-primary/30 ring-offset-1 ring-offset-background"></div>
+          </div>
           <div className="pr-4">
-            <p className="text-xs text-foreground/60 font-medium uppercase tracking-wider">Ilova yaratuvchisi</p>
+            <p className="text-[10px] text-primary font-bold uppercase tracking-wider mb-0.5">{t('creator')}</p>
             <p className="text-sm font-bold text-foreground">{appSettings.creatorName}</p>
           </div>
         </div>
@@ -758,23 +820,23 @@ function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate
           animate={{ opacity: 1, scale: 1 }}
           className="text-5xl md:text-7xl font-semibold tracking-tight text-foreground"
         >
-          MedUz – <span className="text-accent">Barcha tibbiyot</span> <br className="hidden md:block" /> talabalari uchun
+          {t('heroTitle1')} <span className="text-accent">{t('heroTitle2')}</span> <br className="hidden md:block" /> {t('heroTitle3')}
         </motion.h1>
         <p className="text-lg md:text-xl text-foreground/60 max-w-2xl mx-auto font-medium">
-          Bepul, o'zbek tilida, sifatli tibbiyot ta'limi. Bilimingizni mustahkamlang va imtihonlarga tayyorlaning.
+          {t('heroDesc')}
         </p>
         <div className="flex flex-wrap justify-center gap-4 pt-8">
           <button 
             onClick={() => onNavigate('quiz')}
             className="bg-primary text-primary-foreground px-8 py-4 rounded-2xl font-medium shadow-sm shadow-primary/30 hover:bg-primary/90 transition-all transform hover:-translate-y-1"
           >
-            Testni boshlash
+            {t('startQuiz')}
           </button>
           <button 
             onClick={() => onNavigate('mnemonics')}
             className="bg-card text-foreground border border-border/40 px-8 py-4 rounded-2xl font-medium hover:bg-secondary transition-all shadow-sm"
           >
-            Mnemonikalarni ko'rish
+            {t('viewMnemonics')}
           </button>
         </div>
       </section>
@@ -782,60 +844,67 @@ function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate
       {/* Features Grid */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <FeatureCard 
-          title="Fanlar"
-          description="Tibbiyot fanlari bo'yicha video darslar va qo'llanmalar to'plami."
+          title={t('featSubjectsTitle')}
+          description={t('featSubjectsDesc')}
           onClick={() => onNavigate('fanlar')}
           color="emerald"
           icon={<BookOpen />}
         />
         <FeatureCard 
-          title="Kutubxona"
-          description="Fanlar, mavzular va resurslarning iyerarxik to'plami."
+          title={t('featLibraryTitle')}
+          description={t('featLibraryDesc')}
           onClick={() => onNavigate('library')}
           color="blue"
           icon={<BookOpen />}
         />
         <FeatureCard 
-          title="Mnemonikalar"
-          description="Murakkab mavzularni oson eslab qolish uchun maxsus iboralar to'plami."
+          title={t('featMnemonicsTitle')}
+          description={t('featMnemonicsDesc')}
           onClick={() => onNavigate('mnemonics')}
           color="purple"
           icon={<Brain />}
         />
         <FeatureCard 
-          title="Video Kutubxona"
-          description="Klinik ko'nikmalar va amaliyotlar bo'yicha video darslar."
+          title={t('featVideosTitle')}
+          description={t('featVideosDesc')}
           onClick={() => onNavigate('videos')}
           color="red"
           icon={<Video />}
         />
         <FeatureCard 
-          title="Simptomlar"
-          description="Simptomlar asosida taxminiy tashxislar va 'Qizil bayroqlar'."
+          title={t('featSymptomsTitle')}
+          description={t('featSymptomsDesc')}
           onClick={() => onNavigate('symptoms')}
           color="emerald"
           icon={<Stethoscope />}
         />
         <FeatureCard 
-          title="Kunlik Test"
-          description="Bilimingizni sinash uchun har kuni yangi savollar to'plami."
+          title={t('featQuizTitle')}
+          description={t('featQuizDesc')}
           onClick={() => onNavigate('quiz')}
           color="blue"
           icon={<CheckCircle2 />}
         />
         <FeatureCard 
-          title="AI Markazi"
-          description="Sun'iy intellekt yordamida tahlil va media yaratish."
+          title={t('featAITitle')}
+          description={t('featAIDesc')}
           onClick={() => onNavigate('ai')}
           color="purple"
           icon={<Sparkles />}
         />
         <FeatureCard 
-          title="Virtual OSCE"
-          description="Klinik tarix yig'ish ko'nikmalaringizni virtual bemor bilan sinab ko'ring."
+          title={t('featOSCETitle')}
+          description={t('featOSCEDesc')}
           onClick={() => onNavigate('osce')}
           color="emerald"
           icon={<Stethoscope />}
+        />
+        <FeatureCard 
+          title={t('featNewsTitle')}
+          description={t('featNewsDesc')}
+          onClick={() => onNavigate('news')}
+          color="blue"
+          icon={<Globe />}
         />
         {sections.map((sec, idx) => {
           const Icon = (Icons[sec.icon as keyof typeof Icons] as React.ElementType) || Plus;
@@ -844,7 +913,7 @@ function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate
               key={sec.id || idx}
               title={sec.title}
               description={sec.content}
-              onClick={() => showAlert('Tez kunda', `Bu bo'lim tez kunda ishga tushadi: ${sec.title}`)}
+              onClick={() => showAlert(t('comingSoon'), `${t('comingSoonDesc')} ${sec.title}`)}
               color={sec.color}
               icon={<Icon />}
             />
@@ -874,6 +943,7 @@ function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate
 }
 
 const FeatureCard: React.FC<{ title: string, description: string, onClick: () => void, color: string, icon?: React.ReactNode }> = ({ title, description, onClick, color, icon }) => {
+  const { t } = useTranslation();
   const colors: Record<string, string> = {
     purple: 'hover:border-purple-300 hover:bg-purple-50/50 dark:hover:bg-purple-900/20 text-purple-500',
     red: 'hover:border-red-300 hover:bg-red-50/50 dark:hover:bg-red-900/20 text-red-500',
@@ -897,23 +967,24 @@ const FeatureCard: React.FC<{ title: string, description: string, onClick: () =>
       <h3 className="text-2xl font-bold mb-3 text-foreground group-hover:text-primary transition-colors tracking-tight">{title}</h3>
       <p className="text-foreground/60 text-sm leading-relaxed mb-6 font-medium line-clamp-2">{description}</p>
       <div className="flex items-center text-primary text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-[-10px] group-hover:translate-x-0 duration-300">
-        Batafsil <ChevronRight className="w-4 h-4 ml-1" />
+        {t('details')} <ChevronRight className="w-4 h-4 ml-1" />
       </div>
     </button>
   );
 };
 
 function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIExplain: (title: string, context: string) => void }) {
+  const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('Barchasi');
+  const [selectedCategory, setSelectedCategory] = useState(t('allCategories'));
 
-  const categories = ['Barchasi', ...Array.from(new Set(data.map(m => m.category)))];
+  const categories = [t('allCategories'), ...Array.from(new Set(data.map(m => m.category)))];
 
   const filteredMnemonics = data.filter(m => {
     const matchesSearch = m.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                          m.mnemonic.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          m.explanation.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'Barchasi' || m.category === selectedCategory;
+    const matchesCategory = selectedCategory === t('allCategories') || m.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
@@ -931,14 +1002,14 @@ function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIEx
     >
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-2">
-          <h2 className="text-4xl font-semibold tracking-tight text-foreground">Tibbiy Mnemonikalar</h2>
-          <p className="text-foreground/60 font-medium text-lg">Murakkab tushunchalarni oson eslab qolishga yordam beruvchi iboralar.</p>
+          <h2 className="text-4xl font-semibold tracking-tight text-foreground">{t('mnemonics')}</h2>
+          <p className="text-foreground/60 font-medium text-lg">{t('featMnemonicsDesc')}</p>
         </div>
         <div className="relative w-full md:w-96">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/40" />
           <input 
             type="text" 
-            placeholder="Qidirish..." 
+            placeholder={t('search')} 
             className="w-full pl-12 pr-4 py-3.5 bg-card border border-border/40 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all shadow-sm placeholder:text-foreground/40 text-foreground"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -971,14 +1042,14 @@ function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIEx
                 <button 
                   onClick={() => handleAIExplain(m.title, `Mnemonika: ${m.mnemonic}. Izoh: ${m.explanation}`)}
                   className="p-2.5 text-purple-500 hover:bg-purple-500/10 rounded-xl transition-all"
-                  title="AI tushuntirishi"
+                  title={t('aiExplanation')}
                 >
                   <Sparkles className="w-5 h-5" />
                 </button>
                 <button 
                   onClick={() => copyToClipboard(m.mnemonic)}
                   className="p-2.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"
-                  title="Nusxa olish"
+                  title={t('copy')}
                 >
                   <Copy className="w-5 h-5" />
                 </button>
@@ -998,8 +1069,8 @@ function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIEx
           <div className="bg-secondary w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
             <Search className="w-10 h-10 text-foreground/40" />
           </div>
-          <h3 className="text-2xl font-medium text-foreground mb-2">Hech narsa topilmadi</h3>
-          <p className="text-foreground/60 font-medium">Boshqa kalit so'z bilan qidirib ko'ring.</p>
+          <h3 className="text-2xl font-medium text-foreground mb-2">{t('noResults')}</h3>
+          <p className="text-foreground/60 font-medium">{t('tryAnotherSearch')}</p>
         </div>
       )}
 
@@ -1021,12 +1092,13 @@ function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIEx
 }
 
 function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExplain: (title: string, context: string) => void }) {
-  const [selectedFilter, setSelectedFilter] = useState('Barchasi');
+  const { t } = useTranslation();
+  const [selectedFilter, setSelectedFilter] = useState(t('videosAll'));
   const [activeVideo, setActiveVideo] = useState<VideoData | null>(null);
 
-  const filters = ['Barchasi', ...Array.from(new Set(data.map(v => v.category)))];
+  const filters = [t('videosAll'), ...Array.from(new Set(data.map(v => v.category)))];
 
-  const filteredVideos = data.filter(v => selectedFilter === 'Barchasi' || v.category === selectedFilter);
+  const filteredVideos = data.filter(v => selectedFilter === t('videosAll') || v.category === selectedFilter);
 
   return (
     <motion.div 
@@ -1036,8 +1108,8 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
       className="space-y-8"
     >
       <div className="space-y-2">
-        <h2 className="text-4xl font-semibold tracking-tight text-foreground">Video Kutubxona</h2>
-        <p className="text-foreground/60 font-medium text-lg">Klinik ko'nikmalarni vizual tarzda o'rganing.</p>
+        <h2 className="text-4xl font-semibold tracking-tight text-foreground">{t('videosTitle')}</h2>
+        <p className="text-foreground/60 font-medium text-lg">{t('videosDesc')}</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -1064,7 +1136,7 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
                 </div>
               ) : (
                 <div className="absolute top-4 right-4 bg-background/80 backdrop-blur-md text-foreground text-[10px] font-semibold px-3 py-1.5 rounded-lg uppercase tracking-wider z-20 shadow-sm">
-                  Tez kunda
+                  {t('videosComingSoon')}
                 </div>
               )}
               <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-md text-white text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 z-20">
@@ -1081,7 +1153,7 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
                     handleAIExplain(v.title, `Video dars mavzusi: ${v.title}. Kategoriya: ${v.category}`);
                   }}
                   className="p-2 text-purple-500 hover:bg-purple-500/10 rounded-xl transition-all"
-                  title="AI tushuntirishi"
+                  title={t('aiExplanation')}
                 >
                   <Sparkles className="w-4 h-4" />
                 </button>
@@ -1090,7 +1162,7 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
           </div>
         ))}
         {filteredVideos.length === 0 && (
-          <div className="col-span-full text-center py-24 text-foreground/40 font-medium text-lg bg-card rounded-2xl border border-border/40">Hozircha videolar mavjud emas.</div>
+          <div className="col-span-full text-center py-24 text-foreground/40 font-medium text-lg bg-card rounded-2xl border border-border/40">{t('videosNoVideos')}</div>
         )}
       </div>
 
@@ -1126,6 +1198,7 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
 }
 
 function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAIExplain: (title: string, context: string) => void }) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState('');
   
   const results = useMemo(() => {
@@ -1152,15 +1225,15 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
         <div className="bg-emerald-500/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-inner">
           <Stethoscope className="w-10 h-10 text-emerald-500" />
         </div>
-        <h2 className="text-4xl font-semibold tracking-tight text-foreground">Simptomlar Tekshiruvi</h2>
-        <p className="text-foreground/60 font-medium text-lg">Simptomlarni kiriting va ehtimoliy tashxislarni ko'ring.</p>
+        <h2 className="text-4xl font-semibold tracking-tight text-foreground">{t('symptomsCheck')}</h2>
+        <p className="text-foreground/60 font-medium text-lg">{t('symptomsDesc')}</p>
       </div>
 
       <div className="relative">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-foreground/40" />
         <input 
           type="text" 
-          placeholder="Masalan: ko'krak og'rig'i, isitma..." 
+          placeholder={t('symptomsPlaceholder')} 
           className="w-full pl-14 pr-4 py-4 bg-card border border-border/40 rounded-2xl shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-lg placeholder:text-foreground/40 text-foreground"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -1181,13 +1254,13 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
                 <button 
                   onClick={() => handleAIExplain(res.diagnosis, `Simptomlar: ${res.symptoms.join(', ')}. Tashxis: ${res.diagnosis}`)}
                   className="p-2.5 text-purple-500 hover:bg-purple-500/10 rounded-xl transition-all"
-                  title="AI tushuntirishi"
+                  title={t('aiExplanation')}
                 >
                   <Sparkles className="w-5 h-5" />
                 </button>
                 {res.redFlag && (
                   <span className="flex items-center gap-1.5 text-xs font-semibold bg-red-500 text-white px-3 py-1.5 rounded-lg uppercase tracking-wider shadow-sm shadow-red-500/20">
-                    <AlertTriangle className="w-4 h-4" /> Qizil bayroq
+                    <AlertTriangle className="w-4 h-4" /> {t('redFlag')}
                   </span>
                 )}
               </div>
@@ -1199,7 +1272,7 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
             </div>
             {res.redFlag && (
               <p className="text-sm text-red-700 dark:text-red-300 font-medium bg-red-500/10 p-4 rounded-xl border border-red-500/20 leading-relaxed">
-                <strong className="font-medium">Diqqat:</strong> Bu holat shoshilinch tibbiy yordam talab qilishi mumkin. Darhol shifokorga murojaat qiling!
+                <strong className="font-medium">{t('attention')}</strong> {t('emergency')}
               </p>
             )}
           </motion.div>
@@ -1207,7 +1280,7 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
 
         {query && results.length === 0 && (
           <div className="text-center py-16 bg-card rounded-2xl border border-dashed border-border/40">
-            <p className="text-foreground/50 font-medium text-lg">Ma'lumotlar bazasidan mos keladigan tashxis topilmadi.</p>
+            <p className="text-foreground/50 font-medium text-lg">{t('noDiagnosis')}</p>
           </div>
         )}
       </div>
@@ -1215,9 +1288,7 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
       <div className="bg-amber-500/10 border border-amber-500/20 p-8 rounded-2xl flex gap-5">
         <Info className="w-8 h-8 text-amber-500 shrink-0" />
         <p className="text-sm text-amber-700 dark:text-amber-300 leading-relaxed font-medium">
-          <strong className="font-medium">Rad etish:</strong> Ushbu vosita faqat ta'lim maqsadlari uchun mo'ljallangan. 
-          U professional tibbiy maslahat, tashxis yoki davolash o'rnini bosa olmaydi. 
-          Har qanday tibbiy holat bo'yicha har doim shifokoringiz bilan maslahatlashing.
+          <strong className="font-medium">{t('disclaimer')}</strong> {t('disclaimerText')}
         </p>
       </div>
     </motion.div>
@@ -1225,6 +1296,7 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
 }
 
 function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: string, context: string) => void, showAlert: (title: string, content: string) => void }) {
+  const { t } = useTranslation();
   const [step, setStep] = useState<'subjects' | 'topics' | 'quiz' | 'enter_name' | 'result'>('subjects');
   const [selectedSubject, setSelectedSubject] = useState<any>(null);
   const [selectedTopic, setSelectedTopic] = useState<any>(null);
@@ -1286,7 +1358,7 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
 
   const finishQuiz = () => {
     if (!userName.trim() || !userSurname.trim()) {
-      showAlert("Xatolik", "Iltimos, ism va familiyangizni kiriting.");
+      showAlert(t('quizError'), t('quizErrorName'));
       return;
     }
     const time = Math.floor((Date.now() - startTime) / 1000);
@@ -1325,21 +1397,21 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
   let animationProps = {};
   
   if (percentage >= 80) {
-    resultMessage = "Barakalla! Siz juda yaxshi natija ko'rsatdingiz.";
+    resultMessage = t('quizExcellent');
     resultColor = "text-emerald-600";
     animationProps = {
       animate: { scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] },
       transition: { duration: 0.5, repeat: Infinity, repeatType: "reverse" }
     };
   } else if (percentage >= 60) {
-    resultMessage = "Yaxshi natija, lekin yanada yaxshiroq bo'lishi mumkin.";
+    resultMessage = t('quizGood');
     resultColor = "text-amber-500";
     animationProps = {
       animate: { opacity: [0.5, 1, 0.5] },
       transition: { duration: 1.5, repeat: Infinity }
     };
   } else {
-    resultMessage = "Harakatda davom eting! Keyingi safar albatta yaxshiroq natija bo'ladi.";
+    resultMessage = t('quizKeepTrying');
     resultColor = "text-red-500";
   }
 
@@ -1417,8 +1489,8 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
           <div className="bg-primary/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-inner">
             <BookOpen className="w-10 h-10 text-primary" />
           </div>
-          <h2 className="text-4xl font-semibold tracking-tight text-foreground">Fanlar sahifasi</h2>
-          <p className="text-foreground/60 font-medium text-lg">Test ishlash uchun fanni tanlang</p>
+          <h2 className="text-4xl font-semibold tracking-tight text-foreground">{t('quizSubjectsTitle')}</h2>
+          <p className="text-foreground/60 font-medium text-lg">{t('quizSubjectsDesc')}</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {quizData.subjects.map(subject => (
@@ -1445,7 +1517,7 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
           <button onClick={() => setStep('subjects')} className="p-3 hover:bg-secondary rounded-full transition-colors text-foreground/60 hover:text-foreground">
             <ChevronRight className="w-6 h-6 rotate-180" />
           </button>
-          <h2 className="text-3xl font-semibold tracking-tight text-foreground">{selectedSubject.name} <span className="text-primary mx-2">&rarr;</span> Mavzular</h2>
+          <h2 className="text-3xl font-semibold tracking-tight text-foreground">{selectedSubject.name} <span className="text-primary mx-2">&rarr;</span> {t('quizTopicsTitle')}</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {selectedSubject.topics.map((topic: any) => (
@@ -1458,7 +1530,7 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
             >
               <div>
                 <h3 className="text-xl font-medium text-foreground group-hover:text-primary transition-colors tracking-tight">{topic.name}</h3>
-                <p className="text-sm text-foreground/50 mt-2 font-medium bg-secondary w-fit px-3 py-1 rounded-lg">{topic.questions.length} ta savol</p>
+                <p className="text-sm text-foreground/50 mt-2 font-medium bg-secondary w-fit px-3 py-1 rounded-lg">{topic.questions.length} {t('quizQuestion').toLowerCase()}</p>
               </div>
               <ChevronRight className="w-6 h-6 text-foreground/30 group-hover:text-primary transition-colors group-hover:translate-x-1" />
             </motion.button>
@@ -1480,7 +1552,7 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
               {currentQuestionIdx + 1}
             </div>
             <div className="flex-1 pr-4">
-              <h2 className="font-medium text-foreground mb-2">Savol {currentQuestionIdx + 1} / {selectedTopic.questions.length}</h2>
+              <h2 className="font-medium text-foreground mb-2">{t('quizQuestion')} {currentQuestionIdx + 1} / {selectedTopic.questions.length}</h2>
               <div className="w-full h-2.5 bg-secondary rounded-full overflow-hidden">
                 <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} className="h-full bg-primary" />
               </div>
@@ -1524,7 +1596,7 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
                   onClick={nextQuestion}
                   className="w-full bg-foreground text-background py-4 rounded-2xl font-medium hover:bg-foreground/90 transition-all flex items-center justify-center gap-2 shadow-sm hover:-translate-y-1"
                 >
-                  {currentQuestionIdx === selectedTopic.questions.length - 1 ? 'Natijani ko\'rish' : 'Keyingi'}
+                  {currentQuestionIdx === selectedTopic.questions.length - 1 ? t('quizFinish') : t('quizNext')}
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </motion.div>
@@ -1537,7 +1609,7 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
               disabled={selectedOption === null}
               className={`w-full py-4 rounded-2xl font-medium transition-all duration-300 ${selectedOption !== null ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/30 hover:bg-primary/90 hover:-translate-y-1' : 'bg-secondary text-foreground/40 cursor-not-allowed'}`}
             >
-              Javobni tasdiqlash
+              {t('quizSubmit')}
             </button>
           )}
         </div>
@@ -1552,29 +1624,29 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
           <div className="bg-emerald-500/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-inner">
             <CheckCircle2 className="w-10 h-10 text-emerald-500" />
           </div>
-          <h2 className="text-4xl font-semibold tracking-tight text-foreground">Test yakunlandi!</h2>
-          <p className="text-foreground/60 font-medium text-lg">Natijani ko'rish va sertifikat yuklab olish uchun ismingizni kiriting</p>
+          <h2 className="text-4xl font-semibold tracking-tight text-foreground">{t('quizResultTitle')}</h2>
+          <p className="text-foreground/60 font-medium text-lg">{t('quizEnterName')}</p>
         </div>
         <div className="bg-card p-8 rounded-2xl border border-border/40 shadow-sm shadow-primary/5 space-y-6">
           <div className="space-y-5">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground uppercase tracking-wider">Ismingiz</label>
+              <label className="text-sm font-medium text-foreground uppercase tracking-wider">{t('quizNamePlaceholder').split(' ')[0]}</label>
               <input 
                 type="text" 
                 value={userName}
                 onChange={e => setUserName(e.target.value)}
                 className="w-full p-4 bg-background border border-border/40 rounded-2xl focus:ring-2 focus:ring-primary/50 outline-none transition-all shadow-inner text-foreground placeholder:text-foreground/40"
-                placeholder="Ismingizni kiriting"
+                placeholder={t('quizNamePlaceholder')}
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground uppercase tracking-wider">Familiyangiz</label>
+              <label className="text-sm font-medium text-foreground uppercase tracking-wider">{t('quizSurnamePlaceholder').split(' ')[0]}</label>
               <input 
                 type="text" 
                 value={userSurname}
                 onChange={e => setUserSurname(e.target.value)}
                 className="w-full p-4 bg-background border border-border/40 rounded-2xl focus:ring-2 focus:ring-primary/50 outline-none transition-all shadow-inner text-foreground placeholder:text-foreground/40"
-                placeholder="Familiyangizni kiriting"
+                placeholder={t('quizSurnamePlaceholder')}
               />
             </div>
           </div>
@@ -1582,7 +1654,7 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
             onClick={finishQuiz}
             className="w-full bg-primary text-primary-foreground py-4 rounded-2xl font-medium shadow-sm shadow-primary/30 hover:bg-primary/90 transition-all hover:-translate-y-1"
           >
-            Natijani ko'rish
+            {t('quizFinish')}
           </button>
         </div>
       </motion.div>
@@ -1606,7 +1678,7 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
           
           <div className="grid grid-cols-2 gap-6 relative z-10">
             <div className="bg-secondary/50 p-6 rounded-2xl border border-border/40">
-              <p className="text-foreground/50 text-sm font-medium mb-2 uppercase tracking-wider">To'g'ri javoblar</p>
+              <p className="text-foreground/50 text-sm font-medium mb-2 uppercase tracking-wider">{t('quizScore')}</p>
               <p className="text-5xl font-semibold text-foreground">{score} <span className="text-2xl text-foreground/40">/ {totalQuestions}</span></p>
             </div>
             <div className="bg-secondary/50 p-6 rounded-2xl border border-border/40">
@@ -1621,7 +1693,7 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
               onClick={resetQuiz}
               className="bg-foreground text-background px-10 py-4 rounded-2xl font-medium hover:bg-foreground/90 transition-all shadow-sm hover:-translate-y-1"
             >
-              Boshqa mavzu
+              {t('quizBackToSubjects')}
             </button>
           </div>
         </div>
@@ -1633,6 +1705,7 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
 }
 
 function FanlarPage({ data }: { data: Subject[] }) {
+  const { t } = useTranslation();
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [activeTab, setActiveTab] = useState<'videos' | 'guides'>('videos');
@@ -1650,7 +1723,7 @@ function FanlarPage({ data }: { data: Subject[] }) {
           className="flex items-center gap-2 text-primary hover:text-primary/80 transition-colors bg-primary/10 px-4 py-2 rounded-xl font-medium w-fit"
         >
           <ArrowLeft className="w-5 h-5" />
-          Orqaga
+          {t('fanlarBack')}
         </button>
 
         <div className="bg-card border border-border rounded-3xl p-8 shadow-sm">
@@ -1662,7 +1735,7 @@ function FanlarPage({ data }: { data: Subject[] }) {
               onClick={() => setActiveTab('videos')}
               className={`pb-4 px-4 font-medium transition-colors relative ${activeTab === 'videos' ? 'text-primary' : 'text-foreground/60 hover:text-foreground'}`}
             >
-              Video Darslar
+              {t('fanlarVideoLessons')}
               {activeTab === 'videos' && (
                 <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
               )}
@@ -1671,7 +1744,7 @@ function FanlarPage({ data }: { data: Subject[] }) {
               onClick={() => setActiveTab('guides')}
               className={`pb-4 px-4 font-medium transition-colors relative ${activeTab === 'guides' ? 'text-primary' : 'text-foreground/60 hover:text-foreground'}`}
             >
-              Qo'llanmalar
+              {t('fanlarGuides')}
               {activeTab === 'guides' && (
                 <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
               )}
@@ -1694,7 +1767,7 @@ function FanlarPage({ data }: { data: Subject[] }) {
                     className="inline-flex items-center gap-2 text-primary font-medium hover:text-primary/80 transition-colors"
                   >
                     <ExternalLink className="w-4 h-4" />
-                    Videoni ko'rish
+                    {t('fanlarWatchVideo')}
                   </a>
                 </div>
               </div>
@@ -1714,7 +1787,7 @@ function FanlarPage({ data }: { data: Subject[] }) {
                   className="w-full py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
                 >
                   <Download className="w-5 h-5" />
-                  Ushbu havolaning ustiga bosing
+                  {t('fanlarDownloadGuide')}
                 </a>
               </div>
             ))}
@@ -1737,7 +1810,7 @@ function FanlarPage({ data }: { data: Subject[] }) {
           className="flex items-center gap-2 text-primary hover:text-primary/80 transition-colors bg-primary/10 px-4 py-2 rounded-xl font-medium w-fit"
         >
           <ArrowLeft className="w-5 h-5" />
-          Orqaga
+          {t('fanlarBack')}
         </button>
 
         <div className="bg-card border border-border rounded-3xl p-8 shadow-sm mb-8">
@@ -1755,8 +1828,8 @@ function FanlarPage({ data }: { data: Subject[] }) {
               <h3 className="text-xl font-bold text-foreground mb-3 group-hover:text-primary transition-colors">{topic.title}</h3>
               <p className="text-foreground/60 text-sm line-clamp-2 mb-6">{topic.description}</p>
               <div className="flex items-center gap-4 text-sm font-medium text-foreground/50">
-                <span className="flex items-center gap-1.5"><Video className="w-4 h-4" /> {topic.videos.length} ta video</span>
-                <span className="flex items-center gap-1.5"><FileText className="w-4 h-4" /> {topic.guides.length} ta qo'llanma</span>
+                <span className="flex items-center gap-1.5"><Video className="w-4 h-4" /> {topic.videos.length} {t('fanlarVideosCount')}</span>
+                <span className="flex items-center gap-1.5"><FileText className="w-4 h-4" /> {topic.guides.length} {t('fanlarGuidesCount')}</span>
               </div>
             </button>
           ))}
@@ -1773,8 +1846,8 @@ function FanlarPage({ data }: { data: Subject[] }) {
       className="space-y-8"
     >
       <div className="text-center max-w-2xl mx-auto mb-12">
-        <h1 className="text-4xl font-bold text-foreground mb-4">Fanlar</h1>
-        <p className="text-lg text-foreground/60">Tibbiyot fanlari bo'yicha video darslar va qo'llanmalar to'plami</p>
+        <h1 className="text-4xl font-bold text-foreground mb-4">{t('fanlarTitle')}</h1>
+        <p className="text-lg text-foreground/60">{t('fanlarDesc')}</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1793,7 +1866,7 @@ function FanlarPage({ data }: { data: Subject[] }) {
               <h3 className="text-2xl font-bold text-foreground mb-3 group-hover:text-primary transition-colors">{subject.title}</h3>
               <p className="text-foreground/60 leading-relaxed mb-6 line-clamp-2">{subject.description}</p>
               <div className="flex items-center gap-2 text-primary font-medium">
-                <span>{subject.topics.length} ta mavzu</span>
+                <span>{subject.topics.length} {t('fanlarTopics')}</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
             </button>
@@ -1804,7 +1877,7 @@ function FanlarPage({ data }: { data: Subject[] }) {
   );
 }
 
-function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections, settings, library, osceScenarios, fanlar, setFanlar, appSettings, setAppSettings, onUpdate, onUpdateLibrary, themeColor, setThemeColor, showAlert, showConfirm }: { 
+function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections, settings, library, osceScenarios, fanlar, setFanlar, appSettings, setAppSettings, news, setNews, journals, setJournals, onUpdate, onUpdateLibrary, themeColor, setThemeColor, showAlert, showConfirm }: { 
   mnemonics: Mnemonic[], 
   questions: Question[], 
   symptoms: SymptomData[], 
@@ -1818,6 +1891,10 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   setFanlar: (data: Subject[]) => void,
   appSettings: any,
   setAppSettings: (data: any) => void,
+  news: NewsItem[],
+  setNews: (data: NewsItem[]) => void,
+  journals: JournalItem[],
+  setJournals: (data: JournalItem[]) => void,
   onUpdate: () => void,
   onUpdateLibrary: (data: any) => void,
   themeColor: string,
@@ -1825,7 +1902,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   showAlert: (title: string, content: string) => void,
   showConfirm: (title: string, content: string, onConfirm: () => void) => void
 }) {
-  const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'settings' | 'library' | 'osce' | 'fanlar' | 'appSettings'>('mnemonics');
+  const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'settings' | 'library' | 'osce' | 'fanlar' | 'appSettings' | 'news' | 'journals'>('mnemonics');
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1935,6 +2012,8 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                 { id: 'osce', label: 'OSCE Ssenariylari', icon: Stethoscope },
                 { id: 'sections', label: 'Bo\'limlar', icon: Plus },
                 { id: 'fanlar', label: 'Fanlar', icon: BookOpen },
+                { id: 'news', label: 'Yangiliklar', icon: Globe },
+                { id: 'journals', label: 'Jurnallar', icon: BookOpen },
                 { id: 'appSettings', label: 'Ilova Sozlamalari', icon: Settings },
                 { id: 'settings', label: 'Sozlamalar', icon: Settings },
               ].map(tab => {
@@ -1993,11 +2072,11 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
             <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
               <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
                 <h3 className="font-medium text-foreground flex items-center gap-2">
-                  {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'patients' ? <Heart className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'osce' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : activeTab === 'fanlar' ? <BookOpen className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
-                  {activeTab === 'mnemonics' ? 'Mnemonikalar Ro\'yxati' : activeTab === 'questions' ? 'Savollar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'patients' ? 'Bemorlar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'osce' ? 'OSCE Ssenariylari' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : activeTab === 'fanlar' ? 'Fanlar Ro\'yxati' : activeTab === 'appSettings' ? 'Ilova Sozlamalari' : 'Tizim Sozlamalari'}
+                  {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'patients' ? <Heart className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'osce' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : activeTab === 'fanlar' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'news' ? <Globe className="w-5 h-5 text-primary" /> : activeTab === 'journals' ? <BookOpen className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
+                  {activeTab === 'mnemonics' ? 'Mnemonikalar Ro\'yxati' : activeTab === 'questions' ? 'Savollar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'patients' ? 'Bemorlar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'osce' ? 'OSCE Ssenariylari' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : activeTab === 'fanlar' ? 'Fanlar Ro\'yxati' : activeTab === 'news' ? 'Yangiliklar Ro\'yxati' : activeTab === 'journals' ? 'Jurnallar Ro\'yxati' : activeTab === 'appSettings' ? 'Ilova Sozlamalari' : 'Tizim Sozlamalari'}
                 </h3>
                 <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">
-                  {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : activeTab === 'osce' ? osceScenarios : activeTab === 'fanlar' ? fanlar : activeTab === 'appSettings' ? [] : sections).length} ta element
+                  {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : activeTab === 'osce' ? osceScenarios : activeTab === 'fanlar' ? fanlar : activeTab === 'news' ? news : activeTab === 'journals' ? journals : activeTab === 'appSettings' ? [] : sections).length} ta element
                 </span>
               </div>
               
@@ -2182,6 +2261,32 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                         ))}
                       </React.Fragment>
                     ))}
+                    {activeTab === 'news' && news.map(item => (
+                      <tr key={item.id} className="hover:bg-secondary/50 transition-colors group border-b border-border/50 last:border-0">
+                        <td className="px-6 py-4">
+                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{item.title}</div>
+                          <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{item.category} • {item.date}</div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button onClick={() => showConfirm('O\'chirish', 'Rostdan ham bu yangilikni o\'chirmoqchimisiz?', () => setNews(news.filter(n => n.id !== item.id)))} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {activeTab === 'journals' && journals.map(item => (
+                      <tr key={item.id} className="hover:bg-secondary/50 transition-colors group border-b border-border/50 last:border-0">
+                        <td className="px-6 py-4">
+                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{item.title}</div>
+                          <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{item.category} • {item.date}</div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button onClick={() => showConfirm('O\'chirish', 'Rostdan ham bu jurnalni o\'chirmoqchimisiz?', () => setJournals(journals.filter(n => n.id !== item.id)))} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
                     {activeTab === 'appSettings' && (
                       <tr className="hover:bg-secondary/50 transition-colors group">
                         <td className="px-6 py-4">
@@ -2215,6 +2320,8 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                 {activeTab === 'osce' && <OSCEForm onAdd={(data) => addItem('osce_scenarios', data)} />}
                 {activeTab === 'library' && <LibraryForm library={library} onUpdate={onUpdateLibrary} />}
                 {activeTab === 'fanlar' && <FanlarForm fanlar={fanlar} setFanlar={setFanlar} />}
+                {activeTab === 'news' && <NewsForm onAdd={async (data) => { setNews([...news, { ...data, id: Date.now().toString() }]); return true; }} />}
+                {activeTab === 'journals' && <JournalForm onAdd={async (data) => { setJournals([...journals, { ...data, id: Date.now().toString() }]); return true; }} />}
                 {activeTab === 'appSettings' && <AppSettingsForm appSettings={appSettings} setAppSettings={setAppSettings} />}
                 {activeTab === 'settings' && <SettingsForm settings={settings} onUpdate={onUpdate} themeColor={themeColor} setThemeColor={setThemeColor} showAlert={showAlert} />}
               </div>
@@ -2947,7 +3054,61 @@ function OSCEForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
   );
 }
 
+function NewsForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
+  const [formData, setFormData] = useState({ title: '', excerpt: '', date: new Date().toISOString().split('T')[0], category: 'Global Health Updates', imageUrl: '', link: '' });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (await onAdd(formData)) setFormData({ title: '', excerpt: '', date: new Date().toISOString().split('T')[0], category: 'Global Health Updates', imageUrl: '', link: '' });
+  };
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <input placeholder="Sarlavha" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required />
+      <textarea placeholder="Qisqacha matn (Excerpt)" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.excerpt} onChange={e => setFormData({...formData, excerpt: e.target.value})} required />
+      <div className="grid grid-cols-2 gap-4">
+        <input type="date" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
+        <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} required>
+          <option value="Global Health Updates">Global Health Updates</option>
+          <option value="WHO Guidelines">WHO Guidelines</option>
+          <option value="CDC Vaccination Protocols">CDC Vaccination Protocols</option>
+          <option value="Infection Monitoring">Infection Monitoring</option>
+        </select>
+      </div>
+      <input placeholder="Rasm URL manzili" type="url" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.imageUrl} onChange={e => setFormData({...formData, imageUrl: e.target.value})} required />
+      <input placeholder="Batafsil o'qish uchun havola (URL)" type="url" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.link} onChange={e => setFormData({...formData, link: e.target.value})} required />
+      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
+    </form>
+  );
+}
+
+function JournalForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
+  const [formData, setFormData] = useState({ title: '', description: '', date: new Date().toISOString().split('T')[0], category: 'Umumiy Tibbiyot', imageUrl: '', pdfUrl: '' });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (await onAdd(formData)) setFormData({ title: '', description: '', date: new Date().toISOString().split('T')[0], category: 'Umumiy Tibbiyot', imageUrl: '', pdfUrl: '' });
+  };
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <input placeholder="Jurnal nomi" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required />
+      <textarea placeholder="Jurnal tavsifi" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} required />
+      <div className="grid grid-cols-2 gap-4">
+        <input type="date" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
+        <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} required>
+          <option value="Umumiy Tibbiyot">Umumiy Tibbiyot</option>
+          <option value="Xirurgiya">Xirurgiya</option>
+          <option value="Kardiologiya">Kardiologiya</option>
+          <option value="Nevrologiya">Nevrologiya</option>
+          <option value="Pediatriya">Pediatriya</option>
+        </select>
+      </div>
+      <input placeholder="Jurnal muqovasi (Rasm URL)" type="url" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.imageUrl} onChange={e => setFormData({...formData, imageUrl: e.target.value})} required />
+      <input placeholder="Jurnal PDF fayli (URL)" type="url" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.pdfUrl} onChange={e => setFormData({...formData, pdfUrl: e.target.value})} required />
+      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
+    </form>
+  );
+}
+
 function PharmaPage() {
+  const { t, language } = useTranslation();
   const [drugName, setDrugName] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -2962,7 +3123,7 @@ function PharmaPage() {
 
 RULES:
 
-1. The student will search for a drug by name. You must always respond in **Uzbek language**. Never respond in English or any other language.
+1. The student will search for a drug by name. You must always respond in **${language === 'uz' ? 'Uzbek' : language === 'ru' ? 'Russian' : 'English'} language**. Never respond in any other language.
 2. For each drug, provide the following information clearly:
    - Drug name
    - Indications
@@ -2992,10 +3153,10 @@ ${drugName}`;
         model: 'gemini-3.1-pro-preview',
         contents: prompt
       });
-      setResult(response.text || "Ma'lumot topilmadi.");
+      setResult(response.text || t('pharmaNotFound'));
     } catch (error) {
       console.error(error);
-      setResult("Xatolik yuz berdi. Iltimos qayta urinib ko'ring.");
+      setResult(t('pharmaError'));
     } finally {
       setLoading(false);
     }
@@ -3032,14 +3193,14 @@ ${drugName}`;
         y += 5;
       };
 
-      addText(`Dori: ${drugName}`, 24, true, [37, 99, 235]);
+      addText(t('pharmaPDFTitle', { drugName }), 24, true, [37, 99, 235]);
       y += 5;
       
       const dateStr = new Date().toLocaleDateString('uz-UZ', { 
         year: 'numeric', month: 'long', day: 'numeric',
         hour: '2-digit', minute: '2-digit'
       });
-      addText(`Sana: ${dateStr}`, 10, false, [100, 116, 139]);
+      addText(t('pharmaPDFDate', { date: dateStr }), 10, false, [100, 116, 139]);
       y += 10;
       
       doc.setDrawColor(226, 232, 240);
@@ -3061,9 +3222,9 @@ ${drugName}`;
         <div className="inline-flex items-center justify-center p-3 bg-primary/10 rounded-2xl mb-4">
           <Pill className="w-8 h-8 text-primary" />
         </div>
-        <h2 className="text-4xl font-semibold tracking-tight text-foreground">AI Pharmacology Assistant</h2>
+        <h2 className="text-4xl font-semibold tracking-tight text-foreground">{t('pharmaTitle')}</h2>
         <p className="text-foreground/60 font-medium text-lg max-w-2xl mx-auto">
-          Dori nomini kiriting va u haqida to'liq, ishonchli ma'lumot oling.
+          {t('pharmaDesc')}
         </p>
       </div>
 
@@ -3072,14 +3233,14 @@ ${drugName}`;
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground flex items-center gap-2">
               <Search className="w-4 h-4 text-primary" />
-              Dori nomi
+              {t('pharmaDrugNameLabel')}
             </label>
             <input
               type="text"
               value={drugName}
               onChange={(e) => setDrugName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="Masalan: Aspirin, Paratsetamol..."
+              placeholder={t('pharmaDrugNamePlaceholder')}
               className="w-full px-4 py-3 bg-background border border-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-foreground"
             />
           </div>
@@ -3090,7 +3251,7 @@ ${drugName}`;
             className="w-full py-4 bg-primary text-primary-foreground rounded-2xl font-medium hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md shadow-primary/20"
           >
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-            Ma'lumot izlash
+            {t('pharmaSearchBtn')}
           </button>
         </div>
 
@@ -3106,13 +3267,13 @@ ${drugName}`;
                   <CheckCircle2 className="w-6 h-6 text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-foreground">Dori Ma'lumotlari</h3>
-                  <p className="text-sm text-foreground/60">{drugName} haqida</p>
+                  <h3 className="text-xl font-bold text-foreground">{t('pharmaResultTitle')}</h3>
+                  <p className="text-sm text-foreground/60">{t('pharmaResultDesc', { drugName })}</p>
                 </div>
               </div>
               <button onClick={downloadPDF} className="px-4 py-2 bg-secondary text-foreground rounded-xl text-sm font-medium hover:bg-secondary/80 transition-all flex items-center gap-2">
                 <Upload className="w-4 h-4" />
-                PDF Yuklab olish
+                {t('pharmaDownloadPDF')}
               </button>
             </div>
             <div className="markdown-body prose prose-neutral dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-foreground/80 prose-strong:text-foreground prose-ul:list-disc">
@@ -3126,6 +3287,7 @@ ${drugName}`;
 }
 
 function TutorPage() {
+  const { t, language } = useTranslation();
   const [caseText, setCaseText] = useState('');
   const [answerText, setAnswerText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -3140,8 +3302,8 @@ function TutorPage() {
       const prompt = `You are an advanced AI tutor designed to help medical students improve their clinical reasoning and medical knowledge.
 
 IMPORTANT LANGUAGE RULE:
-All responses must be written ONLY in Uzbek language.
-Never respond in English or any other language.
+All responses must be written ONLY in ${language === 'uz' ? 'Uzbek' : language === 'ru' ? 'Russian' : 'English'} language.
+Never respond in any other language.
 
 YOUR TASK:
 
@@ -3195,10 +3357,10 @@ ${answerText}`;
         model: 'gemini-3.1-pro-preview',
         contents: prompt
       });
-      setResult(response.text || "Xatolik yuz berdi.");
+      setResult(response.text || t('tutorError'));
     } catch (error) {
       console.error(error);
-      setResult("Xatolik yuz berdi. Iltimos qayta urinib ko'ring.");
+      setResult(t('tutorError'));
     } finally {
       setLoading(false);
     }
@@ -3210,9 +3372,9 @@ ${answerText}`;
         <div className="inline-flex items-center justify-center p-3 bg-primary/10 rounded-2xl mb-4">
           <GraduationCap className="w-8 h-8 text-primary" />
         </div>
-        <h2 className="text-4xl font-semibold tracking-tight text-foreground">AI Personal Medical Tutor</h2>
+        <h2 className="text-4xl font-semibold tracking-tight text-foreground">{t('tutorTitle')}</h2>
         <p className="text-foreground/60 font-medium text-lg max-w-2xl mx-auto">
-          Klinik holatni va o'z javobingizni kiriting. AI sizning klinik fikrlashingizni baholaydi va xatolaringizni tushuntirib beradi.
+          {t('tutorDesc')}
         </p>
       </div>
 
@@ -3221,12 +3383,12 @@ ${answerText}`;
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground flex items-center gap-2">
               <FileText className="w-4 h-4 text-primary" />
-              Klinik holat (Bemor shikoyati, anamnez, ko'rik natijalari)
+              {t('tutorCaseLabel')}
             </label>
             <textarea
               value={caseText}
               onChange={(e) => setCaseText(e.target.value)}
-              placeholder="Bemor 45 yoshli erkak, ko'krak qafasidagi og'riq bilan keldi..."
+              placeholder={t('tutorCasePlaceholder')}
               className="w-full h-32 px-4 py-3 bg-background border border-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-foreground resize-none"
             />
           </div>
@@ -3234,12 +3396,12 @@ ${answerText}`;
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground flex items-center gap-2">
               <Stethoscope className="w-4 h-4 text-primary" />
-              Sizning javobingiz (Tashxis, tekshiruvlar, davolash)
+              {t('tutorAnswerLabel')}
             </label>
             <textarea
               value={answerText}
               onChange={(e) => setAnswerText(e.target.value)}
-              placeholder="Mening taxminiy tashxisim: Miokard infarkti. Birinchi navbatda EKG qilish kerak..."
+              placeholder={t('tutorAnswerPlaceholder')}
               className="w-full h-40 px-4 py-3 bg-background border border-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-foreground resize-none"
             />
           </div>
@@ -3250,7 +3412,7 @@ ${answerText}`;
             className="w-full py-4 bg-primary text-primary-foreground rounded-2xl font-medium hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md shadow-primary/20"
           >
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-            Javobni baholash
+            {t('tutorEvaluateBtn')}
           </button>
         </div>
 
@@ -3265,8 +3427,8 @@ ${answerText}`;
                 <CheckCircle2 className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-foreground">Tutor Xulosasi</h3>
-                <p className="text-sm text-foreground/60">Sizning javobingiz tahlili</p>
+                <h3 className="text-xl font-bold text-foreground">{t('tutorResultTitle')}</h3>
+                <p className="text-sm text-foreground/60">{t('tutorResultDesc')}</p>
               </div>
             </div>
             <div className="markdown-body prose prose-neutral dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-foreground/80 prose-strong:text-foreground prose-ul:list-disc">
@@ -3775,6 +3937,7 @@ function PatientsPage({ patients, onTreat }: { patients: Patient[], onTreat: (id
 }
 
 function OSCEPage({ scenarios }: { scenarios: OSCEScenario[] }) {
+  const { t, language } = useTranslation();
   const [selectedScenario, setSelectedScenario] = useState<OSCEScenario | null>(null);
   const [messages, setMessages] = useState<{role: 'user' | 'model', text: string}[]>([]);
   const [input, setInput] = useState('');
@@ -3830,7 +3993,11 @@ function OSCEPage({ scenarios }: { scenarios: OSCEScenario[] }) {
       const systemInstruction = selectedScenario!.systemInstruction + `
       
 IMPORTANT INSTRUCTION FOR ENDING CONSULTATION:
-If the student clearly explains the diagnosis and proposed treatment plan, you MUST end the consultation by praising the student in Uzbek (e.g., "Rahmat doktor, juda tushunarli qilib tushuntirdingiz. Ajoyib ishladingiz!") AND you MUST include the exact string "[END_CONSULTATION]" at the very end of your response.`;
+If the student clearly explains the diagnosis and proposed treatment plan, you MUST end the consultation by praising the student in ${language === 'uz' ? 'Uzbek' : language === 'ru' ? 'Russian' : 'English'} (e.g., "Rahmat doktor, juda tushunarli qilib tushuntirdingiz. Ajoyib ishladingiz!") AND you MUST include the exact string "[END_CONSULTATION]" at the very end of your response.
+
+IMPORTANT LANGUAGE RULE:
+All responses must be written ONLY in ${language === 'uz' ? 'Uzbek' : language === 'ru' ? 'Russian' : 'English'} language.
+Never respond in any other language.`;
 
       const contents = messages.map(msg => ({
         role: msg.role,
@@ -3846,7 +4013,7 @@ If the student clearly explains the diagnosis and proposed treatment plan, you M
         }
       });
 
-      const responseText = response.text || "Kechirasiz, tushunmadim.";
+      const responseText = response.text || t('osce_patient_fallback');
       
       if (responseText.includes('[END_CONSULTATION]')) {
         const cleanText = responseText.replace('[END_CONSULTATION]', '').trim();
@@ -3857,7 +4024,7 @@ If the student clearly explains the diagnosis and proposed treatment plan, you M
       }
     } catch (error) {
       console.error(error);
-      setMessages(prev => [...prev, { role: 'model', text: "Xatolik yuz berdi. Iltimos qayta urinib ko'ring." }]);
+      setMessages(prev => [...prev, { role: 'model', text: t('osce_patient_error') }]);
     } finally {
       setLoading(false);
     }
@@ -3868,70 +4035,70 @@ If the student clearly explains the diagnosis and proposed treatment plan, you M
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       
-      const transcript = currentMessages.map(m => `${m.role === 'user' ? 'Talaba' : 'Bemor'}: ${m.text}`).join('\n');
+      const transcript = currentMessages.map(m => `${m.role === 'user' ? t('student') : t('patient')}: ${m.text}`).join('\n');
       
       const prompt = `You are an expert medical examiner evaluating a medical student's OSCE performance.
 Here is the transcript of the consultation:
 
 ${transcript}
 
-Based on this interaction, generate a structured clinical report and evaluation in UZBEK language.
+Based on this interaction, generate a structured clinical report and evaluation in ${language === 'uz' ? 'Uzbek' : language === 'ru' ? 'Russian' : 'English'} language.
 Format the output EXACTLY as follows using Markdown:
 
-# OSCE Klinik Hisobot va Baholash
+# ${t('osce_report_title')}
 
-## 1. Bemor haqida umumiy ma'lumot
+## 1. ${t('osce_patient_info')}
 [Ma'lumot]
 
-## 2. Asosiy shikoyat
+## 2. ${t('osce_chief_complaint')}
 [Shikoyat]
 
-## 3. Anamnesis Morbi (Kasallik tarixi)
+## 3. ${t('osce_history_present_illness')}
 [Tarix]
 
-## 4. Anamnesis Vitae (Hayot tarixi)
+## 4. ${t('osce_past_medical_history')}
 [Tarix]
 
-## 5. Risk omillari
+## 5. ${t('osce_risk_factors')}
 [Omillar]
 
-## 6. Taxminiy tashxis
+## 6. ${t('osce_provisional_diagnosis')}
 [Tashxis]
 
-## 7. Differensial tashxis
+## 7. ${t('osce_differential_diagnosis')}
 [Tashxislar]
 
-## 8. Tavsiya etilgan tekshiruvlar
+## 8. ${t('osce_recommended_tests')}
 [Tekshiruvlar]
 
-## 9. Davolash rejasi
+## 9. ${t('osce_treatment_plan')}
 [Reja]
 
-## 10. Feedback (Fikr-mulohaza)
-**Talabaning kuchli tomonlari:**
+## 10. ${t('osce_feedback')}
+**${t('osce_strengths')}:**
 - ...
 
-**Yaxshilanishi kerak bo'lgan jihatlar:**
+**${t('osce_areas_improvement')}:**
 - ...
 
-## 11. Yakuniy Baho (100 ballik tizim)
-- Anamnez yig'ish sifati: [X] / 30
-- Simptomlarni aniqlash: [X] / 20
-- Klinik fikrlash: [X] / 20
-- Bemor bilan muloqot: [X] / 15
-- Davolash rejasini tushuntirish: [X] / 15
+## 11. ${t('osce_final_score')}
+- ${t('osce_score_history')}: [X] / 30
+- ${t('osce_score_symptoms')}: [X] / 20
+- ${t('osce_score_clinical')}: [X] / 20
+- ${t('osce_score_communication')}: [X] / 15
+- ${t('osce_score_treatment')}: [X] / 15
 
-**UMUMIY BALL: [X] / 100**`;
+**${t('osce_overall_score')}: [X] / 100**`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-3.1-pro-preview',
         contents: prompt
       });
 
-      setEvaluation(response.text || "Baholashda xatolik yuz berdi.");
+      setEvaluation(response.text || t('osce_evaluation_error'));
     } catch (error) {
       console.error(error);
-      setEvaluation("Baholashda xatolik yuz berdi.");
+      setEvaluation(t('osce_evaluation_error'));
     } finally {
       setEvaluating(false);
     }
@@ -3954,7 +4121,7 @@ Format the output EXACTLY as follows using Markdown:
       doc.setFontSize(22);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(15, 23, 42); // Slate 900
-      doc.text('OSCE Natijasi', margin, y);
+      doc.text(t('osce_result_title'), margin, y);
       y += 10;
       
       // Subtitle
@@ -4028,10 +4195,10 @@ Format the output EXACTLY as follows using Markdown:
         y += splitLines.length * (fontSize * 0.5) + 2;
       }
       
-      doc.save('OSCE_Hisobot.pdf');
+      doc.save(t('osce_pdf_filename'));
     } catch (error) {
       console.error('PDF generation failed', error);
-      alert("PDF yaratishda xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.");
+      alert(t('osce_pdf_error'));
     }
   };
 
@@ -4042,9 +4209,9 @@ Format the output EXACTLY as follows using Markdown:
           <div className="inline-flex items-center justify-center p-3 bg-primary/10 rounded-2xl mb-4">
             <Stethoscope className="w-8 h-8 text-primary" />
           </div>
-          <h2 className="text-4xl font-semibold tracking-tight text-foreground">Virtual OSCE Bemor</h2>
+          <h2 className="text-4xl font-semibold tracking-tight text-foreground">{t('osce_virtual_patient')}</h2>
           <p className="text-foreground/60 font-medium text-lg max-w-2xl mx-auto">
-            Klinik tarix yig'ish ko'nikmalaringizni sun'iy intellekt yordamida sinab ko'ring. Bemor bilan muloqot qiling, tashxis qo'ying va baholaning.
+            {t('osce_virtual_patient_desc')}
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -4226,5 +4393,168 @@ Format the output EXACTLY as follows using Markdown:
         </div>
       </div>
     </div>
+  );
+}
+
+function JournalsPage({ journals }: { journals: JournalItem[] }) {
+  const [category, setCategory] = useState('Barchasi');
+
+  const categories = [
+    { id: 'Barchasi', label: 'Barchasi' },
+    { id: 'Umumiy Tibbiyot', label: 'Umumiy Tibbiyot' },
+    { id: 'Xirurgiya', label: 'Xirurgiya' },
+    { id: 'Kardiologiya', label: 'Kardiologiya' },
+    { id: 'Nevrologiya', label: 'Nevrologiya' },
+    { id: 'Pediatriya', label: 'Pediatriya' },
+  ];
+
+  const filteredJournals = category === 'Barchasi' 
+    ? journals 
+    : journals.filter(item => item.category === category);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="max-w-7xl mx-auto"
+    >
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground mb-2">Tibbiyot Jurnallari</h1>
+          <p className="text-foreground/60">Eng so'nggi tibbiyot jurnallari va maqolalar to'plami</p>
+        </div>
+        
+        <div className="flex overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:pb-0 w-full md:w-auto gap-2 hide-scrollbar">
+          {categories.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setCategory(cat.id)}
+              className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                category === cat.id
+                  ? 'bg-primary text-primary-foreground shadow-md shadow-primary/20'
+                  : 'bg-card text-foreground/70 hover:bg-secondary border border-border'
+              }`}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {filteredJournals.map(journal => (
+          <div key={journal.id} className="bg-card rounded-2xl overflow-hidden border border-border shadow-sm hover:shadow-md transition-all group flex flex-col">
+            <div className="relative h-64 overflow-hidden bg-secondary/30">
+              <img 
+                src={journal.imageUrl} 
+                alt={journal.title} 
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute top-4 left-4 bg-background/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold text-primary">
+                {journal.category}
+              </div>
+            </div>
+            <div className="p-6 flex flex-col flex-1">
+              <div className="text-xs text-foreground/50 mb-3">{journal.date}</div>
+              <h3 className="text-lg font-bold text-foreground mb-3 line-clamp-2 group-hover:text-primary transition-colors">{journal.title}</h3>
+              <p className="text-foreground/70 text-sm mb-6 line-clamp-3 flex-1">{journal.description}</p>
+              <a href={journal.pdfUrl} target="_blank" rel="noopener noreferrer" className="w-full bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground font-medium text-sm py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all mt-auto">
+                <BookOpen className="w-4 h-4" /> PDF formatda o'qish
+              </a>
+            </div>
+          </div>
+        ))}
+        {filteredJournals.length === 0 && (
+          <div className="col-span-full py-12 text-center text-foreground/50">
+            Bu kategoriyada hozircha jurnallar yo'q.
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function NewsPage({ news }: { news: NewsItem[] }) {
+  const { t } = useTranslation();
+  const [newsCategory, setNewsCategory] = useState('Barchasi');
+
+  const categories = [
+    { id: 'Barchasi', label: 'Barchasi' },
+    { id: 'Global Health Updates', label: t('news_cat_global') },
+    { id: 'WHO Guidelines', label: t('news_cat_who') },
+    { id: 'CDC Vaccination Protocols', label: t('news_cat_cdc') },
+    { id: 'Infection Monitoring', label: t('news_cat_infection') },
+  ];
+
+  const filteredNews = newsCategory === 'Barchasi' 
+    ? news 
+    : news.filter(item => item.category === newsCategory);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="max-w-6xl mx-auto flex flex-col p-4 md:p-6"
+    >
+      <div className="flex items-center gap-3 mb-8">
+        <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center">
+          <Globe className="w-6 h-6 text-primary" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold text-foreground">{t('news_title')}</h2>
+          <p className="text-foreground/60">{t('news_desc')}</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-8">
+        {categories.map(cat => (
+          <button
+            key={cat.id}
+            onClick={() => setNewsCategory(cat.id)}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+              newsCategory === cat.id 
+                ? 'bg-primary text-primary-foreground shadow-md' 
+                : 'bg-secondary text-foreground hover:bg-secondary/80'
+            }`}
+          >
+            {cat.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredNews.map(news => (
+          <div key={news.id} className="bg-card border border-border rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all group flex flex-col">
+            <div className="relative h-48 overflow-hidden">
+              <img 
+                src={news.imageUrl} 
+                alt={news.title} 
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute top-4 left-4 bg-background/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold text-primary">
+                {news.category}
+              </div>
+            </div>
+            <div className="p-6 flex flex-col flex-1">
+              <div className="text-xs text-foreground/50 mb-3">{news.date}</div>
+              <h3 className="text-xl font-bold text-foreground mb-3 line-clamp-2 group-hover:text-primary transition-colors">{news.title}</h3>
+              <p className="text-foreground/70 text-sm mb-6 line-clamp-3 flex-1">{news.excerpt}</p>
+              <a href={news.link} target="_blank" rel="noopener noreferrer" className="text-primary font-medium text-sm flex items-center gap-2 hover:gap-3 transition-all mt-auto w-fit">
+                Batafsil o'qish <ArrowRight className="w-4 h-4" />
+              </a>
+            </div>
+          </div>
+        ))}
+        {filteredNews.length === 0 && (
+          <div className="col-span-full py-12 text-center text-foreground/50">
+            Bu kategoriyada hozircha yangiliklar yo'q.
+          </div>
+        )}
+      </div>
+    </motion.div>
   );
 }

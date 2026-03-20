@@ -95,6 +95,68 @@ export interface OSCEScenario {
   initialMessage: string;
 }
 
+export interface NewsItem {
+  id: string;
+  title: string;
+  excerpt: string;
+  date: string;
+  category: string;
+  imageUrl: string;
+  link: string;
+}
+
+export interface JournalItem {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  category: string;
+  imageUrl: string;
+  pdfUrl: string;
+}
+
+export const initialJournals: JournalItem[] = [
+  {
+    id: '1',
+    title: 'Tibbiyot Jurnali - Mart 2026',
+    description: 'Zamonaviy tibbiyotdagi so\'nggi yangiliklar va maqolalar to\'plami.',
+    date: '2026-03-20',
+    category: 'Umumiy Tibbiyot',
+    imageUrl: 'https://picsum.photos/seed/journal1/800/600',
+    pdfUrl: '#'
+  }
+];
+
+export const initialNews: NewsItem[] = [
+  {
+    id: "1",
+    title: "JS/TS texnologiyalari tibbiyotda",
+    excerpt: "Tibbiyot sohasida sun'iy intellekt va yangi dasturlash tillarining o'rni kundan kunga oshib bormoqda. Zamonaviy yondashuvlar...",
+    date: "2026-03-20",
+    category: "Global Health Updates",
+    imageUrl: "https://picsum.photos/seed/mednews1/800/400",
+    link: "https://www.who.int"
+  },
+  {
+    id: "2",
+    title: "Yangi JS/TS texnologiyalari tibbiyotda",
+    excerpt: "Tibbiyot sohasida sun'iy intellekt va yangi dasturlash tillarining o'rni kundan kunga oshib bormoqda. Zamonaviy yondashuvlar...",
+    date: "2026-03-18",
+    category: "WHO Guidelines",
+    imageUrl: "https://picsum.photos/seed/mednews2/800/400",
+    link: "https://www.who.int"
+  },
+  {
+    id: "3",
+    title: "JS/TS texnologiyalari tibbiyotda",
+    excerpt: "Tibbiyot sohasida sun'iy intellekt va yangi dasturlash tillarining o'rni kundan kunga oshib bormoqda. Zamonaviy yondashuvlar...",
+    date: "2026-03-15",
+    category: "CDC Vaccination Protocols",
+    imageUrl: "https://picsum.photos/seed/mednews3/800/400",
+    link: "https://www.cdc.gov"
+  }
+];
+
 export const osceScenarios: OSCEScenario[] = [
   {
     title: "Ko'krak qafasida og'riq",
