@@ -2,36 +2,36 @@
 @import "tailwindcss";
 
 :root {
-  --primary: #0f172a; /* Slate 900 */
+  --primary: #0A2540; /* Deep Medical Blue */
   --primary-foreground: #ffffff;
-  --secondary: #f8fafc; /* Slate 50 */
-  --secondary-foreground: #334155; /* Slate 700 */
-  --accent: #3b82f6; /* Blue 500 */
+  --secondary: #f4f7f9; /* Very light gray/blue */
+  --secondary-foreground: #0A2540;
+  --accent: #00BFA5; /* Teal */
   --accent-foreground: #ffffff;
   --background: #ffffff;
-  --foreground: #0f172a;
+  --foreground: #0A2540;
   --card: #ffffff;
-  --card-foreground: #0f172a;
+  --card-foreground: #0A2540;
   --border: #e2e8f0;
   --input: #f1f5f9;
-  --ring: #0f172a;
+  --ring: #0A2540;
   --radius: 0.75rem;
 }
 
 .dark {
-  --primary: #ffffff;
-  --primary-foreground: #0f172a;
-  --secondary: #1e293b; /* Slate 800 */
-  --secondary-foreground: #cbd5e1; /* Slate 300 */
-  --accent: #3b82f6;
-  --accent-foreground: #ffffff;
-  --background: #020617; /* Slate 950 */
+  --primary: #00BFA5; /* Teal for dark mode primary */
+  --primary-foreground: #0A2540;
+  --secondary: #112A46; /* Slightly lighter than background */
+  --secondary-foreground: #e2e8f0;
+  --accent: #00E5C0;
+  --accent-foreground: #0A2540;
+  --background: #0A2540; /* Deep Medical Blue */
   --foreground: #f8fafc;
-  --card: #0f172a; /* Slate 900 */
+  --card: #0D2E4E;
   --card-foreground: #f8fafc;
-  --border: #1e293b;
-  --input: #1e293b;
-  --ring: #ffffff;
+  --border: #1A3F63;
+  --input: #112A46;
+  --ring: #00BFA5;
 }
 
 @theme {

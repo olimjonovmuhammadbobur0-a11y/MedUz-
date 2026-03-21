@@ -53,7 +53,11 @@ import {
   Play,
   ExternalLink,
   Globe,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Activity,
+  Users,
+  CheckSquare,
+  Microscope
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
@@ -72,7 +76,7 @@ const getYouTubeEmbedUrl = (url: string) => {
   return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : url;
 };
 
-type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients' | 'osce' | 'tutor' | 'pharma' | 'fanlar' | 'news' | 'journals';
+type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients' | 'osce' | 'tutor' | 'pharma' | 'fanlar' | 'news' | 'journals' | 'profile';
 
 export function Modal({ isOpen, title, content, onClose, onConfirm, confirmText = "Tasdiqlash", cancelText = "Bekor qilish" }: { isOpen: boolean, title: string, content: string, onClose: () => void, onConfirm?: () => void, confirmText?: string, cancelText?: string }) {
   if (!isOpen) return null;
@@ -103,6 +107,7 @@ export function Modal({ isOpen, title, content, onClose, onConfirm, confirmText 
   );
 }
 
+import { ProfilePage } from './components/ProfilePage';
 import { useTranslation, Language } from './i18n';
 
 export default function App() {
@@ -110,8 +115,73 @@ export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('meduz_dark_mode') === 'true');
   const [themeColor, setThemeColor] = useState(() => localStorage.getItem('meduz_theme') || '#2563eb');
+  const [user, setUser] = useState<any>(null);
   
   const { t, language, setLanguage } = useTranslation();
+
+  const updateProgress = async (field: 'quizScore' | 'videosWatched' | 'mnemonicsRead' | 'symptomsChecked', value: number | ((prev: number) => number)) => {
+    if (!user) return;
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userRef);
+      if (userDoc.exists()) {
+        const currentProgress = userDoc.data().progress || { quizScore: 0, videosWatched: 0, mnemonicsRead: 0, symptomsChecked: 0 };
+        const newValue = typeof value === 'function' ? value(currentProgress[field] || 0) : value;
+        await updateDoc(userRef, {
+          [`progress.${field}`]: newValue
+        });
+      }
+    } catch (error) {
+      console.error("Error updating progress:", error);
+    }
+  };
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        // Initialize user progress document if it doesn't exist
+        const userRef = doc(db, 'users', currentUser.uid);
+        getDoc(userRef).then((docSnap) => {
+          if (!docSnap.exists()) {
+            setDoc(userRef, {
+              uid: currentUser.uid,
+              email: currentUser.email,
+              displayName: currentUser.displayName,
+              photoURL: currentUser.photoURL,
+              role: 'user',
+              progress: {
+                quizScore: 0,
+                videosWatched: 0,
+                mnemonicsRead: 0,
+                symptomsChecked: 0
+              }
+            });
+          }
+        });
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleGoogleLogin = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error('Google login error:', error);
+      alert("Tizimga kirishda xatolik yuz berdi.");
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
 
   useEffect(() => {
     if (isDarkMode) {
@@ -331,7 +401,7 @@ export default function App() {
         aiAdvice: result.feedback
       });
       
-      fetchAllData();
+      await fetchAllData();
       
       // Download feedback
       const blob = new Blob([result.feedback], { type: 'text/plain' });
@@ -345,6 +415,17 @@ export default function App() {
     } catch (error) {
       console.error('Treatment error:', error);
       showAlert('Xatolik', 'Davolashda xatolik yuz berdi.');
+    }
+  };
+
+  const handleClearAdvice = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'patients', id), {
+        aiAdvice: ''
+      });
+      await fetchAllData();
+    } catch (error) {
+      console.error('Error clearing advice:', error);
     }
   };
 
@@ -470,33 +551,79 @@ export default function App() {
               className="flex items-center gap-3 cursor-pointer group shrink-0" 
               onClick={() => navigate('home')}
             >
-              <div className="bg-primary p-2 rounded-xl shadow-md shadow-primary/20 group-hover:scale-105 transition-transform">
-                <Heart className="w-5 h-5 text-primary-foreground" />
+              <div className="relative flex items-center justify-center w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-xl shadow-md shadow-primary/20 group-hover:scale-105 transition-transform overflow-hidden">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-white z-10">
+                  <path d="M4 19V7C4 5.89543 4.89543 5 6 5H18C19.1046 5 20 5.89543 20 7V19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M8 11V15M16 11V15M12 9V17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M4 19H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M12 5V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <circle cx="12" cy="13" r="1.5" fill="currentColor"/>
+                </svg>
+                <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
               </div>
-              <span className="text-2xl font-semibold tracking-tight text-foreground group-hover:text-accent transition-colors">Med<span className="text-accent">Uz</span></span>
+              <span className="text-2xl font-bold tracking-tight text-foreground group-hover:text-accent transition-colors">Med<span className="text-accent">Uz</span></span>
             </div>
 
             {/* Desktop Nav */}
-            <div className="hidden md:flex flex-wrap items-center justify-center gap-2 flex-1 mx-6 px-2 py-1">
-              <NavLink active={currentPage === 'library'} onClick={() => navigate('library')}>{t('library')}</NavLink>
-              <NavLink active={currentPage === 'mnemonics'} onClick={() => navigate('mnemonics')}>{t('mnemonics')}</NavLink>
-              <NavLink active={currentPage === 'videos'} onClick={() => navigate('videos')}>{t('videos')}</NavLink>
-              <NavLink active={currentPage === 'symptoms'} onClick={() => navigate('symptoms')}>{t('symptoms')}</NavLink>
-              <NavLink active={currentPage === 'patients'} onClick={() => navigate('patients')}>{t('patients')}</NavLink>
-              <NavLink active={currentPage === 'osce'} onClick={() => navigate('osce')}>{t('osce')}</NavLink>
-              <NavLink active={currentPage === 'quiz'} onClick={() => navigate('quiz')}>{t('quiz')}</NavLink>
-              <NavLink active={currentPage === 'tutor'} onClick={() => navigate('tutor')}>{t('tutor')}</NavLink>
-              <NavLink active={currentPage === 'pharma'} onClick={() => navigate('pharma')}>{t('pharma')}</NavLink>
-              <NavLink active={currentPage === 'fanlar'} onClick={() => navigate('fanlar')}>{t('subjects')}</NavLink>
-              <NavLink active={currentPage === 'news'} onClick={() => navigate('news')}>{t('news_title')}</NavLink>
-              <NavLink active={currentPage === 'journals'} onClick={() => navigate('journals')}>Jurnallar</NavLink>
+            <div className="hidden md:flex flex-wrap items-center justify-center gap-1.5 flex-1 mx-6 px-2 py-1">
+              <NavLink active={currentPage === 'library'} onClick={() => navigate('library')}><BookOpen className="w-4 h-4" /> {t('library')}</NavLink>
+              <NavLink active={currentPage === 'mnemonics'} onClick={() => navigate('mnemonics')}><Brain className="w-4 h-4" /> {t('mnemonics')}</NavLink>
+              <NavLink active={currentPage === 'videos'} onClick={() => navigate('videos')}><PlayCircle className="w-4 h-4" /> {t('videos')}</NavLink>
+              <NavLink active={currentPage === 'symptoms'} onClick={() => navigate('symptoms')}><Activity className="w-4 h-4" /> {t('symptoms')}</NavLink>
+              <NavLink active={currentPage === 'patients'} onClick={() => navigate('patients')}><Users className="w-4 h-4" /> {t('patients')}</NavLink>
+              <NavLink active={currentPage === 'osce'} onClick={() => navigate('osce')}><Stethoscope className="w-4 h-4" /> {t('osce')}</NavLink>
+              <NavLink active={currentPage === 'quiz'} onClick={() => navigate('quiz')}><CheckSquare className="w-4 h-4" /> {t('quiz')}</NavLink>
+              <NavLink active={currentPage === 'tutor'} onClick={() => navigate('tutor')}><GraduationCap className="w-4 h-4" /> {t('tutor')}</NavLink>
+              <NavLink active={currentPage === 'pharma'} onClick={() => navigate('pharma')}><Pill className="w-4 h-4" /> {t('pharma')}</NavLink>
+              <NavLink active={currentPage === 'fanlar'} onClick={() => navigate('fanlar')}><Microscope className="w-4 h-4" /> {t('subjects')}</NavLink>
+              <NavLink active={currentPage === 'news'} onClick={() => navigate('news')}><Globe className="w-4 h-4" /> {t('news_title')}</NavLink>
+              <NavLink active={currentPage === 'journals'} onClick={() => navigate('journals')}><FileText className="w-4 h-4" /> Jurnallar</NavLink>
               <NavLink active={currentPage === 'ai'} onClick={() => navigate('ai')}>
-                <Sparkles className="w-4 h-4" />
+                <Sparkles className="w-4 h-4 text-accent" />
                 {t('aiCenter')}
               </NavLink>
             </div>
             
             <div className="hidden md:flex items-center gap-3 shrink-0">
+              {user ? (
+                <div className="flex items-center gap-3 bg-secondary px-3 py-1.5 rounded-xl border border-border/50">
+                  <button 
+                    onClick={() => navigate('profile')}
+                    className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                  >
+                    {user.photoURL ? (
+                      <img src={user.photoURL} alt={user.displayName} className="w-6 h-6 rounded-full" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
+                        {user.displayName?.charAt(0) || 'U'}
+                      </div>
+                    )}
+                    <div className="flex flex-col items-start">
+                      <span className="text-xs font-semibold text-foreground">Salom, {user.displayName?.split(' ')[0]} 👋</span>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={handleLogout}
+                    className="p-1.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-colors"
+                    title="Chiqish"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  onClick={handleGoogleLogin}
+                  className="flex items-center gap-2 bg-white text-gray-800 border border-gray-300 px-4 py-2 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  </svg>
+                  Google orqali kirish
+                </button>
+              )}
               
               <select 
                 value={language}
@@ -562,6 +689,46 @@ export default function App() {
               className="md:hidden bg-card border-t border-border overflow-hidden"
             >
               <div className="px-4 py-4 space-y-2">
+                {user ? (
+                  <div className="flex items-center justify-between bg-secondary px-4 py-3 rounded-xl border border-border/50 mb-4">
+                    <button 
+                      onClick={() => { navigate('profile'); setIsMenuOpen(false); }}
+                      className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+                    >
+                      {user.photoURL ? (
+                        <img src={user.photoURL} alt={user.displayName} className="w-8 h-8 rounded-full" referrerPolicy="no-referrer" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
+                          {user.displayName?.charAt(0) || 'U'}
+                        </div>
+                      )}
+                      <div className="flex flex-col items-start">
+                        <span className="text-sm font-semibold text-foreground">Salom, {user.displayName?.split(' ')[0]} 👋</span>
+                        <span className="text-xs text-foreground/60">Profilni ko'rish</span>
+                      </div>
+                    </button>
+                    <button 
+                      onClick={() => { handleLogout(); setIsMenuOpen(false); }}
+                      className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-colors"
+                      title="Chiqish"
+                    >
+                      <LogOut className="w-5 h-5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => { handleGoogleLogin(); setIsMenuOpen(false); }}
+                    className="w-full flex items-center justify-center gap-2 bg-white text-gray-800 border border-gray-300 px-4 py-3 rounded-xl text-base font-medium hover:bg-gray-50 transition-colors shadow-sm mb-4"
+                  >
+                    <svg className="w-5 h-5" viewBox="0 0 24 24">
+                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                    </svg>
+                    Google orqali kirish
+                  </button>
+                )}
                 <MobileNavLink active={currentPage === 'library'} onClick={() => { navigate('library'); setIsMenuOpen(false); }}>{t('library')}</MobileNavLink>
                 <MobileNavLink active={currentPage === 'mnemonics'} onClick={() => { navigate('mnemonics'); setIsMenuOpen(false); }}>{t('mnemonics')}</MobileNavLink>
                 <MobileNavLink active={currentPage === 'videos'} onClick={() => { navigate('videos'); setIsMenuOpen(false); }}>{t('videos')}</MobileNavLink>
@@ -586,12 +753,12 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <AnimatePresence mode="wait">
           {currentPage === 'home' && <HomePage onNavigate={navigate} sections={sectionsData} showAlert={showAlert} appSettings={appSettings} />}
-          {currentPage === 'mnemonics' && <MnemonicsPage data={mnemonicsData} handleAIExplain={handleAIExplain} />}
-          {currentPage === 'videos' && <VideosPage data={videosData} handleAIExplain={handleAIExplain} />}
-          {currentPage === 'symptoms' && <SymptomsPage data={symptomsData} handleAIExplain={handleAIExplain} />}
-          {currentPage === 'patients' && <PatientsPage patients={patientsData} onTreat={handleTreatPatient} />}
+          {currentPage === 'mnemonics' && <MnemonicsPage data={mnemonicsData} handleAIExplain={handleAIExplain} updateProgress={updateProgress} />}
+          {currentPage === 'videos' && <VideosPage data={videosData} handleAIExplain={handleAIExplain} updateProgress={updateProgress} />}
+          {currentPage === 'symptoms' && <SymptomsPage data={symptomsData} handleAIExplain={handleAIExplain} updateProgress={updateProgress} />}
+          {currentPage === 'patients' && <PatientsPage patients={patientsData} onTreat={handleTreatPatient} onClearAdvice={handleClearAdvice} />}
           {currentPage === 'osce' && <OSCEPage scenarios={osceScenarios} />}
-          {currentPage === 'quiz' && <QuizPage handleAIExplain={handleAIExplain} showAlert={showAlert} />}
+          {currentPage === 'quiz' && <QuizPage handleAIExplain={handleAIExplain} showAlert={showAlert} user={user} updateProgress={updateProgress} />}
           {currentPage === 'tutor' && <TutorPage />}
           {currentPage === 'pharma' && <PharmaPage />}
           {currentPage === 'fanlar' && <FanlarPage data={fanlarData} />}
@@ -624,6 +791,7 @@ export default function App() {
           />}
           {currentPage === 'news' && <NewsPage news={newsData} />}
           {currentPage === 'journals' && <JournalsPage journals={journalsData} />}
+          {currentPage === 'profile' && <ProfilePage user={user} />}
         </AnimatePresence>
       </main>
 
@@ -811,34 +979,60 @@ function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate
       </div>
 
       {/* Hero Section */}
-      <section className="text-center space-y-6 py-8 relative">
-        <div className="absolute inset-0 -z-10 flex items-center justify-center opacity-30">
-          <div className="w-[600px] h-[600px] rounded-full blur-[120px]" style={{ background: `linear-gradient(to right, ${appSettings.gradientFrom}, ${appSettings.gradientTo})` }} />
+      <section className="text-center space-y-8 py-16 relative overflow-hidden">
+        <div className="absolute inset-0 -z-10 flex items-center justify-center opacity-20 dark:opacity-10">
+          <div className="w-[800px] h-[800px] rounded-full blur-[150px]" style={{ background: `linear-gradient(to right, ${appSettings.gradientFrom}, ${appSettings.gradientTo})` }} />
         </div>
-        <motion.h1 
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="text-5xl md:text-7xl font-semibold tracking-tight text-foreground"
+        
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary text-secondary-foreground text-sm font-medium mb-4 border border-border/50 shadow-sm"
         >
-          {t('heroTitle1')} <span className="text-accent">{t('heroTitle2')}</span> <br className="hidden md:block" /> {t('heroTitle3')}
+          <Sparkles className="w-4 h-4 text-accent" />
+          <span>O'zbekiston tibbiyot talabalari uchun maxsus</span>
+        </motion.div>
+
+        <motion.h1 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5, type: "spring" }}
+          className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight text-foreground leading-tight"
+        >
+          {t('heroTitle1')} <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">{t('heroTitle2')}</span> <br className="hidden md:block" /> {t('heroTitle3')}
         </motion.h1>
-        <p className="text-lg md:text-xl text-foreground/60 max-w-2xl mx-auto font-medium">
+        
+        <motion.p 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="text-lg md:text-2xl text-foreground/70 max-w-3xl mx-auto font-medium leading-relaxed"
+        >
           {t('heroDesc')}
-        </p>
-        <div className="flex flex-wrap justify-center gap-4 pt-8">
+        </motion.p>
+        
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-8"
+        >
           <button 
             onClick={() => onNavigate('quiz')}
-            className="bg-primary text-primary-foreground px-8 py-4 rounded-2xl font-medium shadow-sm shadow-primary/30 hover:bg-primary/90 transition-all transform hover:-translate-y-1"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-primary to-accent text-white px-8 py-4 rounded-2xl font-semibold text-lg shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/40 transition-all transform hover:-translate-y-1 active:translate-y-0"
           >
+            <CheckSquare className="w-5 h-5" />
             {t('startQuiz')}
           </button>
           <button 
             onClick={() => onNavigate('mnemonics')}
-            className="bg-card text-foreground border border-border/40 px-8 py-4 rounded-2xl font-medium hover:bg-secondary transition-all shadow-sm"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-card text-foreground border-2 border-border/50 px-8 py-4 rounded-2xl font-semibold text-lg hover:bg-secondary hover:border-border transition-all shadow-sm hover:shadow-md"
           >
+            <Brain className="w-5 h-5" />
             {t('viewMnemonics')}
           </button>
-        </div>
+        </motion.div>
       </section>
 
       {/* Features Grid */}
@@ -973,10 +1167,11 @@ const FeatureCard: React.FC<{ title: string, description: string, onClick: () =>
   );
 };
 
-function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIExplain: (title: string, context: string) => void }) {
+function MnemonicsPage({ data, handleAIExplain, updateProgress }: { data: Mnemonic[], handleAIExplain: (title: string, context: string) => void, updateProgress?: (field: any, value: any) => void }) {
   const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(t('allCategories'));
+  const [interactedMnemonics, setInteractedMnemonics] = useState<Set<number>>(new Set());
 
   const categories = [t('allCategories'), ...Array.from(new Set(data.map(m => m.category)))];
 
@@ -991,6 +1186,15 @@ function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIEx
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     // Simple toast could be added here
+  };
+
+  const handleInteraction = (idx: number) => {
+    if (!interactedMnemonics.has(idx)) {
+      setInteractedMnemonics(prev => new Set(prev).add(idx));
+      if (updateProgress) {
+        updateProgress('mnemonicsRead', (prev: number) => prev + 1);
+      }
+    }
   };
 
   return (
@@ -1034,7 +1238,8 @@ function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIEx
           <motion.div 
             layout
             key={idx}
-            className="bg-card border border-border/40 rounded-2xl p-8 shadow-sm hover:shadow-sm hover:-translate-y-1 transition-all duration-300 group"
+            onClick={() => handleInteraction(idx)}
+            className="bg-card border border-border/40 rounded-2xl p-8 shadow-sm hover:shadow-sm hover:-translate-y-1 transition-all duration-300 group cursor-pointer"
           >
             <div className="flex justify-between items-start mb-6">
               <span className="text-xs font-semibold text-primary bg-primary/10 px-3 py-1.5 rounded-lg uppercase tracking-wider">{m.category}</span>
@@ -1091,7 +1296,7 @@ function MnemonicsPage({ data, handleAIExplain }: { data: Mnemonic[], handleAIEx
   );
 }
 
-function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExplain: (title: string, context: string) => void }) {
+function VideosPage({ data, handleAIExplain, updateProgress }: { data: VideoData[], handleAIExplain: (title: string, context: string) => void, updateProgress?: (field: any, value: any) => void }) {
   const { t } = useTranslation();
   const [selectedFilter, setSelectedFilter] = useState(t('videosAll'));
   const [activeVideo, setActiveVideo] = useState<VideoData | null>(null);
@@ -1099,6 +1304,15 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
   const filters = [t('videosAll'), ...Array.from(new Set(data.map(v => v.category)))];
 
   const filteredVideos = data.filter(v => selectedFilter === t('videosAll') || v.category === selectedFilter);
+
+  const handleVideoClick = (v: VideoData) => {
+    if (v.available) {
+      setActiveVideo(v);
+      if (updateProgress) {
+        updateProgress('videosWatched', (prev: number) => prev + 1);
+      }
+    }
+  };
 
   return (
     <motion.div 
@@ -1126,7 +1340,7 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredVideos.map((v, idx) => (
-          <div key={idx} className="group cursor-pointer" onClick={() => v.available && setActiveVideo(v)}>
+          <div key={idx} className="group cursor-pointer" onClick={() => handleVideoClick(v)}>
             <div className="relative aspect-video rounded-3xl overflow-hidden mb-4 bg-secondary flex items-center justify-center border border-border/40 shadow-sm group-hover:shadow-sm group-hover:-translate-y-1 transition-all duration-300">
               <div className="absolute inset-0 bg-gradient-to-br from-secondary to-card" />
               <Video className="w-12 h-12 text-foreground/20 relative z-10" />
@@ -1197,9 +1411,10 @@ function VideosPage({ data, handleAIExplain }: { data: VideoData[], handleAIExpl
   );
 }
 
-function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAIExplain: (title: string, context: string) => void }) {
+function SymptomsPage({ data, handleAIExplain, updateProgress }: { data: SymptomData[], handleAIExplain: (title: string, context: string) => void, updateProgress?: (field: any, value: any) => void }) {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
+  const [interactedSymptoms, setInteractedSymptoms] = useState<Set<string>>(new Set());
   
   const results = useMemo(() => {
     if (!query.trim()) return [];
@@ -1213,6 +1428,15 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
       );
     });
   }, [query, data]);
+
+  const handleInteraction = (diagnosis: string) => {
+    if (!interactedSymptoms.has(diagnosis)) {
+      setInteractedSymptoms(prev => new Set(prev).add(diagnosis));
+      if (updateProgress) {
+        updateProgress('symptomsChecked', (prev: number) => prev + 1);
+      }
+    }
+  };
 
   return (
     <motion.div 
@@ -1246,7 +1470,8 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             key={idx}
-            className={`p-8 rounded-2xl border ${res.redFlag ? 'bg-red-500/5 border-red-500/20 shadow-sm shadow-red-500/10' : 'bg-card border-border/40 shadow-sm hover:shadow-md'} transition-all duration-300`}
+            onClick={() => handleInteraction(res.diagnosis)}
+            className={`p-8 rounded-2xl border cursor-pointer ${res.redFlag ? 'bg-red-500/5 border-red-500/20 shadow-sm shadow-red-500/10' : 'bg-card border-border/40 shadow-sm hover:shadow-md'} transition-all duration-300`}
           >
             <div className="flex justify-between items-start mb-6">
               <h3 className={`text-2xl font-medium tracking-tight ${res.redFlag ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>{res.diagnosis}</h3>
@@ -1295,14 +1520,11 @@ function SymptomsPage({ data, handleAIExplain }: { data: SymptomData[], handleAI
   );
 }
 
-function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: string, context: string) => void, showAlert: (title: string, content: string) => void }) {
+function QuizPage({ handleAIExplain, showAlert, user, updateProgress }: { handleAIExplain: (title: string, context: string) => void, showAlert: (title: string, content: string) => void, user: any, updateProgress: (field: any, value: any) => void }) {
   const { t } = useTranslation();
-  const [step, setStep] = useState<'subjects' | 'topics' | 'quiz' | 'enter_name' | 'result'>('subjects');
+  const [step, setStep] = useState<'subjects' | 'topics' | 'quiz' | 'result'>('subjects');
   const [selectedSubject, setSelectedSubject] = useState<any>(null);
   const [selectedTopic, setSelectedTopic] = useState<any>(null);
-  
-  const [userName, setUserName] = useState('');
-  const [userSurname, setUserSurname] = useState('');
   
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -1336,38 +1558,38 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
   const handleAnswer = (idx: number) => {
     if (isAnswered) return;
     setSelectedOption(idx);
-  };
-
-  const checkAnswer = () => {
-    if (selectedOption === null || isAnswered) return;
     setIsAnswered(true);
-    if (selectedOption === selectedTopic.questions[currentQuestionIdx].correct) {
+    
+    let isCorrect = idx === selectedTopic.questions[currentQuestionIdx].correct;
+    if (isCorrect) {
       setScore(s => s + 1);
     }
+
+    // Auto advance after 1.5 seconds
+    setTimeout(() => {
+      if (currentQuestionIdx < selectedTopic.questions.length - 1) {
+        setCurrentQuestionIdx(prev => prev + 1);
+        setSelectedOption(null);
+        setIsAnswered(false);
+      } else {
+        finishQuiz(score + (isCorrect ? 1 : 0));
+      }
+    }, 1500);
   };
 
-  const nextQuestion = () => {
-    if (currentQuestionIdx < selectedTopic.questions.length - 1) {
-      setCurrentQuestionIdx(prev => prev + 1);
-      setSelectedOption(null);
-      setIsAnswered(false);
-    } else {
-      setStep('enter_name');
-    }
-  };
-
-  const finishQuiz = () => {
-    if (!userName.trim() || !userSurname.trim()) {
-      showAlert(t('quizError'), t('quizErrorName'));
-      return;
-    }
+  const finishQuiz = (finalScore: number) => {
     const time = Math.floor((Date.now() - startTime) / 1000);
     setTimeTaken(time);
     
+    if (user) {
+      updateProgress('quizScore', (prev: number) => prev + finalScore);
+    }
+    
+    const nameParts = user?.displayName?.split(' ') || ['Mehmon', ''];
     const newScore = { 
-      name: userName, 
-      surname: userSurname, 
-      score, 
+      name: nameParts[0] || 'Mehmon', 
+      surname: nameParts.slice(1).join(' ') || '', 
+      score: finalScore, 
       time,
       topic: selectedTopic.name
     };
@@ -1378,6 +1600,9 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
       
     setScoreboard(newBoard);
     localStorage.setItem('meduz_quiz_scores', JSON.stringify(newBoard));
+    
+    // Update score state to final score so result screen shows correct score
+    setScore(finalScore);
     setStep('result');
   };
 
@@ -1385,8 +1610,6 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
     setStep('subjects');
     setSelectedSubject(null);
     setSelectedTopic(null);
-    setUserName('');
-    setUserSurname('');
   };
 
   const totalQuestions = selectedTopic?.questions?.length || 1;
@@ -1442,7 +1665,8 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
       // Name
       doc.setFontSize(28);
       doc.setTextColor(37, 99, 235);
-      doc.text(`${userName} ${userSurname}`, width / 2, 80, { align: "center" });
+      const displayName = user?.displayName || 'Mehmon';
+      doc.text(displayName, width / 2, 80, { align: "center" });
 
       // Score
       doc.setFontSize(20);
@@ -1472,7 +1696,7 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
       const dateStr = new Date().toLocaleString('uz-UZ');
       doc.text(`Sana va vaqt: ${dateStr}`, width / 2, 180, { align: "center" });
 
-      doc.save(`Natija_${userName}_${userSurname}.pdf`);
+      doc.save(`Natija_${displayName.replace(/\s+/g, '_')}.pdf`);
     });
   };
 
@@ -1588,74 +1812,6 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
               );
             })}
           </div>
-
-          <AnimatePresence>
-            {isAnswered && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pt-6 border-t border-border/40">
-                <button 
-                  onClick={nextQuestion}
-                  className="w-full bg-foreground text-background py-4 rounded-2xl font-medium hover:bg-foreground/90 transition-all flex items-center justify-center gap-2 shadow-sm hover:-translate-y-1"
-                >
-                  {currentQuestionIdx === selectedTopic.questions.length - 1 ? t('quizFinish') : t('quizNext')}
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {!isAnswered && (
-            <button 
-              onClick={checkAnswer}
-              disabled={selectedOption === null}
-              className={`w-full py-4 rounded-2xl font-medium transition-all duration-300 ${selectedOption !== null ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/30 hover:bg-primary/90 hover:-translate-y-1' : 'bg-secondary text-foreground/40 cursor-not-allowed'}`}
-            >
-              {t('quizSubmit')}
-            </button>
-          )}
-        </div>
-      </motion.div>
-    );
-  }
-
-  if (step === 'enter_name') {
-    return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-md mx-auto space-y-8">
-        <div className="text-center space-y-4">
-          <div className="bg-emerald-500/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-inner">
-            <CheckCircle2 className="w-10 h-10 text-emerald-500" />
-          </div>
-          <h2 className="text-4xl font-semibold tracking-tight text-foreground">{t('quizResultTitle')}</h2>
-          <p className="text-foreground/60 font-medium text-lg">{t('quizEnterName')}</p>
-        </div>
-        <div className="bg-card p-8 rounded-2xl border border-border/40 shadow-sm shadow-primary/5 space-y-6">
-          <div className="space-y-5">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground uppercase tracking-wider">{t('quizNamePlaceholder').split(' ')[0]}</label>
-              <input 
-                type="text" 
-                value={userName}
-                onChange={e => setUserName(e.target.value)}
-                className="w-full p-4 bg-background border border-border/40 rounded-2xl focus:ring-2 focus:ring-primary/50 outline-none transition-all shadow-inner text-foreground placeholder:text-foreground/40"
-                placeholder={t('quizNamePlaceholder')}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground uppercase tracking-wider">{t('quizSurnamePlaceholder').split(' ')[0]}</label>
-              <input 
-                type="text" 
-                value={userSurname}
-                onChange={e => setUserSurname(e.target.value)}
-                className="w-full p-4 bg-background border border-border/40 rounded-2xl focus:ring-2 focus:ring-primary/50 outline-none transition-all shadow-inner text-foreground placeholder:text-foreground/40"
-                placeholder={t('quizSurnamePlaceholder')}
-              />
-            </div>
-          </div>
-          <button 
-            onClick={finishQuiz}
-            className="w-full bg-primary text-primary-foreground py-4 rounded-2xl font-medium shadow-sm shadow-primary/30 hover:bg-primary/90 transition-all hover:-translate-y-1"
-          >
-            {t('quizFinish')}
-          </button>
         </div>
       </motion.div>
     );
@@ -1673,7 +1829,7 @@ function QuizPage({ handleAIExplain, showAlert }: { handleAIExplain: (title: str
           
           <motion.div {...(animationProps as any)} className="space-y-4 relative z-10">
             <h2 className={`text-5xl font-semibold tracking-tight ${resultColor}`}>{resultMessage}</h2>
-            <p className="text-foreground/60 text-xl font-medium">{userName} {userSurname}</p>
+            <p className="text-foreground/60 text-xl font-medium">{user?.displayName || 'Mehmon'}</p>
           </motion.div>
           
           <div className="grid grid-cols-2 gap-6 relative z-10">
@@ -3903,7 +4059,22 @@ function LibraryPage({ data, handleAIExplain }: { data: any, handleAIExplain: (t
   );
 }
 
-function PatientsPage({ patients, onTreat }: { patients: Patient[], onTreat: (id: string, medication: string) => void }) {
+function PatientsPage({ patients, onTreat, onClearAdvice }: { patients: Patient[], onTreat: (id: string, medication: string) => Promise<void>, onClearAdvice: (id: string) => Promise<void> }) {
+  const [treatingId, setTreatingId] = useState<string | null>(null);
+  const [clearingId, setClearingId] = useState<string | null>(null);
+
+  const handleTreat = async (id: string, medication: string) => {
+    setTreatingId(id);
+    await onTreat(id, medication);
+    setTreatingId(null);
+  };
+
+  const handleClear = async (id: string) => {
+    setClearingId(id);
+    await onClearAdvice(id);
+    setClearingId(null);
+  };
+
   return (
     <div className="p-8 space-y-8">
       <h2 className="text-3xl font-medium text-foreground">Bemorlar</h2>
@@ -3914,21 +4085,42 @@ function PatientsPage({ patients, onTreat }: { patients: Patient[], onTreat: (id
             <p className="text-sm text-foreground/70 mt-2">Simptomlar: {p.symptoms}</p>
             <p className="text-sm font-medium mt-4 text-foreground">Ahvoli: <span className="text-primary">{p.condition}</span></p>
             <p className="text-sm font-medium text-foreground mt-1">Sog'liq: <span className="text-emerald-500">{p.healthScore}%</span></p>
-            {p.aiAdvice && (
-              <div className="mt-4 bg-primary/10 p-4 rounded-xl border border-primary/20">
-                <div className="flex items-center gap-2 mb-2">
+            
+            {treatingId === p.id ? (
+              <div className="mt-4 bg-primary/10 p-4 rounded-xl border border-primary/20 flex items-center justify-center gap-2">
+                <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                <span className="text-sm font-medium text-primary">AI tahlil qilmoqda...</span>
+              </div>
+            ) : p.aiAdvice ? (
+              <div className="mt-4 bg-primary/10 p-4 rounded-xl border border-primary/20 relative">
+                <button 
+                  onClick={() => handleClear(p.id!)} 
+                  disabled={clearingId === p.id}
+                  className="absolute top-2 right-2 p-1 text-foreground/50 hover:text-foreground transition-colors disabled:opacity-50"
+                  title="Maslahatni tozalash"
+                >
+                  {clearingId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                </button>
+                <div className="flex items-center gap-2 mb-2 pr-6">
                   <Sparkles className="w-4 h-4 text-primary" />
                   <span className="text-sm font-medium text-primary">AI Tahlili va Maslahat</span>
                 </div>
                 <p className="text-sm text-foreground/80 leading-relaxed">{p.aiAdvice}</p>
               </div>
-            )}
-            <input type="text" placeholder="Dori yuborish (Enter bosing)" onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                onTreat(p.id!, e.currentTarget.value);
-                e.currentTarget.value = '';
-              }
-            }} className="w-full px-4 py-2.5 mt-4 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
+            ) : null}
+            
+            <input 
+              type="text" 
+              placeholder="Dori yuborish (Enter bosing)" 
+              disabled={treatingId === p.id}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && e.currentTarget.value.trim() !== '') {
+                  handleTreat(p.id!, e.currentTarget.value);
+                  e.currentTarget.value = '';
+                }
+              }} 
+              className="w-full px-4 py-2.5 mt-4 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary transition-all disabled:opacity-50" 
+            />
           </div>
         ))}
       </div>
