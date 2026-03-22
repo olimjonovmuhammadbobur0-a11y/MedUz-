@@ -564,25 +564,7 @@ export default function App() {
               <span className="text-2xl font-bold tracking-tight text-foreground group-hover:text-accent transition-colors">Med<span className="text-accent">Uz</span></span>
             </div>
 
-            {/* Desktop Nav */}
-            <div className="hidden md:flex flex-wrap items-center justify-center gap-1.5 flex-1 mx-6 px-2 py-1">
-              <NavLink active={currentPage === 'library'} onClick={() => navigate('library')}><BookOpen className="w-4 h-4" /> {t('library')}</NavLink>
-              <NavLink active={currentPage === 'mnemonics'} onClick={() => navigate('mnemonics')}><Brain className="w-4 h-4" /> {t('mnemonics')}</NavLink>
-              <NavLink active={currentPage === 'videos'} onClick={() => navigate('videos')}><PlayCircle className="w-4 h-4" /> {t('videos')}</NavLink>
-              <NavLink active={currentPage === 'symptoms'} onClick={() => navigate('symptoms')}><Activity className="w-4 h-4" /> {t('symptoms')}</NavLink>
-              <NavLink active={currentPage === 'patients'} onClick={() => navigate('patients')}><Users className="w-4 h-4" /> {t('patients')}</NavLink>
-              <NavLink active={currentPage === 'osce'} onClick={() => navigate('osce')}><Stethoscope className="w-4 h-4" /> {t('osce')}</NavLink>
-              <NavLink active={currentPage === 'quiz'} onClick={() => navigate('quiz')}><CheckSquare className="w-4 h-4" /> {t('quiz')}</NavLink>
-              <NavLink active={currentPage === 'tutor'} onClick={() => navigate('tutor')}><GraduationCap className="w-4 h-4" /> {t('tutor')}</NavLink>
-              <NavLink active={currentPage === 'pharma'} onClick={() => navigate('pharma')}><Pill className="w-4 h-4" /> {t('pharma')}</NavLink>
-              <NavLink active={currentPage === 'fanlar'} onClick={() => navigate('fanlar')}><Microscope className="w-4 h-4" /> {t('subjects')}</NavLink>
-              <NavLink active={currentPage === 'news'} onClick={() => navigate('news')}><Globe className="w-4 h-4" /> {t('news_title')}</NavLink>
-              <NavLink active={currentPage === 'journals'} onClick={() => navigate('journals')}><FileText className="w-4 h-4" /> Jurnallar</NavLink>
-              <NavLink active={currentPage === 'ai'} onClick={() => navigate('ai')}>
-                <Sparkles className="w-4 h-4 text-accent" />
-                {t('aiCenter')}
-              </NavLink>
-            </div>
+            {/* Desktop Nav Removed as requested */}
             
             <div className="hidden md:flex items-center gap-3 shrink-0">
               {user ? (
@@ -751,6 +733,15 @@ export default function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {currentPage !== 'home' && (
+          <button 
+            onClick={() => navigate('home')}
+            className="mb-6 flex items-center gap-2 text-foreground/70 hover:text-primary transition-colors font-medium"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            Orqaga qaytish
+          </button>
+        )}
         <AnimatePresence mode="wait">
           {currentPage === 'home' && <HomePage onNavigate={navigate} sections={sectionsData} showAlert={showAlert} appSettings={appSettings} />}
           {currentPage === 'mnemonics' && <MnemonicsPage data={mnemonicsData} handleAIExplain={handleAIExplain} updateProgress={updateProgress} />}
@@ -988,10 +979,47 @@ function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary text-secondary-foreground text-sm font-medium mb-4 border border-border/50 shadow-sm"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary text-secondary-foreground text-sm font-medium border border-border/50 shadow-sm"
         >
           <Sparkles className="w-4 h-4 text-accent" />
           <span>O'zbekiston tibbiyot talabalari uchun maxsus</span>
+        </motion.div>
+
+        {/* Top Navigation Icons */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="w-full max-w-[90rem] mx-auto bg-card border border-border/40 shadow-sm rounded-[2.5rem] p-4 sm:p-6 overflow-hidden"
+        >
+          <div className="flex items-start justify-between w-full gap-1 sm:gap-2 px-1 sm:px-2">
+            {[
+              { id: 'library', label: 'Kutubxona', icon: BookOpen, color: 'bg-[#1877F2]' },
+              { id: 'quiz', label: 'Testlar', icon: Icons.ClipboardList, color: 'bg-[#E91E63]' },
+              { id: 'osce', label: 'OSCE', icon: Stethoscope, color: 'bg-[#009688]' },
+              { id: 'tutor', label: 'AI Tutor', icon: Icons.Bot, color: 'bg-[#00BFA5]' },
+              { id: 'mnemonics', label: 'Mnemonikalar', icon: Brain, color: 'bg-[#9C27B0]' },
+              { id: 'videos', label: 'Videolar', icon: Video, color: 'bg-[#1976D2]' },
+              { id: 'symptoms', label: 'Simptomlar', icon: Icons.Activity, color: 'bg-[#FF9800]' },
+              { id: 'patients', label: 'Bemorlar', icon: Icons.Users, color: 'bg-[#4CAF50]' },
+              { id: 'pharma', label: 'Farmakologiya', icon: Icons.Pill, color: 'bg-[#E53935]' },
+              { id: 'fanlar', label: 'Fanlar', icon: Icons.Dna, color: 'bg-[#F57C00]' },
+              { id: 'journals', label: 'Jurnallar', icon: Icons.BookText, color: 'bg-[#D32F2F]' },
+              { id: 'news', label: 'Global Health News', icon: Globe, color: 'bg-[#2196F3]' },
+              { id: 'ai', label: 'AI Markazi', icon: Sparkles, color: 'bg-[#673AB7]' }
+            ].map((item) => (
+              <button 
+                key={item.id} 
+                onClick={() => onNavigate(item.id as Page)}
+                className="flex flex-col items-center gap-2 group flex-1"
+              >
+                <div className={`w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-[1.25rem] flex items-center justify-center text-white shadow-md transition-transform duration-300 group-hover:scale-110 group-active:scale-95 ${item.color}`}>
+                  <item.icon className="w-5 h-5 sm:w-7 sm:h-7" strokeWidth={2} />
+                </div>
+                <span className="text-[9px] sm:text-xs font-semibold text-foreground/80 group-hover:text-foreground transition-colors text-center leading-tight">{item.label}</span>
+              </button>
+            ))}
+          </div>
         </motion.div>
 
         <motion.h1 
