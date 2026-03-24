@@ -732,7 +732,7 @@ export default function App() {
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 ${currentPage === 'home' ? 'pt-0 pb-8' : 'py-8'}`}>
         {currentPage !== 'home' && (
           <button 
             onClick={() => navigate('home')}
@@ -953,80 +953,19 @@ function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="space-y-16"
+      className="space-y-4 sm:space-y-6"
     >
-      {/* Creator Info Section */}
-      <div className="flex justify-center mb-8">
-        <div className="flex items-center gap-3 bg-card/80 backdrop-blur-xl p-3 rounded-full border border-primary/20 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 cursor-pointer">
-          <div className="relative">
-            <img src={appSettings.creatorImage} alt={appSettings.creatorName} className="w-12 h-12 rounded-full object-cover border-2 border-background shadow-sm" />
-            <div className="absolute inset-0 rounded-full ring-1 ring-primary/30 ring-offset-1 ring-offset-background"></div>
-          </div>
-          <div className="pr-4">
-            <p className="text-[10px] text-primary font-bold uppercase tracking-wider mb-0.5">{t('creator')}</p>
-            <p className="text-sm font-bold text-foreground">{appSettings.creatorName}</p>
-          </div>
-        </div>
-      </div>
-
       {/* Hero Section */}
-      <section className="text-center space-y-8 py-16 relative overflow-hidden">
+      <section className="text-center space-y-4 sm:space-y-6 pt-2 sm:pt-6 pb-0 relative overflow-hidden">
         <div className="absolute inset-0 -z-10 flex items-center justify-center opacity-20 dark:opacity-10">
           <div className="w-[800px] h-[800px] rounded-full blur-[150px]" style={{ background: `linear-gradient(to right, ${appSettings.gradientFrom}, ${appSettings.gradientTo})` }} />
         </div>
-        
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary text-secondary-foreground text-sm font-medium border border-border/50 shadow-sm"
-        >
-          <Sparkles className="w-4 h-4 text-accent" />
-          <span>O'zbekiston tibbiyot talabalari uchun maxsus</span>
-        </motion.div>
-
-        {/* Top Navigation Icons */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="w-full max-w-[90rem] mx-auto bg-card border border-border/40 shadow-sm rounded-[2.5rem] p-4 sm:p-6 overflow-hidden"
-        >
-          <div className="flex items-start justify-between w-full gap-1 sm:gap-2 px-1 sm:px-2">
-            {[
-              { id: 'library', label: 'Kutubxona', icon: BookOpen, color: 'bg-[#1877F2]' },
-              { id: 'quiz', label: 'Testlar', icon: Icons.ClipboardList, color: 'bg-[#E91E63]' },
-              { id: 'osce', label: 'OSCE', icon: Stethoscope, color: 'bg-[#009688]' },
-              { id: 'tutor', label: 'AI Tutor', icon: Icons.Bot, color: 'bg-[#00BFA5]' },
-              { id: 'mnemonics', label: 'Mnemonikalar', icon: Brain, color: 'bg-[#9C27B0]' },
-              { id: 'videos', label: 'Videolar', icon: Video, color: 'bg-[#1976D2]' },
-              { id: 'symptoms', label: 'Simptomlar', icon: Icons.Activity, color: 'bg-[#FF9800]' },
-              { id: 'patients', label: 'Bemorlar', icon: Icons.Users, color: 'bg-[#4CAF50]' },
-              { id: 'pharma', label: 'Farmakologiya', icon: Icons.Pill, color: 'bg-[#E53935]' },
-              { id: 'fanlar', label: 'Fanlar', icon: Icons.Dna, color: 'bg-[#F57C00]' },
-              { id: 'journals', label: 'Jurnallar', icon: Icons.BookText, color: 'bg-[#D32F2F]' },
-              { id: 'news', label: 'Global Health News', icon: Globe, color: 'bg-[#2196F3]' },
-              { id: 'ai', label: 'AI Markazi', icon: Sparkles, color: 'bg-[#673AB7]' }
-            ].map((item) => (
-              <button 
-                key={item.id} 
-                onClick={() => onNavigate(item.id as Page)}
-                className="flex flex-col items-center gap-2 group flex-1"
-              >
-                <div className={`w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-[1.25rem] flex items-center justify-center text-white shadow-md transition-transform duration-300 group-hover:scale-110 group-active:scale-95 ${item.color}`}>
-                  <item.icon className="w-5 h-5 sm:w-7 sm:h-7" strokeWidth={2} />
-                </div>
-                <span className="text-[9px] sm:text-xs font-semibold text-foreground/80 group-hover:text-foreground transition-colors text-center leading-tight">{item.label}</span>
-              </button>
-            ))}
-          </div>
-        </motion.div>
 
         <motion.h1 
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5, type: "spring" }}
-          className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight text-foreground leading-tight"
+          className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight text-foreground leading-tight mt-2"
         >
           {t('heroTitle1')} <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">{t('heroTitle2')}</span> <br className="hidden md:block" /> {t('heroTitle3')}
         </motion.h1>
@@ -1035,7 +974,7 @@ function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="text-lg md:text-2xl text-foreground/70 max-w-3xl mx-auto font-medium leading-relaxed"
+          className="text-base md:text-xl text-foreground/70 max-w-3xl mx-auto font-medium leading-relaxed"
         >
           {t('heroDesc')}
         </motion.p>
@@ -1044,7 +983,7 @@ function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-8"
+          className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4"
         >
           <button 
             onClick={() => onNavigate('quiz')}
@@ -1062,6 +1001,43 @@ function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate
           </button>
         </motion.div>
       </section>
+
+      {/* Top Navigation Icons - Scrollable on mobile */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+        className="w-full max-w-[90rem] mx-auto bg-card border border-border/40 shadow-sm rounded-[2.5rem] p-4 sm:p-6 overflow-hidden -mt-2 sm:-mt-4 relative z-10"
+      >
+        <div className="flex items-start justify-start sm:justify-between w-full gap-4 sm:gap-2 px-1 sm:px-2 overflow-x-auto custom-scrollbar pb-4 sm:pb-0 snap-x">
+          {[
+            { id: 'library', label: 'Kutubxona', icon: BookOpen, color: 'bg-[#1877F2]' },
+            { id: 'quiz', label: 'Testlar', icon: Icons.ClipboardList, color: 'bg-[#E91E63]' },
+            { id: 'osce', label: 'OSCE', icon: Stethoscope, color: 'bg-[#009688]' },
+            { id: 'tutor', label: 'AI Tutor', icon: Icons.Bot, color: 'bg-[#00BFA5]' },
+            { id: 'mnemonics', label: 'Mnemonikalar', icon: Brain, color: 'bg-[#9C27B0]' },
+            { id: 'videos', label: 'Videolar', icon: Video, color: 'bg-[#1976D2]' },
+            { id: 'symptoms', label: 'Simptomlar', icon: Icons.Activity, color: 'bg-[#FF9800]' },
+            { id: 'patients', label: 'Bemorlar', icon: Icons.Users, color: 'bg-[#4CAF50]' },
+            { id: 'pharma', label: 'Farmakologiya', icon: Icons.Pill, color: 'bg-[#E53935]' },
+            { id: 'fanlar', label: 'Fanlar', icon: Icons.Dna, color: 'bg-[#F57C00]' },
+            { id: 'journals', label: 'Jurnallar', icon: Icons.BookText, color: 'bg-[#D32F2F]' },
+            { id: 'news', label: 'Global Health News', icon: Globe, color: 'bg-[#2196F3]' },
+            { id: 'ai', label: 'AI Markazi', icon: Sparkles, color: 'bg-[#673AB7]' }
+          ].map((item) => (
+            <button 
+              key={item.id} 
+              onClick={() => onNavigate(item.id as Page)}
+              className="flex flex-col items-center gap-2 group min-w-[76px] sm:min-w-0 sm:flex-1 snap-start"
+            >
+              <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-[1.25rem] flex items-center justify-center text-white shadow-md transition-transform duration-300 group-hover:scale-110 group-active:scale-95 ${item.color}`}>
+                <item.icon className="w-6 h-6 sm:w-7 sm:h-7" strokeWidth={2} />
+              </div>
+              <span className="text-[10px] sm:text-xs font-semibold text-foreground/80 group-hover:text-foreground transition-colors text-center leading-tight whitespace-normal sm:whitespace-nowrap">{item.label}</span>
+            </button>
+          ))}
+        </div>
+      </motion.div>
 
       {/* Features Grid */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1160,6 +1136,7 @@ function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate
           <Stethoscope className="w-96 h-96" />
         </div>
       </section>
+
     </motion.div>
   );
 }
@@ -4467,25 +4444,25 @@ Format the output EXACTLY as follows using Markdown:
 
   return (
     <div className="max-w-6xl mx-auto flex flex-col p-4 md:p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3 sm:gap-4">
           <button 
             onClick={() => setSelectedScenario(null)} 
-            className="p-2.5 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 transition-all"
+            className="p-2 sm:p-2.5 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 transition-all flex-shrink-0"
           >
-            <ChevronRight className="w-5 h-5 rotate-180" />
+            <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 rotate-180" />
           </button>
           <div>
-            <h2 className="text-2xl font-semibold text-foreground">{selectedScenario.title}</h2>
-            <div className="flex items-center gap-2 text-sm text-foreground/60 mt-1">
-              <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> {formatTime(timer)}</span>
+            <h2 className="text-xl sm:text-2xl font-semibold text-foreground line-clamp-1">{selectedScenario.title}</h2>
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-foreground/60 mt-1">
+              <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5 sm:w-4 h-4" /> {formatTime(timer)}</span>
               <span>•</span>
               <span>Virtual Bemor</span>
             </div>
           </div>
         </div>
         {evaluation && (
-          <button onClick={downloadPDF} className="px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-all flex items-center gap-2 shadow-lg shadow-primary/20">
+          <button onClick={downloadPDF} className="w-full sm:w-auto px-4 py-2 sm:px-5 sm:py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20">
             <Upload className="w-4 h-4" />
             PDF Yuklab olish
           </button>
@@ -4519,10 +4496,10 @@ Format the output EXACTLY as follows using Markdown:
         </div>
 
         {/* Right Area - Chat or Evaluation */}
-        <div className="col-span-1 lg:col-span-3 flex flex-col bg-card border border-border rounded-3xl shadow-sm overflow-hidden h-[65vh] min-h-[500px] max-h-[800px]">
+        <div className="col-span-1 lg:col-span-3 flex flex-col bg-card border border-border rounded-2xl lg:rounded-3xl shadow-sm overflow-hidden h-[calc(100vh-220px)] lg:h-[65vh] lg:min-h-[500px] lg:max-h-[800px]">
           {!evaluation ? (
             <>
-              <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-6 custom-scrollbar">
                 {messages.map((msg, idx) => (
                   <motion.div 
                     initial={{ opacity: 0, y: 10 }}
@@ -4530,26 +4507,26 @@ Format the output EXACTLY as follows using Markdown:
                     key={idx} 
                     className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className={`flex gap-3 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground/60'}`}>
-                        {msg.role === 'user' ? <Stethoscope className="w-4 h-4" /> : <Baby className="w-4 h-4" />}
+                    <div className={`flex gap-2 sm:gap-3 max-w-[90%] sm:max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                      <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground/60'}`}>
+                        {msg.role === 'user' ? <Stethoscope className="w-3 h-3 sm:w-4 sm:h-4" /> : <Baby className="w-3 h-3 sm:w-4 sm:h-4" />}
                       </div>
-                      <div className={`p-4 rounded-2xl ${msg.role === 'user' ? 'bg-primary text-primary-foreground rounded-tr-sm shadow-md shadow-primary/10' : 'bg-secondary text-foreground rounded-tl-sm'}`}>
-                        <p className="whitespace-pre-wrap leading-relaxed text-[15px]">{msg.text}</p>
+                      <div className={`p-3 sm:p-4 rounded-2xl ${msg.role === 'user' ? 'bg-primary text-primary-foreground rounded-tr-sm shadow-md shadow-primary/10' : 'bg-secondary text-foreground rounded-tl-sm'}`}>
+                        <p className="whitespace-pre-wrap leading-relaxed text-[14px] sm:text-[15px]">{msg.text}</p>
                       </div>
                     </div>
                   </motion.div>
                 ))}
                 {loading && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-                    <div className="flex gap-3 max-w-[85%]">
-                      <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 mt-1">
-                        <Baby className="w-4 h-4 text-foreground/60" />
+                    <div className="flex gap-2 sm:gap-3 max-w-[90%] sm:max-w-[85%]">
+                      <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 mt-1">
+                        <Baby className="w-3 h-3 sm:w-4 sm:h-4 text-foreground/60" />
                       </div>
-                      <div className="bg-secondary text-foreground p-4 rounded-2xl rounded-tl-sm flex items-center gap-2 h-[52px]">
-                        <div className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce" />
-                        <div className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                        <div className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                      <div className="bg-secondary text-foreground p-3 sm:p-4 rounded-2xl rounded-tl-sm flex items-center gap-2 h-[44px] sm:h-[52px]">
+                        <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-foreground/40 rounded-full animate-bounce" />
+                        <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-foreground/40 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                        <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-foreground/40 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
                       </div>
                     </div>
                   </motion.div>
@@ -4557,34 +4534,34 @@ Format the output EXACTLY as follows using Markdown:
                 <div ref={messagesEndRef} />
               </div>
               
-              <div className="p-4 bg-background/50 border-t border-border backdrop-blur-md">
-                <div className="flex gap-3">
+              <div className="p-3 sm:p-4 bg-background/50 border-t border-border backdrop-blur-md">
+                <div className="flex gap-2 sm:gap-3">
                   <input
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                     placeholder="Bemorga savol bering..."
-                    className="flex-1 px-5 py-3.5 bg-card border border-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-foreground shadow-sm"
+                    className="flex-1 px-4 py-3 sm:px-5 sm:py-3.5 bg-card border border-border rounded-xl sm:rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-foreground shadow-sm text-sm sm:text-base"
                     disabled={loading || evaluating}
                   />
                   <button
                     onClick={handleSend}
                     disabled={loading || evaluating || !input.trim()}
-                    className="px-6 py-3.5 bg-primary text-primary-foreground rounded-2xl font-medium hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md shadow-primary/20"
+                    className="px-4 py-3 sm:px-6 sm:py-3.5 bg-primary text-primary-foreground rounded-xl sm:rounded-2xl font-medium hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md shadow-primary/20"
                   >
-                    <Send className="w-5 h-5" />
+                    <Send className="w-4 h-4 sm:w-5 sm:h-5" />
                     <span className="hidden sm:inline">Yuborish</span>
                   </button>
                 </div>
-                <div className="flex justify-between items-center mt-4 px-2">
-                  <p className="text-xs text-foreground/40 font-medium">
+                <div className="flex flex-col sm:flex-row justify-between items-center mt-3 sm:mt-4 px-1 sm:px-2 gap-3 sm:gap-0">
+                  <p className="text-[10px] sm:text-xs text-foreground/40 font-medium text-center sm:text-left">
                     Tashxisni aytganingizdan so'ng, AI suhbatni avtomatik yakunlaydi.
                   </p>
                   <button
                     onClick={() => handleEvaluate()}
                     disabled={loading || evaluating || messages.length < 3}
-                    className="px-4 py-2 bg-emerald-500/10 text-emerald-600 rounded-xl text-xs font-medium hover:bg-emerald-500/20 transition-all disabled:opacity-50 flex items-center gap-2"
+                    className="w-full sm:w-auto px-4 py-2 sm:py-2.5 bg-emerald-500/10 text-emerald-600 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium hover:bg-emerald-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {evaluating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                     Suhbatni yakunlash
@@ -4593,18 +4570,18 @@ Format the output EXACTLY as follows using Markdown:
               </div>
             </>
           ) : (
-            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-secondary/10">
-              <div ref={reportRef} className="bg-card border border-border text-foreground p-8 md:p-12 rounded-3xl shadow-sm max-w-4xl mx-auto">
-                <div className="flex items-center gap-3 mb-8 pb-6 border-b border-border">
-                  <div className="bg-primary/10 p-3 rounded-2xl">
-                    <Sparkles className="w-6 h-6 text-primary" />
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar bg-secondary/10">
+              <div ref={reportRef} className="bg-card border border-border text-foreground p-6 sm:p-8 md:p-12 rounded-2xl sm:rounded-3xl shadow-sm max-w-4xl mx-auto">
+                <div className="flex items-center gap-3 mb-6 sm:mb-8 pb-4 sm:pb-6 border-b border-border">
+                  <div className="bg-primary/10 p-2 sm:p-3 rounded-xl sm:rounded-2xl">
+                    <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-bold text-foreground">OSCE Natijasi</h3>
-                    <p className="text-foreground/60 font-medium">{selectedScenario.title}</p>
+                    <h3 className="text-xl sm:text-2xl font-bold text-foreground">OSCE Natijasi</h3>
+                    <p className="text-sm sm:text-base text-foreground/60 font-medium">{selectedScenario.title}</p>
                   </div>
                 </div>
-                <div className="markdown-body prose prose-neutral dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-foreground/80 prose-strong:text-foreground prose-ul:list-disc">
+                <div className="markdown-body prose prose-sm sm:prose-base prose-neutral dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-foreground/80 prose-strong:text-foreground prose-ul:list-disc">
                   <Markdown>{evaluation}</Markdown>
                 </div>
               </div>
