@@ -281,6 +281,16 @@ export default function App() {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [isThinkingMode, setIsThinkingMode] = useState(false);
   const [isSearchEnabled, setIsSearchEnabled] = useState(true);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, [chatMessages, isChatLoading]);
 
   const handleSendMessage = async () => {
     if (!chatInput.trim() || isChatLoading) return;
@@ -456,7 +466,7 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-secondary/30">
+              <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-secondary/30">
                 {chatMessages.length === 0 && (
                   <div className="text-center py-8 space-y-2">
                     <div className="bg-primary/10 w-12 h-12 rounded-full flex items-center justify-center mx-auto">
@@ -749,7 +759,7 @@ export default function App() {
           {currentPage === 'symptoms' && <SymptomsPage data={symptomsData} handleAIExplain={handleAIExplain} updateProgress={updateProgress} />}
           {currentPage === 'patients' && <PatientsPage patients={patientsData} onTreat={handleTreatPatient} onClearAdvice={handleClearAdvice} />}
           {currentPage === 'osce' && <OSCEPage scenarios={osceScenarios} />}
-          {currentPage === 'quiz' && <QuizPage handleAIExplain={handleAIExplain} showAlert={showAlert} user={user} updateProgress={updateProgress} />}
+          {currentPage === 'quiz' && <QuizPage handleAIExplain={handleAIExplain} showAlert={showAlert} user={user} updateProgress={updateProgress} fanlar={fanlarData} questions={questionsData} />}
           {currentPage === 'tutor' && <TutorPage />}
           {currentPage === 'pharma' && <PharmaPage />}
           {currentPage === 'fanlar' && <FanlarPage data={fanlarData} />}
@@ -1525,7 +1535,7 @@ function SymptomsPage({ data, handleAIExplain, updateProgress }: { data: Symptom
   );
 }
 
-function QuizPage({ handleAIExplain, showAlert, user, updateProgress }: { handleAIExplain: (title: string, context: string) => void, showAlert: (title: string, content: string) => void, user: any, updateProgress: (field: any, value: any) => void }) {
+function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, questions }: { handleAIExplain: (title: string, context: string) => void, showAlert: (title: string, content: string) => void, user: any, updateProgress: (field: any, value: any) => void, fanlar: Subject[], questions: Question[] }) {
   const { t } = useTranslation();
   const [step, setStep] = useState<'subjects' | 'topics' | 'quiz' | 'result'>('subjects');
   const [selectedSubject, setSelectedSubject] = useState<any>(null);
@@ -1539,6 +1549,30 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress }: { handle
   const [timeTaken, setTimeTaken] = useState(0);
   
   const [scoreboard, setScoreboard] = useState<{name: string, surname: string, score: number, time: number, topic: string}[]>([]);
+
+  const dynamicSubjects = useMemo(() => {
+    return fanlar.map(f => {
+      return {
+        id: f.id,
+        name: f.title,
+        icon: f.icon || "📚",
+        topics: f.topics.map(t => {
+          const topicQuestions = questions.filter(q => q.subject === f.title && q.topic === t.title);
+          return {
+            id: t.id,
+            name: t.title,
+            questions: topicQuestions.map(q => ({
+              id: q.id,
+              text: q.question,
+              options: q.options,
+              correct: q.correct,
+              explanation: q.explanation
+            }))
+          };
+        }).filter(t => t.questions.length > 0)
+      };
+    }).filter(s => s.topics.length > 0);
+  }, [fanlar, questions]);
 
   useEffect(() => {
     const saved = localStorage.getItem('meduz_quiz_scores');
@@ -1722,7 +1756,7 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress }: { handle
           <p className="text-foreground/60 font-medium text-lg">{t('quizSubjectsDesc')}</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {quizData.subjects.map(subject => (
+          {dynamicSubjects.length > 0 ? dynamicSubjects.map(subject => (
             <motion.button
               key={subject.id}
               whileHover={{ scale: 1.02 }}
@@ -1733,7 +1767,11 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress }: { handle
               <div className="text-5xl group-hover:scale-110 transition-transform duration-300">{subject.icon}</div>
               <h3 className="text-xl font-medium text-foreground group-hover:text-primary transition-colors tracking-tight">{subject.name}</h3>
             </motion.button>
-          ))}
+          )) : (
+            <div className="col-span-full text-center py-12 text-foreground/50">
+              Hozircha testlar mavjud emas. Admin panelidan testlar qo'shing.
+            </div>
+          )}
         </div>
       </motion.div>
     );
@@ -2064,6 +2102,14 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   showConfirm: (title: string, content: string, onConfirm: () => void) => void
 }) {
   const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'settings' | 'library' | 'osce' | 'fanlar' | 'appSettings' | 'news' | 'journals'>('mnemonics');
+  const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
+  const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({});
+  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+  const [editingTopic, setEditingTopic] = useState<{ subjectId: string, topic: Topic } | null>(null);
+
+  const toggleSubject = (subject: string) => setExpandedSubjects(prev => ({ ...prev, [subject]: !prev[subject] }));
+  const toggleTopic = (topic: string) => setExpandedTopics(prev => ({ ...prev, [topic]: !prev[topic] }));
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -2110,6 +2156,18 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
     });
   };
 
+  const updateItem = async (type: string, id: string, data: any) => {
+    try {
+      await updateDoc(doc(db, type, id), data);
+      onUpdate();
+      return true;
+    } catch (error) {
+      console.error('Error updating item:', error);
+      showAlert('Xatolik', 'Tahrirlashda xatolik yuz berdi.');
+      return false;
+    }
+  };
+
   const addItem = async (type: string, data: any) => {
     try {
       await addDoc(collection(db, type), data);
@@ -2119,6 +2177,62 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
       console.error('Error adding:', error);
       showAlert('Xatolik', 'Tarmoq xatoligi yuz berdi yoki ruxsat yo\'q.');
       return false;
+    }
+  };
+
+  const [isRestoring, setIsRestoring] = useState(false);
+  const handleRestoreOldTests = async () => {
+    if (isRestoring) return;
+    setIsRestoring(true);
+    try {
+      let updatedFanlar = [...fanlar];
+      for (const subject of quizData.subjects) {
+        let existingSubject = updatedFanlar.find(f => f.title === subject.name);
+        if (!existingSubject) {
+          existingSubject = {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+            title: subject.name,
+            description: subject.name + ' fanidan testlar',
+            icon: subject.icon || 'BookOpen',
+            topics: []
+          };
+          updatedFanlar.push(existingSubject);
+        }
+        
+        for (const topic of subject.topics) {
+          let existingTopic = existingSubject.topics.find(t => t.title === topic.name);
+          if (!existingTopic) {
+            existingTopic = {
+              id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+              title: topic.name,
+              videos: [],
+              guides: []
+            };
+            existingSubject.topics.push(existingTopic);
+          }
+          
+          for (const q of topic.questions) {
+            const questionData = {
+              subject: subject.name,
+              topic: topic.name,
+              difficulty: 'medium',
+              question: q.text,
+              options: q.options,
+              correct: q.correct,
+              explanation: (q as any).explanation || ''
+            };
+            await addDoc(collection(db, 'questions'), questionData);
+          }
+        }
+      }
+      setFanlar(updatedFanlar);
+      onUpdate();
+      showAlert('Muvaffaqiyatli', 'Eski testlar muvaffaqiyatli tiklandi!');
+    } catch (error) {
+      console.error('Error restoring tests:', error);
+      showAlert('Xatolik', 'Testlarni tiklashda xatolik yuz berdi.');
+    } finally {
+      setIsRestoring(false);
     }
   };
 
@@ -2165,7 +2279,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
             <div className="space-y-1">
               {[
                 { id: 'mnemonics', label: 'Mnemonikalar', icon: Brain },
-                { id: 'questions', label: 'Savollar', icon: CheckCircle2 },
+                { id: 'questions', label: 'Testlar', icon: CheckCircle2 },
                 { id: 'symptoms', label: 'Simptomlar', icon: Stethoscope },
                 { id: 'videos', label: 'Videolar', icon: Video },
                 { id: 'patients', label: 'Bemorlar', icon: Heart },
@@ -2185,7 +2299,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                 return (
                   <button 
                     key={id}
-                    onClick={() => setActiveTab(id)}
+                    onClick={() => { setActiveTab(id); setEditingQuestion(null); setEditingSubject(null); setEditingTopic(null); }}
                     className={`w-full px-4 py-3.5 rounded-2xl text-sm font-medium transition-all flex items-center gap-3.5 ${activeTab === id ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'text-foreground/60 hover:bg-secondary hover:text-primary'}`}
                   >
                     <Icon className={`w-5 h-5 ${activeTab === id ? 'text-primary-foreground' : 'text-foreground/40'}`} />
@@ -2234,11 +2348,22 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
               <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
                 <h3 className="font-medium text-foreground flex items-center gap-2">
                   {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'patients' ? <Heart className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'osce' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : activeTab === 'fanlar' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'news' ? <Globe className="w-5 h-5 text-primary" /> : activeTab === 'journals' ? <BookOpen className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
-                  {activeTab === 'mnemonics' ? 'Mnemonikalar Ro\'yxati' : activeTab === 'questions' ? 'Savollar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'patients' ? 'Bemorlar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'osce' ? 'OSCE Ssenariylari' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : activeTab === 'fanlar' ? 'Fanlar Ro\'yxati' : activeTab === 'news' ? 'Yangiliklar Ro\'yxati' : activeTab === 'journals' ? 'Jurnallar Ro\'yxati' : activeTab === 'appSettings' ? 'Ilova Sozlamalari' : 'Tizim Sozlamalari'}
+                  {activeTab === 'mnemonics' ? 'Mnemonikalar Ro\'yxati' : activeTab === 'questions' ? 'Testlar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'patients' ? 'Bemorlar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'osce' ? 'OSCE Ssenariylari' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : activeTab === 'fanlar' ? 'Fanlar Ro\'yxati' : activeTab === 'news' ? 'Yangiliklar Ro\'yxati' : activeTab === 'journals' ? 'Jurnallar Ro\'yxati' : activeTab === 'appSettings' ? 'Ilova Sozlamalari' : 'Tizim Sozlamalari'}
                 </h3>
-                <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">
-                  {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : activeTab === 'osce' ? osceScenarios : activeTab === 'fanlar' ? fanlar : activeTab === 'news' ? news : activeTab === 'journals' ? journals : activeTab === 'appSettings' ? [] : sections).length} ta element
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">
+                    {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : activeTab === 'osce' ? osceScenarios : activeTab === 'fanlar' ? fanlar : activeTab === 'news' ? news : activeTab === 'journals' ? journals : activeTab === 'appSettings' ? [] : sections).length} ta element
+                  </span>
+                  {activeTab === 'questions' && questions.length === 0 && (
+                    <button 
+                      onClick={handleRestoreOldTests} 
+                      disabled={isRestoring}
+                      className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                    >
+                      {isRestoring ? 'Tiklanmoqda...' : 'Eski testlarni tiklash'}
+                    </button>
+                  )}
+                </div>
               </div>
               
               <div className="overflow-x-auto">
@@ -2262,17 +2387,53 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                         </td>
                       </tr>
                     ))}
-                    {activeTab === 'questions' && questions.map(q => (
-                      <tr key={q.id} className="hover:bg-secondary/50 transition-colors group">
-                        <td className="px-6 py-4">
-                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{q.question}</div>
-                          <div className="text-[10px] text-primary font-medium uppercase tracking-wider mt-1">{q.subject} • {q.topic} • {q.difficulty}</div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button onClick={() => deleteItem('questions', q.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                        </td>
-                      </tr>
-                    ))}
+                    {activeTab === 'questions' && (
+                      Object.entries(
+                        questions.reduce((acc, q) => {
+                          if (!acc[q.subject]) acc[q.subject] = {};
+                          if (!acc[q.subject][q.topic]) acc[q.subject][q.topic] = [];
+                          acc[q.subject][q.topic].push(q);
+                          return acc;
+                        }, {} as Record<string, Record<string, Question[]>>)
+                      ).map(([subject, topics]) => (
+                        <React.Fragment key={subject}>
+                          <tr className="hover:bg-secondary/50 transition-colors group bg-secondary/10 cursor-pointer" onClick={() => toggleSubject(subject)}>
+                            <td colSpan={2} className="px-6 py-4">
+                              <div className="font-bold text-foreground group-hover:text-primary transition-colors flex items-center gap-2">
+                                <ChevronRight className={`w-4 h-4 transition-transform ${expandedSubjects[subject] ? 'rotate-90' : ''}`} />
+                                <BookOpen className="w-4 h-4" /> {subject}
+                              </div>
+                            </td>
+                          </tr>
+                          {expandedSubjects[subject] && Object.entries(topics).map(([topic, qs]) => (
+                            <React.Fragment key={topic}>
+                              <tr className="hover:bg-secondary/50 transition-colors group cursor-pointer" onClick={() => toggleTopic(topic)}>
+                                <td colSpan={2} className="px-6 py-3 pl-12 border-l-2 border-primary/20">
+                                  <div className="font-medium text-foreground/90 group-hover:text-primary transition-colors flex items-center gap-2">
+                                    <ChevronRight className={`w-3 h-3 transition-transform ${expandedTopics[topic] ? 'rotate-90' : ''}`} />
+                                    {topic}
+                                  </div>
+                                </td>
+                              </tr>
+                              {expandedTopics[topic] && qs.map(q => (
+                                <tr key={q.id} className="hover:bg-secondary/50 transition-colors group">
+                                  <td className="px-6 py-2 pl-20 border-l-2 border-primary/20">
+                                    <div className="text-sm text-foreground/80 group-hover:text-primary transition-colors flex items-center gap-2">
+                                      <CheckCircle2 className="w-3 h-3" /> {q.question}
+                                    </div>
+                                    <div className="text-[10px] text-foreground/50 mt-1 ml-5">{q.difficulty}</div>
+                                  </td>
+                                  <td className="px-6 py-2 text-right flex justify-end gap-1">
+                                    <button onClick={(e) => { e.stopPropagation(); setEditingQuestion(q); }} className="p-1.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-3.5 h-3.5" /></button>
+                                    <button onClick={(e) => { e.stopPropagation(); deleteItem('questions', q.id!); }} className="p-1.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </React.Fragment>
+                          ))}
+                        </React.Fragment>
+                      ))
+                    )}
                     {activeTab === 'symptoms' && symptoms.map(s => (
                       <tr key={s.id} className="hover:bg-secondary/50 transition-colors group">
                         <td className="px-6 py-4">
@@ -2362,7 +2523,8 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                             </div>
                             <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{fan.description}</div>
                           </td>
-                          <td className="px-6 py-4 text-right">
+                          <td className="px-6 py-4 text-right flex justify-end gap-1">
+                            <button onClick={() => setEditingSubject(fan)} className="p-2.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-4.5 h-4.5" /></button>
                             <button onClick={() => {
                               showConfirm('O\'chirish', 'Ushbu fanni o\'chirmoqchimisiz?', () => {
                                 setFanlar(fanlar.filter(f => f.id !== fan.id));
@@ -2378,7 +2540,8 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                                   <ChevronRight className="w-3 h-3" /> {topic.title}
                                 </div>
                               </td>
-                              <td className="px-6 py-3 text-right">
+                              <td className="px-6 py-3 text-right flex justify-end gap-1">
+                                <button onClick={() => setEditingTopic({ subjectId: fan.id!, topic })} className="p-2 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-4 h-4" /></button>
                                 <button onClick={() => {
                                   showConfirm('O\'chirish', 'Ushbu mavzuni o\'chirmoqchimisiz?', () => {
                                     setFanlar(fanlar.map(f => f.id === fan.id ? { ...f, topics: f.topics.filter(t => t.id !== topic.id) } : f));
@@ -2473,14 +2636,14 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
               
               <div className="space-y-6">
                 {activeTab === 'mnemonics' && <MnemonicForm onAdd={(data) => addItem('mnemonics', data)} />}
-                {activeTab === 'questions' && <QuestionForm onAdd={(data) => addItem('questions', data)} />}
+                {activeTab === 'questions' && <QuestionForm onAdd={(data) => addItem('questions', data)} onEdit={(id, data) => updateItem('questions', id, data)} onCancelEdit={() => setEditingQuestion(null)} editData={editingQuestion} fanlar={fanlar} />}
                 {activeTab === 'symptoms' && <SymptomForm onAdd={(data) => addItem('symptoms', data)} />}
                 {activeTab === 'videos' && <VideoForm onAdd={(data) => addItem('videos', data)} />}
                 {activeTab === 'patients' && <PatientForm onAdd={(data) => addItem('patients', data)} />}
                 {activeTab === 'sections' && <SectionForm onAdd={(data) => addItem('sections', data)} />}
                 {activeTab === 'osce' && <OSCEForm onAdd={(data) => addItem('osce_scenarios', data)} />}
                 {activeTab === 'library' && <LibraryForm library={library} onUpdate={onUpdateLibrary} />}
-                {activeTab === 'fanlar' && <FanlarForm fanlar={fanlar} setFanlar={setFanlar} />}
+                {activeTab === 'fanlar' && <FanlarForm fanlar={fanlar} setFanlar={setFanlar} editSubjectData={editingSubject} editTopicData={editingTopic} onCancelEditSubject={() => setEditingSubject(null)} onCancelEditTopic={() => setEditingTopic(null)} />}
                 {activeTab === 'news' && <NewsForm onAdd={async (data) => { setNews([...news, { ...data, id: Date.now().toString() }]); return true; }} />}
                 {activeTab === 'journals' && <JournalForm onAdd={async (data) => { setJournals([...journals, { ...data, id: Date.now().toString() }]); return true; }} />}
                 {activeTab === 'appSettings' && <AppSettingsForm appSettings={appSettings} setAppSettings={setAppSettings} />}
@@ -2552,51 +2715,101 @@ function AppSettingsForm({ appSettings, setAppSettings }: { appSettings: any, se
   );
 }
 
-function FanlarForm({ fanlar, setFanlar }: { fanlar: Subject[], setFanlar: (data: Subject[]) => void }) {
+function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCancelEditSubject, onCancelEditTopic }: { fanlar: Subject[], setFanlar: (data: Subject[]) => void, editSubjectData?: Subject | null, editTopicData?: { subjectId: string, topic: Topic } | null, onCancelEditSubject?: () => void, onCancelEditTopic?: () => void }) {
   const [newSubject, setNewSubject] = useState({ title: '', description: '', icon: 'BookOpen' });
   const [newTopic, setNewTopic] = useState({ subjectId: '', title: '', description: '' });
   const [newVideo, setNewVideo] = useState({ subjectId: '', topicId: '', title: '', description: '', videoUrl: '' });
   const [newGuide, setNewGuide] = useState({ subjectId: '', topicId: '', title: '', description: '', driveLink: '' });
 
+  useEffect(() => {
+    if (editSubjectData) {
+      setNewSubject({ title: editSubjectData.title, description: editSubjectData.description, icon: editSubjectData.icon });
+    } else {
+      setNewSubject({ title: '', description: '', icon: 'BookOpen' });
+    }
+  }, [editSubjectData]);
+
+  useEffect(() => {
+    if (editTopicData) {
+      setNewTopic({ subjectId: editTopicData.subjectId, title: editTopicData.topic.title, description: editTopicData.topic.description });
+    } else {
+      setNewTopic({ subjectId: '', title: '', description: '' });
+    }
+  }, [editTopicData]);
+
   const handleAddSubject = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSubject.title) return;
-    const subject: Subject = {
-      id: Date.now().toString(),
-      title: newSubject.title,
-      description: newSubject.description,
-      icon: newSubject.icon,
-      topics: []
-    };
-    setFanlar([...fanlar, subject]);
-    setNewSubject({ title: '', description: '', icon: 'BookOpen' });
-    alert('Fan qo\'shildi!');
+    
+    if (editSubjectData) {
+      const updatedFanlar = fanlar.map(sub => {
+        if (sub.id === editSubjectData.id) {
+          return { ...sub, title: newSubject.title, description: newSubject.description, icon: newSubject.icon };
+        }
+        return sub;
+      });
+      setFanlar(updatedFanlar);
+      if (onCancelEditSubject) onCancelEditSubject();
+      alert('Fan tahrirlandi!');
+    } else {
+      const subject: Subject = {
+        id: Date.now().toString(),
+        title: newSubject.title,
+        description: newSubject.description,
+        icon: newSubject.icon,
+        topics: []
+      };
+      setFanlar([...fanlar, subject]);
+      setNewSubject({ title: '', description: '', icon: 'BookOpen' });
+      alert('Fan qo\'shildi!');
+    }
   };
 
   const handleAddTopic = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTopic.subjectId || !newTopic.title) return;
-    const updatedFanlar = fanlar.map(sub => {
-      if (sub.id === newTopic.subjectId) {
-        return {
-          ...sub,
-          topics: [
-            ...sub.topics,
-            {
-              id: Date.now().toString(),
-              title: newTopic.title,
-              description: newTopic.description,
-              videos: [],
-              guides: []
-            }
-          ]
-        };
-      }
-      return sub;
-    });
-    setFanlar(updatedFanlar);
-    setNewTopic({ subjectId: '', title: '', description: '' });
-    alert('Mavzu qo\'shildi!');
+    
+    if (editTopicData) {
+      const updatedFanlar = fanlar.map(sub => {
+        if (sub.id === editTopicData.subjectId) {
+          return {
+            ...sub,
+            topics: sub.topics.map(top => {
+              if (top.id === editTopicData.topic.id) {
+                return { ...top, title: newTopic.title, description: newTopic.description };
+              }
+              return top;
+            })
+          };
+        }
+        return sub;
+      });
+      setFanlar(updatedFanlar);
+      if (onCancelEditTopic) onCancelEditTopic();
+      alert('Mavzu tahrirlandi!');
+    } else {
+      const updatedFanlar = fanlar.map(sub => {
+        if (sub.id === newTopic.subjectId) {
+          return {
+            ...sub,
+            topics: [
+              ...sub.topics,
+              {
+                id: Date.now().toString(),
+                title: newTopic.title,
+                description: newTopic.description,
+                videos: [],
+                guides: []
+              }
+            ]
+          };
+        }
+        return sub;
+      });
+      setFanlar(updatedFanlar);
+      setNewTopic({ subjectId: '', title: '', description: '' });
+      alert('Mavzu qo\'shildi!');
+    }
   };
 
   const handleAddVideo = (e: React.FormEvent) => {
@@ -2700,16 +2913,23 @@ function FanlarForm({ fanlar, setFanlar }: { fanlar: Subject[], setFanlar: (data
             onChange={e => setNewSubject({...newSubject, icon: e.target.value})}
             required
           />
-          <button type="submit" className="w-full py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors">
-            Fanni Saqlash
-          </button>
+          <div className="flex gap-2">
+            <button type="submit" className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors">
+              {editSubjectData ? 'Fanni Saqlash' : 'Fanni Qo\'shish'}
+            </button>
+            {editSubjectData && (
+              <button type="button" onClick={onCancelEditSubject} className="flex-1 py-2.5 bg-secondary text-foreground rounded-xl text-sm font-medium hover:bg-secondary/80 transition-colors">
+                Bekor qilish
+              </button>
+            )}
+          </div>
         </div>
       </form>
 
       {/* Add Topic */}
       <form onSubmit={handleAddTopic} className="space-y-4 p-6 bg-secondary/30 rounded-2xl border border-border">
         <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
-          <Plus className="w-4 h-4 text-primary" /> Yangi Mavzu Qo'shish
+          <Plus className="w-4 h-4 text-primary" /> {editTopicData ? 'Mavzuni Tahrirlash' : 'Yangi Mavzu Qo\'shish'}
         </h4>
         <div className="grid grid-cols-1 gap-4">
           <select 
@@ -2736,9 +2956,16 @@ function FanlarForm({ fanlar, setFanlar }: { fanlar: Subject[], setFanlar: (data
             onChange={e => setNewTopic({...newTopic, description: e.target.value})}
             required
           />
-          <button type="submit" className="w-full py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors">
-            Mavzuni Saqlash
-          </button>
+          <div className="flex gap-2">
+            <button type="submit" className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors">
+              {editTopicData ? 'Mavzuni Saqlash' : 'Mavzuni Qo\'shish'}
+            </button>
+            {editTopicData && (
+              <button type="button" onClick={onCancelEditTopic} className="flex-1 py-2.5 bg-secondary text-foreground rounded-xl text-sm font-medium hover:bg-secondary/80 transition-colors">
+                Bekor qilish
+              </button>
+            )}
+          </div>
         </div>
       </form>
 
@@ -3083,35 +3310,53 @@ function MnemonicForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
   );
 }
 
-function QuestionForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
-  const [formData, setFormData] = useState({ subject: 'internal', topic: 'yurak', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
+function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar }: { onAdd: (data: any) => Promise<boolean>, onEdit?: (id: string, data: any) => Promise<boolean>, onCancelEdit?: () => void, editData?: Question | null, fanlar: Subject[] }) {
+  const [formData, setFormData] = useState({ subject: fanlar[0]?.title || '', topic: fanlar[0]?.topics[0]?.title || '', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
   
-  const topics: Record<string, string[]> = {
-    internal: ["yurak", "opka", "jigar", "buyrak", "oshqozon-ichak"],
-    surgery: ["appenditsit", "xoletsistit", "pankreatit", "travma", "onkologiya"],
-    pediatrics: ["raxit", "infeksiyalar", "yuqumli kasalliklar", "nevrologiya"],
-    obstetrics: ["homiladorlik", "tug'ruq", "asoratlar"],
-    neurology: ["bosh_miya", "o'murtqa", "periferik_nervlar"]
-  };
+  useEffect(() => {
+    if (editData) {
+      setFormData({
+        subject: editData.subject,
+        topic: editData.topic,
+        difficulty: editData.difficulty,
+        question: editData.question,
+        options: editData.options,
+        correct: editData.correct,
+        explanation: editData.explanation
+      });
+    } else {
+      setFormData({ subject: fanlar[0]?.title || '', topic: fanlar[0]?.topics[0]?.title || '', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
+    }
+  }, [editData, fanlar]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (await onAdd(formData)) setFormData({ subject: 'internal', topic: 'yurak', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
+    if (editData && onEdit) {
+      if (await onEdit(editData.id!, formData)) {
+        setFormData({ subject: fanlar[0]?.title || '', topic: fanlar[0]?.topics[0]?.title || '', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
+        if (onCancelEdit) onCancelEdit();
+      }
+    } else {
+      if (await onAdd(formData)) setFormData({ subject: fanlar[0]?.title || '', topic: fanlar[0]?.topics[0]?.title || '', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
+    }
   };
+
+  const selectedSubject = fanlar.find(s => s.title === formData.subject) || fanlar[0];
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value, topic: topics[e.target.value][0]})}>
-          <option value="internal">Ichki kasalliklar</option>
-          <option value="surgery">Xirurgiya</option>
-          <option value="pediatrics">Pediatriya</option>
-          <option value="obstetrics">Akusherlik</option>
-          <option value="neurology">Nevrologiya</option>
+        <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.subject} onChange={e => {
+          const newSubject = fanlar.find(s => s.title === e.target.value);
+          setFormData({...formData, subject: e.target.value, topic: newSubject?.topics[0]?.title || ''});
+        }}>
+          {fanlar.map(s => (
+            <option key={s.id} value={s.title}>{s.title}</option>
+          ))}
         </select>
         <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.topic} onChange={e => setFormData({...formData, topic: e.target.value})}>
-          {topics[formData.subject]?.map(t => (
-            <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1).replace('_', ' ')}</option>
+          {selectedSubject?.topics.map(t => (
+            <option key={t.id} value={t.title}>{t.title}</option>
           ))}
         </select>
       </div>
@@ -3132,7 +3377,16 @@ function QuestionForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
         {formData.options.map((_, i) => <option key={i} value={i}>To'g'ri javob: Variant {i+1}</option>)}
       </select>
       <textarea placeholder="Tushuntirish" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.explanation} onChange={e => setFormData({...formData, explanation: e.target.value})} required />
-      <button className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-primary/90 transition-all">Qo'shish</button>
+      <div className="flex gap-2">
+        <button type="submit" className="flex-1 bg-primary text-primary-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-primary/90 transition-all">
+          {editData ? 'Saqlash' : 'Qo\'shish'}
+        </button>
+        {editData && (
+          <button type="button" onClick={onCancelEdit} className="flex-1 bg-secondary text-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-secondary/80 transition-all">
+            Bekor qilish
+          </button>
+        )}
+      </div>
     </form>
   );
 }
@@ -4142,11 +4396,16 @@ function OSCEPage({ scenarios }: { scenarios: OSCEScenario[] }) {
   const [evaluation, setEvaluation] = useState<string | null>(null);
   const [evaluating, setEvaluating] = useState(false);
   const [timer, setTimer] = useState(0);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
   };
 
   useEffect(() => {
@@ -4499,7 +4758,7 @@ Format the output EXACTLY as follows using Markdown:
         <div className="col-span-1 lg:col-span-3 flex flex-col bg-card border border-border rounded-2xl lg:rounded-3xl shadow-sm overflow-hidden h-[calc(100vh-220px)] lg:h-[65vh] lg:min-h-[500px] lg:max-h-[800px]">
           {!evaluation ? (
             <>
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-6 custom-scrollbar">
+              <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-6 custom-scrollbar">
                 {messages.map((msg, idx) => (
                   <motion.div 
                     initial={{ opacity: 0, y: 10 }}
@@ -4531,7 +4790,6 @@ Format the output EXACTLY as follows using Markdown:
                     </div>
                   </motion.div>
                 )}
-                <div ref={messagesEndRef} />
               </div>
               
               <div className="p-3 sm:p-4 bg-background/50 border-t border-border backdrop-blur-md">
