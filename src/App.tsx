@@ -256,8 +256,11 @@ export default function App() {
   useEffect(() => {
     const autoRestore = async () => {
       const hardcodedAdmins = ["muhammadboburolimjonov2@gmail.com", "olimjonovmuhammadbobur0@gmail.com"];
-      if (user && hardcodedAdmins.includes(user.email || '') && questionsData.length === 0) {
+      const hasRestored = localStorage.getItem('meduz_auto_restored');
+      
+      if (user && hardcodedAdmins.includes(user.email || '') && questionsData.length === 0 && !hasRestored) {
         console.log('Auto-restoring tests for admin...');
+        localStorage.setItem('meduz_auto_restored', 'true');
         try {
           let updatedFanlar = [...fanlarData];
           for (const subject of quizData.subjects) {
@@ -295,7 +298,9 @@ export default function App() {
                   correct: q.correct,
                   explanation: (q as any).explanation || ''
                 };
-                await addDoc(collection(db, 'questions'), questionData);
+                // Create a deterministic ID to prevent duplicates and "Document already exists" errors on retry
+                const docId = btoa(encodeURIComponent(q.text.substring(0, 50))).replace(/[/+=]/g, '_').substring(0, 50);
+                await setDoc(doc(db, 'questions', docId), questionData);
               }
             }
           }
@@ -303,6 +308,7 @@ export default function App() {
           fetchAllData();
         } catch (error) {
           console.error('Auto-restore error:', error);
+          localStorage.removeItem('meduz_auto_restored');
         }
       }
     };
@@ -2489,7 +2495,8 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
               correct: q.correct,
               explanation: (q as any).explanation || ''
             };
-            await addDoc(collection(db, 'questions'), questionData);
+            const docId = btoa(encodeURIComponent(q.text.substring(0, 50))).replace(/[/+=]/g, '_').substring(0, 50);
+            await setDoc(doc(db, 'questions', docId), questionData);
             existingQuestionTexts.add(q.text);
           }
         }
@@ -2584,10 +2591,22 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                   showConfirm('Tiklash', 'Boshlang\'ich ma\'lumotlarni tiklashni xohlaysizmi?', async () => {
                     try {
                       const { mnemonics, questions, symptomCheckerData, osceScenarios } = await import('./data');
-                      for (const m of mnemonics) await addDoc(collection(db, 'mnemonics'), m);
-                      for (const q of questions) await addDoc(collection(db, 'questions'), q);
-                      for (const s of symptomCheckerData) await addDoc(collection(db, 'symptoms'), s);
-                      for (const o of osceScenarios) await addDoc(collection(db, 'osce_scenarios'), o);
+                      for (const m of mnemonics) {
+                        const docId = btoa(encodeURIComponent(m.title.substring(0, 50))).replace(/[/+=]/g, '_').substring(0, 50);
+                        await setDoc(doc(db, 'mnemonics', docId), m);
+                      }
+                      for (const q of questions) {
+                        const docId = btoa(encodeURIComponent(q.question.substring(0, 50))).replace(/[/+=]/g, '_').substring(0, 50);
+                        await setDoc(doc(db, 'questions', docId), q);
+                      }
+                      for (const s of symptomCheckerData) {
+                        const docId = btoa(encodeURIComponent(s.diagnosis.substring(0, 50))).replace(/[/+=]/g, '_').substring(0, 50);
+                        await setDoc(doc(db, 'symptoms', docId), s);
+                      }
+                      for (const o of osceScenarios) {
+                        const docId = btoa(encodeURIComponent(o.title.substring(0, 50))).replace(/[/+=]/g, '_').substring(0, 50);
+                        await setDoc(doc(db, 'osce_scenarios', docId), o);
+                      }
                       showAlert('Muvaffaqiyat', 'Ma\'lumotlar muvaffaqiyatli tiklandi!');
                       onUpdate();
                     } catch(e) {
