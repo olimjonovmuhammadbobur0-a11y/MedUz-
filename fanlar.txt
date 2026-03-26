@@ -1,0 +1,67 @@
+80:type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients' | 'osce' | 'tutor' | 'pharma' | 'fanlar' | 'news' | 'journals' | 'profile';
+214:  const [fanlarData, setFanlarData] = useState<Subject[]>(initialFanlar);
+243:          await setDoc(doc(db, 'fanlar', 'main'), { data: fanlarData });
+245:          console.error('Error saving fanlar to Firestore:', error);
+250:  }, [fanlarData, user]);
+265:          let updatedFanlar = [...fanlarData];
+423:      const [m, q, s, v, p, sec, sett, libDoc, osce, fanlarDoc] = await Promise.all([
+433:        getDoc(doc(db, 'fanlar', 'main'))
+448:      if (fanlarDoc.exists()) {
+449:        setFanlarData(fanlarDoc.data().data);
+808:                <MobileNavLink active={currentPage === 'fanlar'} onClick={() => { navigate('fanlar'); setIsMenuOpen(false); }}>{t('subjects')}</MobileNavLink>
+837:          {currentPage === 'quiz' && <QuizPage handleAIExplain={handleAIExplain} showAlert={showAlert} user={user} updateProgress={updateProgress} fanlar={fanlarData} questions={questionsData} />}
+840:          {currentPage === 'fanlar' && <FanlarPage data={fanlarData} />}
+853:            fanlar={fanlarData}
+1108:            { id: 'fanlar', label: 'Fanlar', icon: Icons.Dna, color: 'bg-[#F57C00]' },
+1132:          onClick={() => onNavigate('fanlar')}
+1613:function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, questions }: { handleAIExplain: (title: string, context: string) => void, showAlert: (title: string, content: string) => void, user: any, updateProgress: (field: any, value: any) => void, fanlar: Subject[], questions: Question[] }) {
+1629:    return fanlar.map(f => {
+1650:  }, [fanlar, questions]);
+2191:          {t('fanlarBack')}
+2203:              {t('fanlarVideoLessons')}
+2212:              {t('fanlarGuides')}
+2235:                    {t('fanlarWatchVideo')}
+2255:                  {t('fanlarDownloadGuide')}
+2278:          {t('fanlarBack')}
+2296:                <span className="flex items-center gap-1.5"><Video className="w-4 h-4" /> {topic.videos.length} {t('fanlarVideosCount')}</span>
+2297:                <span className="flex items-center gap-1.5"><FileText className="w-4 h-4" /> {topic.guides.length} {t('fanlarGuidesCount')}</span>
+2314:        <h1 className="text-4xl font-bold text-foreground mb-4">{t('fanlarTitle')}</h1>
+2315:        <p className="text-lg text-foreground/60">{t('fanlarDesc')}</p>
+2334:                <span>{subject.topics.length} {t('fanlarTopics')}</span>
+2345:function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections, settings, library, osceScenarios, fanlar, setFanlar, appSettings, setAppSettings, news, setNews, journals, setJournals, onUpdate, onUpdateLibrary, themeColor, setThemeColor, showAlert, showConfirm }: { 
+2355:  fanlar: Subject[],
+2370:  const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'settings' | 'library' | 'osce' | 'fanlar' | 'appSettings' | 'news' | 'journals'>('mnemonics');
+2455:      let updatedFanlar = [...fanlar];
+2565:                { id: 'fanlar', label: 'Fanlar', icon: BookOpen },
+2638:                  {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'patients' ? <Heart className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'osce' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : activeTab === 'fanlar' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'news' ? <Globe className="w-5 h-5 text-primary" /> : activeTab === 'journals' ? <BookOpen className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
+2639:                  {activeTab === 'mnemonics' ? 'Mnemonikalar Ro\'yxati' : activeTab === 'questions' ? 'Testlar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'patients' ? 'Bemorlar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'osce' ? 'OSCE Ssenariylari' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : activeTab === 'fanlar' ? 'Fanlar Ro\'yxati' : activeTab === 'news' ? 'Yangiliklar Ro\'yxati' : activeTab === 'journals' ? 'Jurnallar Ro\'yxati' : activeTab === 'appSettings' ? 'Ilova Sozlamalari' : 'Tizim Sozlamalari'}
+2643:                    {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : activeTab === 'osce' ? osceScenarios : activeTab === 'fanlar' ? fanlar : activeTab === 'news' ? news : activeTab === 'journals' ? journals : activeTab === 'appSettings' ? [] : sections).length} ta element
+2804:                    {activeTab === 'fanlar' && fanlar.map(fan => (
+2817:                                setFanlar(fanlar.filter(f => f.id !== fan.id));
+2834:                                    setFanlar(fanlar.map(f => f.id === fan.id ? { ...f, topics: f.topics.filter(t => t.id !== topic.id) } : f));
+2849:                                      setFanlar(fanlar.map(f => f.id === fan.id ? { ...f, topics: f.topics.map(t => t.id === topic.id ? { ...t, videos: t.videos.filter(v => v.id !== video.id) } : t) } : f));
+2865:                                      setFanlar(fanlar.map(f => f.id === fan.id ? { ...f, topics: f.topics.map(t => t.id === topic.id ? { ...t, guides: t.guides.filter(g => g.id !== guide.id) } : t) } : f));
+2926:                {activeTab === 'questions' && <QuestionForm onAdd={(data) => addItem('questions', data)} onEdit={(id, data) => updateItem('questions', id, data)} onCancelEdit={() => setEditingQuestion(null)} editData={editingQuestion} fanlar={fanlar} />}
+2933:                {activeTab === 'fanlar' && <FanlarForm fanlar={fanlar} setFanlar={setFanlar} editSubjectData={editingSubject} editTopicData={editingTopic} onCancelEditSubject={() => setEditingSubject(null)} onCancelEditTopic={() => setEditingTopic(null)} />}
+3005:function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCancelEditSubject, onCancelEditTopic }: { fanlar: Subject[], setFanlar: (data: Subject[]) => void, editSubjectData?: Subject | null, editTopicData?: { subjectId: string, topic: Topic } | null, onCancelEditSubject?: () => void, onCancelEditTopic?: () => void }) {
+3032:      const updatedFanlar = fanlar.map(sub => {
+3049:      setFanlar([...fanlar, subject]);
+3060:      const updatedFanlar = fanlar.map(sub => {
+3078:      const updatedFanlar = fanlar.map(sub => {
+3105:    const updatedFanlar = fanlar.map(sub => {
+3138:    const updatedFanlar = fanlar.map(sub => {
+3168:  const selectedSubjectForTopic = fanlar.find(s => s.id === newTopic.subjectId);
+3169:  const selectedSubjectForVideo = fanlar.find(s => s.id === newVideo.subjectId);
+3170:  const selectedSubjectForGuide = fanlar.find(s => s.id === newGuide.subjectId);
+3229:            {fanlar.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+3272:            {fanlar.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+3326:            {fanlar.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+3600:function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar }: { onAdd: (data: any) => Promise<boolean>, onEdit?: (id: string, data: any) => Promise<boolean>, onCancelEdit?: () => void, editData?: Question | null, fanlar: Subject[] }) {
+3601:  const [formData, setFormData] = useState({ subject: fanlar[0]?.title || '', topic: fanlar[0]?.topics[0]?.title || '', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
+3615:      setFormData({ subject: fanlar[0]?.title || '', topic: fanlar[0]?.topics[0]?.title || '', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
+3617:  }, [editData, fanlar]);
+3623:        setFormData({ subject: fanlar[0]?.title || '', topic: fanlar[0]?.topics[0]?.title || '', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
+3627:      if (await onAdd(formData)) setFormData({ subject: fanlar[0]?.title || '', topic: fanlar[0]?.topics[0]?.title || '', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
+3631:  const selectedSubject = fanlar.find(s => s.title === formData.subject) || fanlar[0];
+3637:          const newSubject = fanlar.find(s => s.title === e.target.value);
+3640:          {fanlar.map(s => (

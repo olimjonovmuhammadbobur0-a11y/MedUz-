@@ -67,7 +67,7 @@ import { Mnemonic, Question, SymptomData, VideoData, Section, Setting, Patient, 
 import { explainMedicalTopic } from './services/aiService';
 import { quizData } from './quizData';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { doc, getDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc, writeBatch } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
 const getYouTubeEmbedUrl = (url: string) => {
@@ -134,6 +134,17 @@ export default function App() {
       }
     } catch (error) {
       console.error("Error updating progress:", error);
+    }
+  };
+
+  const handleSetFanlar = async (newData: Subject[]) => {
+    setFanlarData(newData);
+    if (user && (user.email === 'muhammadboburolimjonov2@gmail.com' || user.email === 'olimjonovmuhammadbobur0@gmail.com')) {
+      try {
+        await setDoc(doc(db, 'fanlar', 'main'), { data: newData });
+      } catch (error) {
+        console.error('Error saving fanlar to Firestore:', error);
+      }
     }
   };
 
@@ -237,32 +248,22 @@ export default function App() {
   }, [journalsData]);
 
   useEffect(() => {
-    const saveFanlar = async () => {
-      if (user && (user.email === 'muhammadboburolimjonov2@gmail.com' || user.email === 'olimjonovmuhammadbobur0@gmail.com')) {
-        try {
-          await setDoc(doc(db, 'fanlar', 'main'), { data: fanlarData });
-        } catch (error) {
-          console.error('Error saving fanlar to Firestore:', error);
-        }
-      }
-    };
-    saveFanlar();
-  }, [fanlarData, user]);
-
-  useEffect(() => {
     localStorage.setItem('meduz_app_settings', JSON.stringify(appSettings));
   }, [appSettings]);
 
   useEffect(() => {
     const autoRestore = async () => {
       const hardcodedAdmins = ["muhammadboburolimjonov2@gmail.com", "olimjonovmuhammadbobur0@gmail.com"];
-      const hasRestored = localStorage.getItem('meduz_auto_restored');
+      const hasRestored = localStorage.getItem('meduz_auto_restored_v2');
       
-      if (user && hardcodedAdmins.includes(user.email || '') && questionsData.length === 0 && !hasRestored) {
+      if (user && hardcodedAdmins.includes(user.email || '') && !hasRestored) {
         console.log('Auto-restoring tests for admin...');
-        localStorage.setItem('meduz_auto_restored', 'true');
+        localStorage.setItem('meduz_auto_restored_v2', 'true');
         try {
           let updatedFanlar = [...fanlarData];
+          let batch = writeBatch(db);
+          let operationCount = 0;
+
           for (const subject of quizData.subjects) {
             let existingSubject = updatedFanlar.find(f => f.title === subject.name);
             if (!existingSubject) {
@@ -300,19 +301,31 @@ export default function App() {
                 };
                 // Create a deterministic ID to prevent duplicates and "Document already exists" errors on retry
                 const docId = btoa(encodeURIComponent(q.text.substring(0, 50))).replace(/[/+=]/g, '_').substring(0, 50);
-                await setDoc(doc(db, 'questions', docId), questionData);
+                batch.set(doc(db, 'questions', docId), questionData);
+                operationCount++;
+
+                if (operationCount >= 450) {
+                  await batch.commit();
+                  batch = writeBatch(db);
+                  operationCount = 0;
+                }
               }
             }
           }
-          setFanlarData(updatedFanlar);
+          
+          if (operationCount > 0) {
+            await batch.commit();
+          }
+
+          await handleSetFanlar(updatedFanlar);
           fetchAllData();
         } catch (error) {
           console.error('Auto-restore error:', error);
-          localStorage.removeItem('meduz_auto_restored');
+          localStorage.removeItem('meduz_auto_restored_v2');
         }
       }
     };
-    if (questionsData.length === 0 && user) {
+    if (user) {
       autoRestore();
     }
   }, [user, questionsData.length]);
@@ -435,7 +448,29 @@ export default function App() {
       
       console.log('Patients data:', p);
       setMnemonicsData(m as any);
-      setQuestionsData(q as any);
+      
+      // Merge questions from Firestore and hardcoded quizData
+      const mergedQuestions = [...q];
+      quizData.subjects.forEach(subject => {
+        subject.topics.forEach(topic => {
+          topic.questions.forEach(question => {
+            if (!mergedQuestions.find((mq: any) => mq.question === question.text)) {
+              mergedQuestions.push({
+                id: question.id.toString(),
+                subject: subject.name,
+                topic: topic.name,
+                difficulty: 'medium',
+                question: question.text,
+                options: question.options,
+                correct: question.correct,
+                explanation: (question as any).explanation || ''
+              });
+            }
+          });
+        });
+      });
+      setQuestionsData(mergedQuestions as any);
+
       setSymptomsData(s as any);
       setVideosData(v as any);
       setPatientsData(p as any);
@@ -445,9 +480,35 @@ export default function App() {
       if (libDoc.exists()) {
         setLibraryData(libDoc.data().data);
       }
-      if (fanlarDoc.exists()) {
-        setFanlarData(fanlarDoc.data().data);
-      }
+      
+      // Merge fanlar from Firestore and hardcoded quizData
+      let mergedFanlar = fanlarDoc.exists() ? fanlarDoc.data().data : [...initialFanlar];
+      quizData.subjects.forEach(subject => {
+        let existingSubject = mergedFanlar.find((f: any) => f.title === subject.name);
+        if (!existingSubject) {
+          existingSubject = {
+            id: subject.id.toString(),
+            title: subject.name,
+            description: subject.name + ' fanidan testlar',
+            icon: subject.icon || 'BookOpen',
+            topics: []
+          };
+          mergedFanlar.push(existingSubject);
+        }
+        subject.topics.forEach(topic => {
+          let existingTopic = existingSubject.topics.find((t: any) => t.title === topic.name);
+          if (!existingTopic) {
+            existingTopic = {
+              id: topic.id.toString(),
+              title: topic.name,
+              videos: [],
+              guides: []
+            };
+            existingSubject.topics.push(existingTopic);
+          }
+        });
+      });
+      setFanlarData(mergedFanlar);
     } catch (error) {
       console.error('Error fetching data:', error);
     }
@@ -851,7 +912,7 @@ export default function App() {
             library={libraryData}
             osceScenarios={osceScenarios}
             fanlar={fanlarData}
-            setFanlar={setFanlarData}
+            setFanlar={handleSetFanlar}
             appSettings={appSettings}
             setAppSettings={setAppSettings}
             news={newsData}
@@ -2353,7 +2414,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   library: any,
   osceScenarios: OSCEScenario[],
   fanlar: Subject[],
-  setFanlar: (data: Subject[]) => void,
+  setFanlar: (data: Subject[]) => Promise<void> | void,
   appSettings: any,
   setAppSettings: (data: any) => void,
   news: NewsItem[],
@@ -2453,6 +2514,8 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
     setIsRestoring(true);
     try {
       let updatedFanlar = [...fanlar];
+      let batch = writeBatch(db);
+      let operationCount = 0;
       
       // Get existing questions to avoid duplicates
       const existingQuestionsSnap = await getDocs(collection(db, 'questions'));
@@ -2496,12 +2559,24 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
               explanation: (q as any).explanation || ''
             };
             const docId = btoa(encodeURIComponent(q.text.substring(0, 50))).replace(/[/+=]/g, '_').substring(0, 50);
-            await setDoc(doc(db, 'questions', docId), questionData);
+            batch.set(doc(db, 'questions', docId), questionData);
             existingQuestionTexts.add(q.text);
+            operationCount++;
+
+            if (operationCount >= 450) {
+              await batch.commit();
+              batch = writeBatch(db);
+              operationCount = 0;
+            }
           }
         }
       }
-      setFanlar(updatedFanlar);
+      
+      if (operationCount > 0) {
+        await batch.commit();
+      }
+
+      await setFanlar(updatedFanlar);
       onUpdate();
       showAlert('Muvaffaqiyatli', 'Eski testlar muvaffaqiyatli tiklandi!');
     } catch (error) {
@@ -2591,22 +2666,40 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                   showConfirm('Tiklash', 'Boshlang\'ich ma\'lumotlarni tiklashni xohlaysizmi?', async () => {
                     try {
                       const { mnemonics, questions, symptomCheckerData, osceScenarios } = await import('./data');
+                      let batch = writeBatch(db);
+                      let operationCount = 0;
+
+                      const addToBatch = async (collectionName: string, docId: string, data: any) => {
+                        batch.set(doc(db, collectionName, docId), data);
+                        operationCount++;
+                        if (operationCount >= 450) {
+                          await batch.commit();
+                          batch = writeBatch(db);
+                          operationCount = 0;
+                        }
+                      };
+
                       for (const m of mnemonics) {
                         const docId = btoa(encodeURIComponent(m.title.substring(0, 50))).replace(/[/+=]/g, '_').substring(0, 50);
-                        await setDoc(doc(db, 'mnemonics', docId), m);
+                        await addToBatch('mnemonics', docId, m);
                       }
                       for (const q of questions) {
                         const docId = btoa(encodeURIComponent(q.question.substring(0, 50))).replace(/[/+=]/g, '_').substring(0, 50);
-                        await setDoc(doc(db, 'questions', docId), q);
+                        await addToBatch('questions', docId, q);
                       }
                       for (const s of symptomCheckerData) {
                         const docId = btoa(encodeURIComponent(s.diagnosis.substring(0, 50))).replace(/[/+=]/g, '_').substring(0, 50);
-                        await setDoc(doc(db, 'symptoms', docId), s);
+                        await addToBatch('symptoms', docId, s);
                       }
                       for (const o of osceScenarios) {
                         const docId = btoa(encodeURIComponent(o.title.substring(0, 50))).replace(/[/+=]/g, '_').substring(0, 50);
-                        await setDoc(doc(db, 'osce_scenarios', docId), o);
+                        await addToBatch('osce_scenarios', docId, o);
                       }
+                      
+                      if (operationCount > 0) {
+                        await batch.commit();
+                      }
+
                       showAlert('Muvaffaqiyat', 'Ma\'lumotlar muvaffaqiyatli tiklandi!');
                       onUpdate();
                     } catch(e) {
