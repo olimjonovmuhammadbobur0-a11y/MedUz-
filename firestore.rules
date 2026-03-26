@@ -86,5 +86,10 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin();
     }
+
+    match /fanlar/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
   }
 }

@@ -211,10 +211,7 @@ export default function App() {
     return saved ? JSON.parse(saved) : initialMedicalData;
   });
 
-  const [fanlarData, setFanlarData] = useState<Subject[]>(() => {
-    const saved = localStorage.getItem('meduz_fanlar');
-    return saved ? JSON.parse(saved) : initialFanlar;
-  });
+  const [fanlarData, setFanlarData] = useState<Subject[]>(initialFanlar);
 
   const [appSettings, setAppSettings] = useState(() => {
     const saved = localStorage.getItem('meduz_app_settings');
@@ -240,12 +237,79 @@ export default function App() {
   }, [journalsData]);
 
   useEffect(() => {
-    localStorage.setItem('meduz_fanlar', JSON.stringify(fanlarData));
-  }, [fanlarData]);
+    const saveFanlar = async () => {
+      if (user && (user.email === 'muhammadboburolimjonov2@gmail.com' || user.email === 'olimjonovmuhammadbobur0@gmail.com')) {
+        try {
+          await setDoc(doc(db, 'fanlar', 'main'), { data: fanlarData });
+        } catch (error) {
+          console.error('Error saving fanlar to Firestore:', error);
+        }
+      }
+    };
+    saveFanlar();
+  }, [fanlarData, user]);
 
   useEffect(() => {
     localStorage.setItem('meduz_app_settings', JSON.stringify(appSettings));
   }, [appSettings]);
+
+  useEffect(() => {
+    const autoRestore = async () => {
+      const hardcodedAdmins = ["muhammadboburolimjonov2@gmail.com", "olimjonovmuhammadbobur0@gmail.com"];
+      if (user && hardcodedAdmins.includes(user.email || '') && questionsData.length === 0) {
+        console.log('Auto-restoring tests for admin...');
+        try {
+          let updatedFanlar = [...fanlarData];
+          for (const subject of quizData.subjects) {
+            let existingSubject = updatedFanlar.find(f => f.title === subject.name);
+            if (!existingSubject) {
+              existingSubject = {
+                id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                title: subject.name,
+                description: subject.name + ' fanidan testlar',
+                icon: subject.icon || 'BookOpen',
+                topics: []
+              };
+              updatedFanlar.push(existingSubject);
+            }
+            
+            for (const topic of subject.topics) {
+              let existingTopic = existingSubject.topics.find(t => t.title === topic.name);
+              if (!existingTopic) {
+                existingTopic = {
+                  id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                  title: topic.name,
+                  videos: [],
+                  guides: []
+                };
+                existingSubject.topics.push(existingTopic);
+              }
+              
+              for (const q of topic.questions) {
+                const questionData = {
+                  subject: subject.name,
+                  topic: topic.name,
+                  difficulty: 'medium',
+                  question: q.text,
+                  options: q.options,
+                  correct: q.correct,
+                  explanation: (q as any).explanation || ''
+                };
+                await addDoc(collection(db, 'questions'), questionData);
+              }
+            }
+          }
+          setFanlarData(updatedFanlar);
+          fetchAllData();
+        } catch (error) {
+          console.error('Auto-restore error:', error);
+        }
+      }
+    };
+    if (questionsData.length === 0 && user) {
+      autoRestore();
+    }
+  }, [user, questionsData.length]);
 
   const handleUpdateLibrary = async (data: any) => {
     setLibraryData(data);
@@ -350,7 +414,7 @@ export default function App() {
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       };
 
-      const [m, q, s, v, p, sec, sett, libDoc, osce] = await Promise.all([
+      const [m, q, s, v, p, sec, sett, libDoc, osce, fanlarDoc] = await Promise.all([
         getCollectionData('mnemonics'),
         getCollectionData('questions'),
         getCollectionData('symptoms'),
@@ -359,7 +423,8 @@ export default function App() {
         getCollectionData('sections'),
         getCollectionData('settings'),
         getDoc(doc(db, 'library', 'main')),
-        getCollectionData('osce_scenarios')
+        getCollectionData('osce_scenarios'),
+        getDoc(doc(db, 'fanlar', 'main'))
       ]);
       
       console.log('Patients data:', p);
@@ -373,6 +438,9 @@ export default function App() {
       setOsceScenarios(osce as any);
       if (libDoc.exists()) {
         setLibraryData(libDoc.data().data);
+      }
+      if (fanlarDoc.exists()) {
+        setFanlarData(fanlarDoc.data().data);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -1772,42 +1840,68 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           {dynamicSubjects.length > 0 ? dynamicSubjects.map((subject, idx) => {
             const IconComponent = (Icons as any)[subject.icon] || BookOpen;
-            const colors = [
-              'from-blue-500 to-indigo-600',
-              'from-emerald-500 to-teal-600',
-              'from-rose-500 to-pink-600',
-              'from-amber-500 to-orange-600',
-              'from-purple-500 to-violet-600',
-              'from-cyan-500 to-blue-600'
+            const gradients = [
+              'from-blue-600 to-indigo-700',
+              'from-emerald-600 to-teal-700',
+              'from-rose-600 to-pink-700',
+              'from-amber-600 to-orange-700',
+              'from-purple-600 to-violet-700',
+              'from-cyan-600 to-blue-700'
             ];
-            const colorClass = colors[idx % colors.length];
+            const gradientClass = gradients[idx % gradients.length];
 
             return (
-              <motion.button
+              <motion.div
                 key={subject.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.1 }}
-                whileHover={{ y: -8, scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+                whileHover={{ y: -10, scale: 1.02 }}
                 onClick={() => handleSubjectSelect(subject)}
-                className="relative group bg-card p-1 rounded-3xl border border-border/40 shadow-sm hover:shadow-xl transition-all overflow-hidden"
+                className="relative group cursor-pointer overflow-hidden rounded-[2.5rem] p-1 shadow-xl hover:shadow-2xl transition-all duration-500"
               >
-                <div className="p-8 flex flex-col items-center justify-center gap-6 text-center relative z-10">
-                  <div className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${colorClass} flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-500`}>
-                    <IconComponent className="w-10 h-10 text-white" />
+                {/* Background Gradient Layer */}
+                <div className={`absolute inset-0 bg-gradient-to-br ${gradientClass} opacity-90 group-hover:opacity-100 transition-opacity duration-500`} />
+                
+                {/* Glass Overlay */}
+                <div className="absolute inset-0 backdrop-blur-[1px] bg-white/5 border border-white/20 rounded-[2.5rem]" />
+                
+                {/* Content Container */}
+                <div className="relative p-10 flex flex-col items-center text-center text-white min-h-[320px] justify-center z-10">
+                  {/* Icon with floating effect */}
+                  <motion.div 
+                    animate={{ y: [0, -5, 0] }}
+                    transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                    className="mb-8 p-6 rounded-3xl bg-white/20 backdrop-blur-md shadow-2xl border border-white/30 group-hover:scale-110 transition-transform duration-500"
+                  >
+                    <IconComponent className="w-12 h-12 text-white drop-shadow-lg" />
+                  </motion.div>
+                  
+                  <div className="space-y-3">
+                    <h3 className="text-3xl font-extrabold tracking-tight drop-shadow-md">
+                      {subject.name}
+                    </h3>
+                    <p className="text-white/80 font-semibold text-lg">
+                      {subject.topics.length} {t('quizTopicsTitle').toLowerCase()}
+                    </p>
                   </div>
-                  <div className="space-y-2">
-                    <h3 className="text-2xl font-bold text-foreground group-hover:text-primary transition-colors tracking-tight">{subject.name}</h3>
-                    <p className="text-sm text-foreground/50 font-medium">{subject.topics.length} {t('quizTopicsTitle').toLowerCase()}</p>
-                  </div>
-                  <div className="mt-4 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 shadow-lg shadow-primary/20">
-                    Testni boshlash
+
+                  {/* Action Button */}
+                  <div className="mt-10">
+                    <motion.div
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      className="bg-white text-blue-700 px-10 py-4 rounded-2xl font-black text-lg shadow-2xl opacity-0 group-hover:opacity-100 translate-y-6 group-hover:translate-y-0 transition-all duration-500"
+                    >
+                      Testni boshlash
+                    </motion.div>
                   </div>
                 </div>
-                {/* Decorative background element */}
-                <div className={`absolute -right-4 -bottom-4 w-24 h-24 bg-gradient-to-br ${colorClass} opacity-[0.03] rounded-full group-hover:scale-150 transition-transform duration-700`} />
-              </motion.button>
+
+                {/* Decorative Blobs */}
+                <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-3xl group-hover:bg-white/20 transition-all duration-700" />
+                <div className="absolute -left-10 -bottom-10 w-48 h-48 bg-black/10 rounded-full blur-3xl group-hover:bg-black/20 transition-all duration-700" />
+              </motion.div>
             );
           }) : (
             <div className="col-span-full text-center py-20 bg-secondary/20 rounded-3xl border border-dashed border-border/60">
@@ -2292,10 +2386,11 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
 
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       console.log("User doc exists:", userDoc.exists());
-      if (userDoc.exists()) {
-        console.log("User doc data:", userDoc.data());
-      }
-      if (userDoc.exists() && userDoc.data().role === 'admin') {
+      
+      const hardcodedAdmins = ["muhammadboburolimjonov2@gmail.com", "olimjonovmuhammadbobur0@gmail.com"];
+      const isHardcodedAdmin = hardcodedAdmins.includes(user.email || '');
+
+      if ((userDoc.exists() && userDoc.data().role === 'admin') || isHardcodedAdmin) {
         setIsAdmin(true);
       } else {
         console.error("User document does not exist or not an admin:", userDoc.exists() ? userDoc.data() : "No doc");
