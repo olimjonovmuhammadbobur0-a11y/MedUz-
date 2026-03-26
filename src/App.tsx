@@ -31,6 +31,7 @@ import {
   Edit2,
   Sparkles,
   Loader2,
+  Eye,
   MessageSquare,
   Send,
   Camera,
@@ -1537,7 +1538,7 @@ function SymptomsPage({ data, handleAIExplain, updateProgress }: { data: Symptom
 
 function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, questions }: { handleAIExplain: (title: string, context: string) => void, showAlert: (title: string, content: string) => void, user: any, updateProgress: (field: any, value: any) => void, fanlar: Subject[], questions: Question[] }) {
   const { t } = useTranslation();
-  const [step, setStep] = useState<'subjects' | 'topics' | 'quiz' | 'result'>('subjects');
+  const [step, setStep] = useState<'subjects' | 'topics' | 'quiz' | 'result' | 'review'>('subjects');
   const [selectedSubject, setSelectedSubject] = useState<any>(null);
   const [selectedTopic, setSelectedTopic] = useState<any>(null);
   
@@ -1579,6 +1580,8 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
     if (saved) setScoreboard(JSON.parse(saved));
   }, []);
 
+  const [userAnswers, setUserAnswers] = useState<(number | null)[]>([]);
+
   const handleSubjectSelect = (subject: any) => {
     setSelectedSubject(subject);
     setStep('topics');
@@ -1592,6 +1595,7 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
     setStartTime(Date.now());
     setIsAnswered(false);
     setSelectedOption(null);
+    setUserAnswers(new Array(topic.questions.length).fill(null));
   };
 
   const handleAnswer = (idx: number) => {
@@ -1599,21 +1603,24 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
     setSelectedOption(idx);
     setIsAnswered(true);
     
+    const newUserAnswers = [...userAnswers];
+    newUserAnswers[currentQuestionIdx] = idx;
+    setUserAnswers(newUserAnswers);
+    
     let isCorrect = idx === selectedTopic.questions[currentQuestionIdx].correct;
     if (isCorrect) {
       setScore(s => s + 1);
     }
+  };
 
-    // Auto advance after 1.5 seconds
-    setTimeout(() => {
-      if (currentQuestionIdx < selectedTopic.questions.length - 1) {
-        setCurrentQuestionIdx(prev => prev + 1);
-        setSelectedOption(null);
-        setIsAnswered(false);
-      } else {
-        finishQuiz(score + (isCorrect ? 1 : 0));
-      }
-    }, 1500);
+  const handleNextQuestion = () => {
+    if (currentQuestionIdx < selectedTopic.questions.length - 1) {
+      setCurrentQuestionIdx(prev => prev + 1);
+      setSelectedOption(null);
+      setIsAnswered(false);
+    } else {
+      finishQuiz(score);
+    }
   };
 
   const finishQuiz = (finalScore: number) => {
@@ -1747,29 +1754,68 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
 
   if (step === 'subjects') {
     return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto space-y-8">
-        <div className="text-center space-y-4">
-          <div className="bg-primary/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-inner">
-            <BookOpen className="w-10 h-10 text-primary" />
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-5xl mx-auto space-y-12">
+        <div className="text-center space-y-6">
+          <motion.div 
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-primary/10 w-24 h-24 rounded-3xl flex items-center justify-center mx-auto shadow-inner rotate-3 hover:rotate-0 transition-transform duration-500"
+          >
+            <BookOpen className="w-12 h-12 text-primary" />
+          </motion.div>
+          <div className="space-y-2">
+            <h2 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground">{t('quizSubjectsTitle')}</h2>
+            <p className="text-foreground/60 font-medium text-lg max-w-2xl mx-auto">{t('quizSubjectsDesc')}</p>
           </div>
-          <h2 className="text-4xl font-semibold tracking-tight text-foreground">{t('quizSubjectsTitle')}</h2>
-          <p className="text-foreground/60 font-medium text-lg">{t('quizSubjectsDesc')}</p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {dynamicSubjects.length > 0 ? dynamicSubjects.map(subject => (
-            <motion.button
-              key={subject.id}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => handleSubjectSelect(subject)}
-              className="bg-card p-8 rounded-2xl border border-border/40 shadow-sm hover:shadow-sm transition-all flex flex-col items-center justify-center gap-5 text-center group"
-            >
-              <div className="text-5xl group-hover:scale-110 transition-transform duration-300">{subject.icon}</div>
-              <h3 className="text-xl font-medium text-foreground group-hover:text-primary transition-colors tracking-tight">{subject.name}</h3>
-            </motion.button>
-          )) : (
-            <div className="col-span-full text-center py-12 text-foreground/50">
-              Hozircha testlar mavjud emas. Admin panelidan testlar qo'shing.
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+          {dynamicSubjects.length > 0 ? dynamicSubjects.map((subject, idx) => {
+            const IconComponent = (Icons as any)[subject.icon] || BookOpen;
+            const colors = [
+              'from-blue-500 to-indigo-600',
+              'from-emerald-500 to-teal-600',
+              'from-rose-500 to-pink-600',
+              'from-amber-500 to-orange-600',
+              'from-purple-500 to-violet-600',
+              'from-cyan-500 to-blue-600'
+            ];
+            const colorClass = colors[idx % colors.length];
+
+            return (
+              <motion.button
+                key={subject.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.1 }}
+                whileHover={{ y: -8, scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => handleSubjectSelect(subject)}
+                className="relative group bg-card p-1 rounded-3xl border border-border/40 shadow-sm hover:shadow-xl transition-all overflow-hidden"
+              >
+                <div className="p-8 flex flex-col items-center justify-center gap-6 text-center relative z-10">
+                  <div className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${colorClass} flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-500`}>
+                    <IconComponent className="w-10 h-10 text-white" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-2xl font-bold text-foreground group-hover:text-primary transition-colors tracking-tight">{subject.name}</h3>
+                    <p className="text-sm text-foreground/50 font-medium">{subject.topics.length} {t('quizTopicsTitle').toLowerCase()}</p>
+                  </div>
+                  <div className="mt-4 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 shadow-lg shadow-primary/20">
+                    Testni boshlash
+                  </div>
+                </div>
+                {/* Decorative background element */}
+                <div className={`absolute -right-4 -bottom-4 w-24 h-24 bg-gradient-to-br ${colorClass} opacity-[0.03] rounded-full group-hover:scale-150 transition-transform duration-700`} />
+              </motion.button>
+            );
+          }) : (
+            <div className="col-span-full text-center py-20 bg-secondary/20 rounded-3xl border border-dashed border-border/60">
+              <div className="bg-background w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+                <AlertTriangle className="w-8 h-8 text-amber-500" />
+              </div>
+              <h3 className="text-xl font-semibold text-foreground mb-2">Hozircha testlar mavjud emas</h3>
+              <p className="text-foreground/50 max-w-sm mx-auto">Admin panelidan testlar qo'shing yoki eski testlarni tiklang.</p>
             </div>
           )}
         </div>
@@ -1812,33 +1858,47 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
     const progress = ((currentQuestionIdx + 1) / selectedTopic.questions.length) * 100;
 
     return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-2xl mx-auto space-y-8">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-2xl mx-auto space-y-6">
         <div className="flex justify-between items-center bg-card p-4 rounded-2xl border border-border/40 shadow-sm">
           <div className="flex items-center gap-4 w-full">
-            <div className="w-14 h-14 bg-primary text-primary-foreground rounded-2xl flex items-center justify-center font-semibold text-xl shadow-inner">
+            <div className="w-12 h-12 bg-primary text-primary-foreground rounded-xl flex items-center justify-center font-semibold text-lg shadow-inner">
               {currentQuestionIdx + 1}
             </div>
             <div className="flex-1 pr-4">
-              <h2 className="font-medium text-foreground mb-2">{t('quizQuestion')} {currentQuestionIdx + 1} / {selectedTopic.questions.length}</h2>
-              <div className="w-full h-2.5 bg-secondary rounded-full overflow-hidden">
+              <div className="flex justify-between items-end mb-2">
+                <h2 className="font-medium text-foreground text-sm">{t('quizQuestion')} {currentQuestionIdx + 1} / {selectedTopic.questions.length}</h2>
+                <span className="text-xs font-semibold text-primary">{Math.round(progress)}%</span>
+              </div>
+              <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
                 <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} className="h-full bg-primary" />
               </div>
             </div>
+            <button 
+              onClick={() => {
+                if (window.confirm('Testni to\'xtatmoqchimisiz?')) {
+                  resetQuiz();
+                }
+              }}
+              className="p-2 hover:bg-red-500/10 text-foreground/40 hover:text-red-500 rounded-lg transition-colors"
+              title="Testni to'xtatish"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
-        <div className="bg-card border border-border/40 rounded-2xl p-8 md:p-10 shadow-sm shadow-primary/5 space-y-8">
-          <h3 className="text-2xl md:text-3xl font-semibold text-foreground leading-tight tracking-tight">{currentQ.text}</h3>
+        <div className="bg-card border border-border/40 rounded-2xl p-6 md:p-8 shadow-sm space-y-6">
+          <h3 className="text-xl md:text-2xl font-semibold text-foreground leading-snug tracking-tight">{currentQ.text}</h3>
           
-          <div className="grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 gap-3">
             {currentQ.options.map((option: string, idx: number) => {
               let stateClass = "border-border/40 hover:border-primary/50 hover:bg-primary/5 text-foreground";
               if (isAnswered) {
-                if (idx === currentQ.correct) stateClass = "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shadow-sm shadow-emerald-500/10";
-                else if (idx === selectedOption) stateClass = "border-red-500 bg-red-500/10 text-red-600 dark:text-red-400 shadow-sm shadow-red-500/10";
+                if (idx === currentQ.correct) stateClass = "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+                else if (idx === selectedOption) stateClass = "border-red-500 bg-red-500/10 text-red-600 dark:text-red-400";
                 else stateClass = "border-border/40 opacity-40 text-foreground";
               } else if (idx === selectedOption) {
-                stateClass = "border-primary bg-primary/10 text-primary shadow-sm shadow-primary/10";
+                stateClass = "border-primary bg-primary/10 text-primary";
               }
 
               return (
@@ -1846,15 +1906,44 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
                   key={idx}
                   onClick={() => handleAnswer(idx)}
                   disabled={isAnswered}
-                  className={`w-full text-left p-5 rounded-2xl border-2 font-medium transition-all duration-300 flex justify-between items-center group ${stateClass}`}
+                  className={`w-full text-left p-4 rounded-xl border-2 font-medium transition-all duration-200 flex justify-between items-center group ${stateClass}`}
                 >
-                  <span className="text-lg">{option}</span>
-                  {isAnswered && idx === currentQ.correct && <CheckCircle2 className="w-6 h-6 text-emerald-500" />}
-                  {isAnswered && idx === selectedOption && idx !== currentQ.correct && <X className="w-6 h-6 text-red-500" />}
+                  <span className="text-base">{option}</span>
+                  {isAnswered && idx === currentQ.correct && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                  {isAnswered && idx === selectedOption && idx !== currentQ.correct && <X className="w-5 h-5 text-red-500" />}
                 </button>
               );
             })}
           </div>
+
+          {isAnswered && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }} 
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-4 pt-4 border-t border-border/40"
+            >
+              {currentQ.explanation && (
+                <div className="bg-primary/5 p-4 rounded-xl border border-primary/10">
+                  <div className="flex items-center gap-2 mb-2 text-primary">
+                    <Info className="w-4 h-4" />
+                    <span className="text-xs font-bold uppercase tracking-wider">Tushuntirish</span>
+                  </div>
+                  <p className="text-sm text-foreground/80 leading-relaxed">{currentQ.explanation}</p>
+                </div>
+              )}
+              
+              <button 
+                onClick={handleNextQuestion}
+                className="w-full bg-primary text-primary-foreground py-4 rounded-xl font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/30 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
+              >
+                {currentQuestionIdx < selectedTopic.questions.length - 1 ? (
+                  <>Keyingi savol <ChevronRight className="w-5 h-5" /></>
+                ) : (
+                  <>Natijani ko'rish <ChevronRight className="w-5 h-5" /></>
+                )}
+              </button>
+            </motion.div>
+          )}
         </div>
       </motion.div>
     );
@@ -1886,15 +1975,92 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
             </div>
           </div>
           
-          <div className="pt-6 relative z-10 space-y-6">
-            <p className="text-sm font-medium text-foreground/50 bg-secondary w-fit mx-auto px-4 py-2 rounded-xl">Natijangiz PDF formatida yuklab olinmoqda...</p>
+          <div className="pt-6 relative z-10 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <button 
+              onClick={() => setStep('review')}
+              className="bg-secondary text-foreground px-8 py-4 rounded-2xl font-medium hover:bg-secondary/80 transition-all flex items-center justify-center gap-2"
+            >
+              <Eye className="w-5 h-5" /> Javoblarni ko'rish
+            </button>
             <button 
               onClick={resetQuiz}
-              className="bg-foreground text-background px-10 py-4 rounded-2xl font-medium hover:bg-foreground/90 transition-all shadow-sm hover:-translate-y-1"
+              className="bg-foreground text-background px-8 py-4 rounded-2xl font-medium hover:bg-foreground/90 transition-all shadow-sm hover:-translate-y-1"
             >
               {t('quizBackToSubjects')}
             </button>
           </div>
+          <p className="text-xs font-medium text-foreground/40 mt-4">Natijangiz PDF formatida yuklab olinmoqda...</p>
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (step === 'review') {
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-3xl mx-auto space-y-8">
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setStep('result')} className="p-3 hover:bg-secondary rounded-full transition-colors text-foreground/60 hover:text-foreground">
+              <ChevronRight className="w-6 h-6 rotate-180" />
+            </button>
+            <h2 className="text-3xl font-semibold tracking-tight text-foreground">Savollarni ko'rib chiqish</h2>
+          </div>
+          <div className="bg-primary/10 text-primary px-4 py-2 rounded-xl font-bold">
+            {score} / {totalQuestions}
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          {selectedTopic.questions.map((q: any, qIdx: number) => {
+            const userAnswer = userAnswers[qIdx];
+            const isCorrect = userAnswer === q.correct;
+
+            return (
+              <div key={qIdx} className="bg-card border border-border/40 rounded-2xl p-6 md:p-8 shadow-sm space-y-6">
+                <div className="flex items-start gap-4">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold shrink-0 ${isCorrect ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600'}`}>
+                    {qIdx + 1}
+                  </div>
+                  <h3 className="text-lg md:text-xl font-medium text-foreground leading-snug">{q.text}</h3>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 pl-14">
+                  {q.options.map((option: string, oIdx: number) => {
+                    let optionClass = "border-border/40 text-foreground/60";
+                    if (oIdx === q.correct) optionClass = "border-emerald-500 bg-emerald-500/10 text-emerald-600 font-bold";
+                    else if (oIdx === userAnswer && !isCorrect) optionClass = "border-red-500 bg-red-500/10 text-red-600 font-bold";
+
+                    return (
+                      <div key={oIdx} className={`p-4 rounded-xl border-2 flex justify-between items-center ${optionClass}`}>
+                        <span className="text-base">{option}</span>
+                        {oIdx === q.correct && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                        {oIdx === userAnswer && !isCorrect && <X className="w-5 h-5 text-red-500" />}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {q.explanation && (
+                  <div className="bg-primary/5 p-4 rounded-xl border border-primary/10 ml-14">
+                    <div className="flex items-center gap-2 mb-2 text-primary">
+                      <Info className="w-4 h-4" />
+                      <span className="text-xs font-bold uppercase tracking-wider">Tushuntirish</span>
+                    </div>
+                    <p className="text-sm text-foreground/80 leading-relaxed">{q.explanation}</p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex justify-center pt-8">
+          <button 
+            onClick={resetQuiz}
+            className="bg-foreground text-background px-12 py-4 rounded-2xl font-medium hover:bg-foreground/90 transition-all shadow-lg hover:-translate-y-1"
+          >
+            {t('quizBackToSubjects')}
+          </button>
         </div>
       </motion.div>
     );
@@ -2186,6 +2352,11 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
     setIsRestoring(true);
     try {
       let updatedFanlar = [...fanlar];
+      
+      // Get existing questions to avoid duplicates
+      const existingQuestionsSnap = await getDocs(collection(db, 'questions'));
+      const existingQuestionTexts = new Set(existingQuestionsSnap.docs.map(doc => doc.data().question));
+
       for (const subject of quizData.subjects) {
         let existingSubject = updatedFanlar.find(f => f.title === subject.name);
         if (!existingSubject) {
@@ -2212,6 +2383,8 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
           }
           
           for (const q of topic.questions) {
+            if (existingQuestionTexts.has(q.text)) continue;
+
             const questionData = {
               subject: subject.name,
               topic: topic.name,
@@ -2222,6 +2395,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
               explanation: (q as any).explanation || ''
             };
             await addDoc(collection(db, 'questions'), questionData);
+            existingQuestionTexts.add(q.text);
           }
         }
       }
@@ -2230,7 +2404,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
       showAlert('Muvaffaqiyatli', 'Eski testlar muvaffaqiyatli tiklandi!');
     } catch (error) {
       console.error('Error restoring tests:', error);
-      showAlert('Xatolik', 'Testlarni tiklashda xatolik yuz berdi.');
+      showAlert('Xatolik', 'Testlarni tiklashda xatolik yuz berdi. Internet aloqasini tekshiring.');
     } finally {
       setIsRestoring(false);
     }
@@ -2354,15 +2528,14 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                   <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">
                     {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : activeTab === 'osce' ? osceScenarios : activeTab === 'fanlar' ? fanlar : activeTab === 'news' ? news : activeTab === 'journals' ? journals : activeTab === 'appSettings' ? [] : sections).length} ta element
                   </span>
-                  {activeTab === 'questions' && questions.length === 0 && (
-                    <button 
-                      onClick={handleRestoreOldTests} 
-                      disabled={isRestoring}
-                      className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
-                    >
-                      {isRestoring ? 'Tiklanmoqda...' : 'Eski testlarni tiklash'}
-                    </button>
-                  )}
+                  <button 
+                    onClick={handleRestoreOldTests} 
+                    disabled={isRestoring}
+                    className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isRestoring ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                    {isRestoring ? 'Tiklanmoqda...' : 'Eski testlarni tiklash'}
+                  </button>
                 </div>
               </div>
               

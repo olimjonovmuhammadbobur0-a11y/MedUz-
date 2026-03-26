@@ -3,7 +3,7 @@ export const quizData = {
     {
       id: 1,
       name: "Ichki kasalliklar",
-      icon: "❤️",
+      icon: "Stethoscope",
       topics: [
         {
           id: 101,
@@ -242,7 +242,7 @@ export const quizData = {
     {
       id: 2,
       name: "Xirurgiya",
-      icon: "🔪",
+      icon: "Scissors",
       topics: [
         {
           id: 201,
@@ -365,7 +365,7 @@ export const quizData = {
     {
       id: 3,
       name: "Pediatriya",
-      icon: "👶",
+      icon: "Baby",
       topics: [
         {
           id: 301,
@@ -488,7 +488,7 @@ export const quizData = {
     {
       id: 4,
       name: "Nevrologiya",
-      icon: "🧠",
+      icon: "Brain",
       topics: [
         {
           id: 401,
@@ -611,7 +611,7 @@ export const quizData = {
     {
       id: 5,
       name: "Kardiologiya",
-      icon: "🫀",
+      icon: "Heart",
       topics: [
         {
           id: 501,

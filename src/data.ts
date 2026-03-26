@@ -364,21 +364,38 @@ export const symptomCheckerData: SymptomData[] = [
 export const initialFanlar: Subject[] = [
   {
     id: '1',
-    title: 'Anatomiya',
-    description: 'Odam anatomiyasi bo\'yicha to\'liq kurs',
+    title: 'Ichki kasalliklar',
+    description: 'Yurak, o\'pka, jigar va boshqa ichki a\'zolar kasalliklari',
+    icon: 'Stethoscope',
+    topics: []
+  },
+  {
+    id: '2',
+    title: 'Xirurgiya',
+    description: 'Jarrohlik kasalliklari va operativ muolajalar',
+    icon: 'Scissors',
+    topics: []
+  },
+  {
+    id: '3',
+    title: 'Pediatriya',
+    description: 'Bolalar kasalliklari va ularning rivojlanishi',
+    icon: 'Baby',
+    topics: []
+  },
+  {
+    id: '4',
+    title: 'Nevrologiya',
+    description: 'Asab tizimi kasalliklari va diagnostikasi',
     icon: 'Brain',
-    topics: [
-      {
-        id: 't1',
-        title: 'Suyaklar sistemasi (Osteologiya)',
-        videos: [
-          { id: 'v1', title: 'Kalla suyaklari', videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' }
-        ],
-        guides: [
-          { id: 'g1', title: 'Osteologiya qo\'llanma', driveLink: 'https://drive.google.com/file/d/12345/view' }
-        ]
-      }
-    ]
+    topics: []
+  },
+  {
+    id: '5',
+    title: 'Kardiologiya',
+    description: 'Yurak-qon tomir tizimi kasalliklari',
+    icon: 'Heart',
+    topics: []
   }
 ];
 
