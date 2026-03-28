@@ -93,6 +93,10 @@ export interface OSCEScenario {
   description: string;
   systemInstruction: string;
   initialMessage: string;
+  patientInfo?: {
+    age: number;
+    gender: 'male' | 'female';
+  };
 }
 
 export interface NewsItem {
@@ -195,7 +199,11 @@ Family history: Father died from heart disease at age 60
 
 HIDDEN DIAGNOSIS:
 Stable angina (Do NOT reveal unless the student directly asks about the possible diagnosis)`,
-    initialMessage: "Assalomu alaykum doktor, oxirgi paytlarda ko'kragimda biroz siqilish sezayapman."
+    initialMessage: "Assalomu alaykum doktor, oxirgi paytlarda ko'kragimda biroz siqilish sezayapman.",
+    patientInfo: {
+      age: 54,
+      gender: 'male'
+    }
   }
 ];
 

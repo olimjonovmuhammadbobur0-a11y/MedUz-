@@ -58,13 +58,15 @@ import {
   Activity,
   Users,
   CheckSquare,
-  Microscope
+  Microscope,
+  Mic
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { GoogleGenAI, ThinkingLevel, GenerateContentResponse } from "@google/genai";
 import { Mnemonic, Question, SymptomData, VideoData, Section, Setting, Patient, OSCEScenario, Subject, Topic, NewsItem, JournalItem, initialFanlar, initialSettings, initialNews, initialJournals } from './data';
 import { explainMedicalTopic } from './services/aiService';
+import { LiveAudioChat } from './components/LiveAudioChat';
 import { quizData } from './quizData';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { doc, getDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc, writeBatch } from 'firebase/firestore';
@@ -77,7 +79,7 @@ const getYouTubeEmbedUrl = (url: string) => {
   return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : url;
 };
 
-type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients' | 'osce' | 'tutor' | 'pharma' | 'fanlar' | 'news' | 'journals' | 'profile';
+type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients' | 'osce' | 'tutor' | 'pharma' | 'fanlar' | 'news' | 'journals' | 'profile' | 'laboratory';
 
 export function Modal({ isOpen, title, content, onClose, onConfirm, confirmText = "Tasdiqlash", cancelText = "Bekor qilish" }: { isOpen: boolean, title: string, content: string, onClose: () => void, onConfirm?: () => void, confirmText?: string, cancelText?: string }) {
   if (!isOpen) return null;
@@ -109,7 +111,25 @@ export function Modal({ isOpen, title, content, onClose, onConfirm, confirmText 
 }
 
 import { ProfilePage } from './components/ProfilePage';
+import { LaboratoryPage } from './components/LaboratoryPage';
 import { useTranslation, Language } from './i18n';
+
+function getPatientAvatar(patientInfo?: { age: number, gender: 'male' | 'female' }, className: string = "w-10 h-10 text-foreground/40") {
+  if (!patientInfo) return <Icons.User className={className} />;
+  
+  const { age, gender } = patientInfo;
+  
+  let emoji = '🧑';
+  if (age <= 2) emoji = '👶';
+  else if (age <= 12) emoji = gender === 'male' ? '👦' : '👧';
+  else if (age <= 60) emoji = gender === 'male' ? '👨' : '👩';
+  else emoji = gender === 'male' ? '👴' : '👵';
+
+  const isSmall = className.includes('w-3') || className.includes('w-4');
+  const fontSize = isSmall ? '1rem' : '2.5rem';
+
+  return <span className="leading-none" style={{ fontSize }}>{emoji}</span>;
+}
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
@@ -452,7 +472,7 @@ export default function App() {
       setMnemonicsData(m as any);
       
       // Merge questions from Firestore and hardcoded quizData
-      const mergedQuestions = [...q];
+      const mergedQuestions: any[] = [...q];
       quizData.subjects.forEach(subject => {
         subject.topics.forEach(topic => {
           topic.questions.forEach(question => {
@@ -871,6 +891,7 @@ export default function App() {
                 <MobileNavLink active={currentPage === 'fanlar'} onClick={() => { navigate('fanlar'); setIsMenuOpen(false); }}>{t('subjects')}</MobileNavLink>
                 <MobileNavLink active={currentPage === 'news'} onClick={() => { navigate('news'); setIsMenuOpen(false); }}>{t('news_title')}</MobileNavLink>
                 <MobileNavLink active={currentPage === 'journals'} onClick={() => { navigate('journals'); setIsMenuOpen(false); }}>Jurnallar</MobileNavLink>
+                <MobileNavLink active={currentPage === 'laboratory'} onClick={() => { navigate('laboratory'); setIsMenuOpen(false); }}>Laboratoriya</MobileNavLink>
                 <MobileNavLink active={currentPage === 'ai'} onClick={() => { navigate('ai'); setIsMenuOpen(false); }}>{t('aiCenter')}</MobileNavLink>
                 <MobileNavLink active={currentPage === 'admin'} onClick={() => { navigate('admin'); setIsMenuOpen(false); }}>{t('adminPanel')}</MobileNavLink>
               </div>
@@ -930,6 +951,7 @@ export default function App() {
           />}
           {currentPage === 'news' && <NewsPage news={newsData} />}
           {currentPage === 'journals' && <JournalsPage journals={journalsData} />}
+          {currentPage === 'laboratory' && <LaboratoryPage />}
           {currentPage === 'profile' && <ProfilePage user={user} />}
         </AnimatePresence>
       </main>
@@ -1167,6 +1189,7 @@ function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate
             { id: 'videos', label: 'Videolar', icon: Video, color: 'bg-[#1976D2]' },
             { id: 'symptoms', label: 'Simptomlar', icon: Icons.Activity, color: 'bg-[#FF9800]' },
             { id: 'patients', label: 'Bemorlar', icon: Icons.Users, color: 'bg-[#4CAF50]' },
+            { id: 'laboratory', label: 'Laboratoriya', icon: Icons.FlaskConical, color: 'bg-[#9C27B0]' },
             { id: 'pharma', label: 'Farmakologiya', icon: Icons.Pill, color: 'bg-[#E53935]' },
             { id: 'fanlar', label: 'Fanlar', icon: Icons.Dna, color: 'bg-[#F57C00]' },
             { id: 'journals', label: 'Jurnallar', icon: Icons.BookText, color: 'bg-[#D32F2F]' },
@@ -4791,6 +4814,7 @@ function OSCEPage({ scenarios }: { scenarios: OSCEScenario[] }) {
   const [evaluation, setEvaluation] = useState<string | null>(null);
   const [evaluating, setEvaluating] = useState(false);
   const [timer, setTimer] = useState(0);
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -4823,7 +4847,8 @@ function OSCEPage({ scenarios }: { scenarios: OSCEScenario[] }) {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const startScenario = (scenario: OSCEScenario) => {
+  const startScenario = (scenario: OSCEScenario, voiceMode: boolean = false) => {
+    setIsVoiceMode(voiceMode);
     setSelectedScenario(scenario);
     setMessages([{ role: 'model', text: scenario.initialMessage }]);
     setEvaluation(null);
@@ -4882,6 +4907,10 @@ Never respond in any other language.`;
   };
 
   const handleEvaluate = async (currentMessages = messages) => {
+    if (!currentMessages || currentMessages.length === 0) {
+      setEvaluation(t('osce_patient_error'));
+      return;
+    }
     setEvaluating(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -5076,16 +5105,20 @@ Format the output EXACTLY as follows using Markdown:
             <motion.div 
               whileHover={{ y: -4 }}
               key={scenario.id} 
-              className="bg-card p-6 rounded-3xl border border-border shadow-sm hover:shadow-xl transition-all cursor-pointer flex flex-col h-full" 
-              onClick={() => startScenario(scenario)}
+              className="bg-card p-6 rounded-3xl border border-border shadow-sm hover:shadow-xl transition-all flex flex-col h-full" 
             >
               <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center mb-6">
                 <Heart className="w-6 h-6 text-primary" />
               </div>
               <h3 className="text-xl font-semibold text-foreground mb-3">{scenario.title}</h3>
               <p className="text-sm text-foreground/70 line-clamp-3 mb-6 flex-1">{scenario.description}</p>
-              <div className="flex items-center text-primary font-medium text-sm mt-auto">
-                Ssenariyni boshlash <ChevronRight className="w-4 h-4 ml-1" />
+              <div className="flex gap-2 mt-auto">
+                <button onClick={() => startScenario(scenario, false)} className="flex-1 bg-secondary text-foreground py-2.5 rounded-xl text-sm font-medium hover:bg-secondary/80 transition-colors flex items-center justify-center gap-2">
+                  <MessageSquare className="w-4 h-4" /> Text
+                </button>
+                <button onClick={() => startScenario(scenario, true)} className="flex-1 bg-primary text-primary-foreground py-2.5 rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+                  <Mic className="w-4 h-4" /> Voice
+                </button>
               </div>
             </motion.div>
           ))}
@@ -5134,7 +5167,7 @@ Format the output EXACTLY as follows using Markdown:
         <div className="hidden lg:flex flex-col gap-6 col-span-1">
           <div className="bg-card border border-border rounded-3xl p-6 shadow-sm">
             <div className="w-20 h-20 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
-              <Baby className="w-10 h-10 text-foreground/40" />
+              {getPatientAvatar(selectedScenario.patientInfo, "w-10 h-10 text-foreground/40")}
             </div>
             <h3 className="text-center font-semibold text-lg text-foreground mb-2">Bemor Ma'lumotlari</h3>
             <p className="text-sm text-foreground/70 text-center mb-6">{selectedScenario.description}</p>
@@ -5158,6 +5191,16 @@ Format the output EXACTLY as follows using Markdown:
         {/* Right Area - Chat or Evaluation */}
         <div className="col-span-1 lg:col-span-3 flex flex-col bg-card border border-border rounded-2xl lg:rounded-3xl shadow-sm overflow-hidden h-[calc(100vh-220px)] lg:h-[65vh] lg:min-h-[500px] lg:max-h-[800px]">
           {!evaluation ? (
+            isVoiceMode ? (
+              <LiveAudioChat 
+                systemInstruction={selectedScenario.systemInstruction} 
+                initialMessage={selectedScenario.initialMessage}
+                onEnd={(transcript) => {
+                  setMessages(transcript);
+                  handleEvaluate(transcript);
+                }} 
+              />
+            ) : (
             <>
               <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-6 custom-scrollbar">
                 {messages.map((msg, idx) => (
@@ -5169,7 +5212,7 @@ Format the output EXACTLY as follows using Markdown:
                   >
                     <div className={`flex gap-2 sm:gap-3 max-w-[90%] sm:max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                       <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground/60'}`}>
-                        {msg.role === 'user' ? <Stethoscope className="w-3 h-3 sm:w-4 sm:h-4" /> : <Baby className="w-3 h-3 sm:w-4 sm:h-4" />}
+                        {msg.role === 'user' ? <Stethoscope className="w-3 h-3 sm:w-4 sm:h-4" /> : getPatientAvatar(selectedScenario.patientInfo, "w-3 h-3 sm:w-4 sm:h-4 text-foreground/60")}
                       </div>
                       <div className={`p-3 sm:p-4 rounded-2xl ${msg.role === 'user' ? 'bg-primary text-primary-foreground rounded-tr-sm shadow-md shadow-primary/10' : 'bg-secondary text-foreground rounded-tl-sm'}`}>
                         <p className="whitespace-pre-wrap leading-relaxed text-[14px] sm:text-[15px]">{msg.text}</p>
@@ -5181,7 +5224,7 @@ Format the output EXACTLY as follows using Markdown:
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
                     <div className="flex gap-2 sm:gap-3 max-w-[90%] sm:max-w-[85%]">
                       <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 mt-1">
-                        <Baby className="w-3 h-3 sm:w-4 sm:h-4 text-foreground/60" />
+                        {getPatientAvatar(selectedScenario.patientInfo, "w-3 h-3 sm:w-4 sm:h-4 text-foreground/60")}
                       </div>
                       <div className="bg-secondary text-foreground p-3 sm:p-4 rounded-2xl rounded-tl-sm flex items-center gap-2 h-[44px] sm:h-[52px]">
                         <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-foreground/40 rounded-full animate-bounce" />
@@ -5228,6 +5271,7 @@ Format the output EXACTLY as follows using Markdown:
                 </div>
               </div>
             </>
+            )
           ) : (
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar bg-secondary/10">
               <div ref={reportRef} className="bg-card border border-border text-foreground p-6 sm:p-8 md:p-12 rounded-2xl sm:rounded-3xl shadow-sm max-w-4xl mx-auto">
