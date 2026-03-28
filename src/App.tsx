@@ -389,7 +389,9 @@ export default function App() {
       const model = isThinkingMode ? 'gemini-3.1-pro-preview' : 'gemini-3-flash-preview';
       
       const config: any = {
-        systemInstruction: "Siz MedUz tibbiy platformasining AI yordamchisiz. Tibbiy talabalarga o'zbek tilida aniq va ilmiy asoslangan javoblar bering.",
+        systemInstruction: "Siz MedUz tibbiy platformasining bosh o'qituvchisi (AI Professor)siz. Tibbiyot talabalariga o'zbek tilida aniq, ilmiy asoslangan va xalqaro standartlarga (WHO, EBM) mos keladigan javoblar bering. Hech qachon taxmin qilmang. Agar bemor holati so'ralsa, klinik fikrlashni (clinical reasoning) qadamma-qadam tushuntiring.",
+        temperature: 0.2,
+        topP: 0.8
       };
 
       if (isThinkingMode) {
@@ -3946,7 +3948,14 @@ ${drugName}`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-3.1-pro-preview',
-        contents: prompt
+        contents: prompt,
+        config: {
+          systemInstruction: "Siz klinik farmakologsiz. Dorilar haqida faqat aniq, tasdiqlangan va xavfsiz tibbiy ma'lumotlarni taqdim eting. Eng so'nggi ma'lumotlarni internetdan qidirib, manbalari bilan bering.",
+          temperature: 0.1,
+          topP: 0.8,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+          tools: [{ googleSearch: {} }]
+        }
       });
       setResult(response.text || t('pharmaNotFound'));
     } catch (error) {
@@ -4150,7 +4159,13 @@ ${answerText}`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-3.1-pro-preview',
-        contents: prompt
+        contents: prompt,
+        config: {
+          systemInstruction: "Siz qattiqqo'l va tajribali klinik ustozsiz (Clinical Tutor). Talabaning javobini xalqaro klinik protokollar (EBM) asosida baholang va unga xatolarini tushuntiring.",
+          temperature: 0.2,
+          topP: 0.8,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
+        }
       });
       setResult(response.text || t('tutorError'));
     } catch (error) {
@@ -4928,7 +4943,13 @@ Format the output EXACTLY as follows using Markdown:
 
       const response = await ai.models.generateContent({
         model: 'gemini-3.1-pro-preview',
-        contents: prompt
+        contents: prompt,
+        config: {
+          systemInstruction: "Siz OSCE (Objective Structured Clinical Examination) imtihonining qattiqqo'l va adolatli tibbiyot professorisiz. Talabaning bemor bilan muloqotini, to'plagan anamnezini va qo'ygan tashxisini xalqaro klinik standartlar (EBM) asosida baholang.",
+          temperature: 0.2,
+          topP: 0.8,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
+        }
       });
 
       setEvaluation(response.text || t('osce_evaluation_error'));
