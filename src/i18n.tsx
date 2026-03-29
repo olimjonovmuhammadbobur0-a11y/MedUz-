@@ -6,7 +6,7 @@ export const translations = {
   uz: {
     creator: "Ilova yaratuvchisi",
     home: "Bosh sahifa",
-    mnemonics: "Mnemonikalar",
+    mnemonics: "Mnemonika",
     videos: "Videolar",
     library: "Kutubxona",
     subjects: "Fanlar",
@@ -33,7 +33,7 @@ export const translations = {
     featSubjectsDesc: "Tibbiyot fanlari bo'yicha video darslar va qo'llanmalar to'plami.",
     featLibraryTitle: "Kutubxona",
     featLibraryDesc: "Fanlar, mavzular va resurslarning iyerarxik to'plami.",
-    featMnemonicsTitle: "Mnemonikalar",
+    featMnemonicsTitle: "Mnemonika",
     featMnemonicsDesc: "Murakkab mavzularni oson eslab qolish uchun maxsus iboralar to'plami.",
     featVideosTitle: "Video Kutubxona",
     featVideosDesc: "Klinik ko'nikmalar va amaliyotlar bo'yicha video darslar.",

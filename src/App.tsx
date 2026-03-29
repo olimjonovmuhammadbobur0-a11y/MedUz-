@@ -69,7 +69,7 @@ import { explainMedicalTopic } from './services/aiService';
 import { LiveAudioChat } from './components/LiveAudioChat';
 import { quizData } from './quizData';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { doc, getDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc, writeBatch, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
 const getYouTubeEmbedUrl = (url: string) => {
@@ -134,6 +134,8 @@ function getPatientAvatar(patientInfo?: { age: number, gender: 'male' | 'female'
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('meduz_dark_mode') === 'true');
   const [themeColor, setThemeColor] = useState(() => localStorage.getItem('meduz_theme') || '#2563eb');
   const [user, setUser] = useState<any>(null);
@@ -146,14 +148,38 @@ export default function App() {
       const userRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userRef);
       if (userDoc.exists()) {
-        const currentProgress = userDoc.data().progress || { quizScore: 0, videosWatched: 0, mnemonicsRead: 0, symptomsChecked: 0 };
+        const currentProgress = userDoc.data().progress_v2 || { quizScore: 0, videosWatched: 0, mnemonicsRead: 0, symptomsChecked: 0 };
         const newValue = typeof value === 'function' ? value(currentProgress[field] || 0) : value;
         await updateDoc(userRef, {
-          [`progress.${field}`]: newValue
+          [`progress_v2.${field}`]: newValue
         });
       }
     } catch (error) {
       console.error("Error updating progress:", error);
+    }
+  };
+
+  const saveActivity = async (type: 'test' | 'video', details: any) => {
+    if (!user) return;
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userRef);
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        const historyField = type === 'test' ? 'testHistory_v2' : 'videoHistory_v2';
+        const currentHistory = data[historyField] || [];
+        
+        const newHistory = [{
+          ...details,
+          date: new Date().toISOString()
+        }, ...currentHistory].slice(0, 50); // Keep last 50 items
+        
+        await updateDoc(userRef, {
+          [historyField]: newHistory
+        });
+      }
+    } catch (error) {
+      console.error("Error saving activity:", error);
     }
   };
 
@@ -182,7 +208,7 @@ export default function App() {
               displayName: currentUser.displayName,
               photoURL: currentUser.photoURL,
               role: 'user',
-              progress: {
+              progress_v2: {
                 quizScore: 0,
                 videosWatched: 0,
                 mnemonicsRead: 0,
@@ -195,6 +221,16 @@ export default function App() {
     });
 
     return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setIsProfileMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const handleGoogleLogin = async () => {
@@ -736,29 +772,70 @@ export default function App() {
             
             <div className="hidden md:flex items-center gap-3 shrink-0">
               {user ? (
-                <div className="flex items-center gap-3 bg-secondary px-3 py-1.5 rounded-xl border border-border/50">
+                <div className="relative" ref={profileMenuRef}>
                   <button 
-                    onClick={() => navigate('profile')}
-                    className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                    onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                    className="flex items-center gap-3 bg-card hover:bg-secondary px-3 py-2 rounded-2xl border border-border/50 transition-all shadow-sm hover:shadow-md"
                   >
-                    {user.photoURL ? (
-                      <img src={user.photoURL} alt={user.displayName} className="w-6 h-6 rounded-full" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
-                        {user.displayName?.charAt(0) || 'U'}
-                      </div>
-                    )}
-                    <div className="flex flex-col items-start">
-                      <span className="text-xs font-semibold text-foreground">Salom, {user.displayName?.split(' ')[0]} 👋</span>
+                    <div className="relative">
+                      {user.photoURL ? (
+                        <img src={user.photoURL} alt={user.displayName} className="w-9 h-9 rounded-full object-cover border-2 border-primary/20" referrerPolicy="no-referrer" />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground flex items-center justify-center text-sm font-bold shadow-inner">
+                          {user.displayName?.charAt(0) || 'U'}
+                        </div>
+                      )}
+                      <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-card"></div>
                     </div>
+                    <div className="flex flex-col items-start pr-2">
+                      <span className="text-sm font-semibold text-foreground leading-tight">{user.displayName?.split(' ')[0]}</span>
+                      <span className="text-[10px] text-foreground/60 font-medium uppercase tracking-wider">Shifokor</span>
+                    </div>
+                    <Icons.ChevronDown className={`w-4 h-4 text-foreground/50 transition-transform duration-300 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
                   </button>
-                  <button 
-                    onClick={handleLogout}
-                    className="p-1.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-colors"
-                    title="Chiqish"
-                  >
-                    <LogOut className="w-4 h-4" />
-                  </button>
+
+                  <AnimatePresence>
+                    {isProfileMenuOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.8, y: -10, filter: "blur(10px)" }}
+                        animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
+                        exit={{ opacity: 0, scale: 0.8, y: -10, filter: "blur(10px)" }}
+                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                        style={{ transformOrigin: "top right" }}
+                        className="absolute right-0 mt-2 w-64 bg-card rounded-2xl shadow-xl border border-border/50 overflow-hidden z-50"
+                      >
+                        <div className="p-4 border-b border-border/50 bg-secondary/30">
+                          <p className="font-semibold text-foreground truncate">{user.displayName}</p>
+                          <p className="text-xs text-foreground/60 truncate mt-0.5">{user.email}</p>
+                        </div>
+                        <div className="p-2 space-y-1">
+                          <button
+                            onClick={() => { navigate('profile'); setIsProfileMenuOpen(false); }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-foreground/80 hover:text-primary hover:bg-primary/10 transition-colors"
+                          >
+                            <Icons.User className="w-4 h-4" />
+                            Mening profilim
+                          </button>
+                          <button
+                            onClick={() => { navigate('laboratory'); setIsProfileMenuOpen(false); }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-foreground/80 hover:text-primary hover:bg-primary/10 transition-colors"
+                          >
+                            <Icons.Activity className="w-4 h-4" />
+                            Laboratoriya
+                          </button>
+                        </div>
+                        <div className="p-2 border-t border-border/50">
+                          <button
+                            onClick={() => { handleLogout(); setIsProfileMenuOpen(false); }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-red-500 hover:bg-red-500/10 transition-colors"
+                          >
+                            <Icons.LogOut className="w-4 h-4" />
+                            Tizimdan chiqish
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               ) : (
                 <button 
@@ -840,30 +917,46 @@ export default function App() {
             >
               <div className="px-4 py-4 space-y-2">
                 {user ? (
-                  <div className="flex items-center justify-between bg-secondary px-4 py-3 rounded-xl border border-border/50 mb-4">
-                    <button 
-                      onClick={() => { navigate('profile'); setIsMenuOpen(false); }}
-                      className="flex items-center gap-3 hover:opacity-80 transition-opacity"
-                    >
-                      {user.photoURL ? (
-                        <img src={user.photoURL} alt={user.displayName} className="w-8 h-8 rounded-full" referrerPolicy="no-referrer" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
-                          {user.displayName?.charAt(0) || 'U'}
-                        </div>
-                      )}
-                      <div className="flex flex-col items-start">
-                        <span className="text-sm font-semibold text-foreground">Salom, {user.displayName?.split(' ')[0]} 👋</span>
-                        <span className="text-xs text-foreground/60">Profilni ko'rish</span>
+                  <div className="bg-secondary/50 rounded-2xl border border-border/50 mb-6 overflow-hidden">
+                    <div className="p-4 flex items-center gap-4 border-b border-border/50 bg-card">
+                      <div className="relative">
+                        {user.photoURL ? (
+                          <img src={user.photoURL} alt={user.displayName} className="w-12 h-12 rounded-full object-cover border-2 border-primary/20" referrerPolicy="no-referrer" />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground flex items-center justify-center text-lg font-bold shadow-inner">
+                            {user.displayName?.charAt(0) || 'U'}
+                          </div>
+                        )}
+                        <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-card"></div>
                       </div>
-                    </button>
-                    <button 
-                      onClick={() => { handleLogout(); setIsMenuOpen(false); }}
-                      className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-colors"
-                      title="Chiqish"
-                    >
-                      <LogOut className="w-5 h-5" />
-                    </button>
+                      <div className="flex flex-col flex-1 min-w-0">
+                        <span className="text-base font-semibold text-foreground truncate">{user.displayName}</span>
+                        <span className="text-xs text-foreground/60 truncate">{user.email}</span>
+                      </div>
+                    </div>
+                    <div className="p-2 space-y-1">
+                      <button
+                        onClick={() => { navigate('profile'); setIsMenuOpen(false); }}
+                        className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-foreground/80 hover:text-primary hover:bg-primary/10 transition-colors"
+                      >
+                        <Icons.User className="w-5 h-5" />
+                        Mening profilim
+                      </button>
+                      <button
+                        onClick={() => { navigate('laboratory'); setIsMenuOpen(false); }}
+                        className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-foreground/80 hover:text-primary hover:bg-primary/10 transition-colors"
+                      >
+                        <Icons.Activity className="w-5 h-5" />
+                        Laboratoriya
+                      </button>
+                      <button 
+                        onClick={() => { handleLogout(); setIsMenuOpen(false); }}
+                        className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-red-500 hover:bg-red-500/10 transition-colors"
+                      >
+                        <Icons.LogOut className="w-5 h-5" />
+                        Tizimdan chiqish
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <button 
@@ -879,19 +972,19 @@ export default function App() {
                     Google orqali kirish
                   </button>
                 )}
-                <MobileNavLink active={currentPage === 'library'} onClick={() => { navigate('library'); setIsMenuOpen(false); }}>{t('library')}</MobileNavLink>
-                <MobileNavLink active={currentPage === 'mnemonics'} onClick={() => { navigate('mnemonics'); setIsMenuOpen(false); }}>{t('mnemonics')}</MobileNavLink>
-                <MobileNavLink active={currentPage === 'videos'} onClick={() => { navigate('videos'); setIsMenuOpen(false); }}>{t('videos')}</MobileNavLink>
-                <MobileNavLink active={currentPage === 'symptoms'} onClick={() => { navigate('symptoms'); setIsMenuOpen(false); }}>{t('symptoms')}</MobileNavLink>
-                <MobileNavLink active={currentPage === 'patients'} onClick={() => { navigate('patients'); setIsMenuOpen(false); }}>{t('patients')}</MobileNavLink>
-                <MobileNavLink active={currentPage === 'osce'} onClick={() => { navigate('osce'); setIsMenuOpen(false); }}>{t('osce')}</MobileNavLink>
-                <MobileNavLink active={currentPage === 'quiz'} onClick={() => { navigate('quiz'); setIsMenuOpen(false); }}>{t('quiz')}</MobileNavLink>
-                <MobileNavLink active={currentPage === 'tutor'} onClick={() => { navigate('tutor'); setIsMenuOpen(false); }}>{t('tutor')}</MobileNavLink>
-                <MobileNavLink active={currentPage === 'pharma'} onClick={() => { navigate('pharma'); setIsMenuOpen(false); }}>{t('pharma')}</MobileNavLink>
                 <MobileNavLink active={currentPage === 'fanlar'} onClick={() => { navigate('fanlar'); setIsMenuOpen(false); }}>{t('subjects')}</MobileNavLink>
-                <MobileNavLink active={currentPage === 'news'} onClick={() => { navigate('news'); setIsMenuOpen(false); }}>{t('news_title')}</MobileNavLink>
-                <MobileNavLink active={currentPage === 'journals'} onClick={() => { navigate('journals'); setIsMenuOpen(false); }}>Jurnallar</MobileNavLink>
+                <MobileNavLink active={currentPage === 'library'} onClick={() => { navigate('library'); setIsMenuOpen(false); }}>{t('library')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'videos'} onClick={() => { navigate('videos'); setIsMenuOpen(false); }}>{t('videos')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'mnemonics'} onClick={() => { navigate('mnemonics'); setIsMenuOpen(false); }}>{t('mnemonics')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'symptoms'} onClick={() => { navigate('symptoms'); setIsMenuOpen(false); }}>{t('symptoms')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'quiz'} onClick={() => { navigate('quiz'); setIsMenuOpen(false); }}>{t('quiz')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'osce'} onClick={() => { navigate('osce'); setIsMenuOpen(false); }}>{t('osce')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'patients'} onClick={() => { navigate('patients'); setIsMenuOpen(false); }}>{t('patients')}</MobileNavLink>
                 <MobileNavLink active={currentPage === 'laboratory'} onClick={() => { navigate('laboratory'); setIsMenuOpen(false); }}>Laboratoriya</MobileNavLink>
+                <MobileNavLink active={currentPage === 'pharma'} onClick={() => { navigate('pharma'); setIsMenuOpen(false); }}>{t('pharma')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'journals'} onClick={() => { navigate('journals'); setIsMenuOpen(false); }}>Jurnallar</MobileNavLink>
+                <MobileNavLink active={currentPage === 'news'} onClick={() => { navigate('news'); setIsMenuOpen(false); }}>{t('news_title')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'tutor'} onClick={() => { navigate('tutor'); setIsMenuOpen(false); }}>{t('tutor')}</MobileNavLink>
                 <MobileNavLink active={currentPage === 'ai'} onClick={() => { navigate('ai'); setIsMenuOpen(false); }}>{t('aiCenter')}</MobileNavLink>
                 <MobileNavLink active={currentPage === 'admin'} onClick={() => { navigate('admin'); setIsMenuOpen(false); }}>{t('adminPanel')}</MobileNavLink>
               </div>
@@ -914,11 +1007,11 @@ export default function App() {
         <AnimatePresence mode="wait">
           {currentPage === 'home' && <HomePage onNavigate={navigate} sections={sectionsData} showAlert={showAlert} appSettings={appSettings} />}
           {currentPage === 'mnemonics' && <MnemonicsPage data={mnemonicsData} handleAIExplain={handleAIExplain} updateProgress={updateProgress} />}
-          {currentPage === 'videos' && <VideosPage data={videosData} handleAIExplain={handleAIExplain} updateProgress={updateProgress} />}
+          {currentPage === 'videos' && <VideosPage data={videosData} handleAIExplain={handleAIExplain} updateProgress={updateProgress} saveActivity={saveActivity} />}
           {currentPage === 'symptoms' && <SymptomsPage data={symptomsData} handleAIExplain={handleAIExplain} updateProgress={updateProgress} />}
           {currentPage === 'patients' && <PatientsPage patients={patientsData} onTreat={handleTreatPatient} onClearAdvice={handleClearAdvice} />}
           {currentPage === 'osce' && <OSCEPage scenarios={osceScenarios} />}
-          {currentPage === 'quiz' && <QuizPage handleAIExplain={handleAIExplain} showAlert={showAlert} user={user} updateProgress={updateProgress} fanlar={fanlarData} questions={questionsData} />}
+          {currentPage === 'quiz' && <QuizPage handleAIExplain={handleAIExplain} showAlert={showAlert} user={user} updateProgress={updateProgress} saveActivity={saveActivity} fanlar={fanlarData} questions={questionsData} />}
           {currentPage === 'tutor' && <TutorPage />}
           {currentPage === 'pharma' && <PharmaPage />}
           {currentPage === 'fanlar' && <FanlarPage data={fanlarData} />}
@@ -1035,7 +1128,7 @@ export default function App() {
             <div>
               <h4 className="font-semibold mb-4 text-foreground">Bo'limlar</h4>
               <ul className="space-y-2 text-sm text-foreground/60">
-                <li><button onClick={() => navigate('mnemonics')} className="hover:text-primary transition-colors">Mnemonikalar</button></li>
+                <li><button onClick={() => navigate('mnemonics')} className="hover:text-primary transition-colors">Mnemonika</button></li>
                 <li><button onClick={() => navigate('videos')} className="hover:text-primary transition-colors">Video darslar</button></li>
                 <li><button onClick={() => navigate('symptoms')} className="hover:text-primary transition-colors">Simptomlar tekshiruvi</button></li>
                 <li><button onClick={() => navigate('quiz')} className="hover:text-primary transition-colors">Kunlik testlar</button></li>
@@ -1172,141 +1265,118 @@ function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate
         </motion.div>
       </section>
 
-      {/* Top Navigation Icons - Scrollable on mobile */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15 }}
-        className="w-full max-w-[90rem] mx-auto bg-card border border-border/40 shadow-sm rounded-[2.5rem] p-4 sm:p-6 overflow-hidden -mt-2 sm:-mt-4 relative z-10"
-      >
-        <div className="flex items-start justify-start sm:justify-between w-full gap-4 sm:gap-2 px-1 sm:px-2 overflow-x-auto custom-scrollbar pb-4 sm:pb-0 snap-x">
-          {[
-            { id: 'library', label: 'Kutubxona', icon: BookOpen, color: 'bg-[#1877F2]' },
-            { id: 'quiz', label: 'Testlar', icon: Icons.ClipboardList, color: 'bg-[#E91E63]' },
-            { id: 'osce', label: 'OSCE', icon: Stethoscope, color: 'bg-[#009688]' },
-            { id: 'tutor', label: 'AI Tutor', icon: Icons.Bot, color: 'bg-[#00BFA5]' },
-            { id: 'mnemonics', label: 'Mnemonikalar', icon: Brain, color: 'bg-[#9C27B0]' },
-            { id: 'videos', label: 'Videolar', icon: Video, color: 'bg-[#1976D2]' },
-            { id: 'symptoms', label: 'Simptomlar', icon: Icons.Activity, color: 'bg-[#FF9800]' },
-            { id: 'patients', label: 'Bemorlar', icon: Icons.Users, color: 'bg-[#4CAF50]' },
-            { id: 'laboratory', label: 'Laboratoriya', icon: Icons.FlaskConical, color: 'bg-[#9C27B0]' },
-            { id: 'pharma', label: 'Farmakologiya', icon: Icons.Pill, color: 'bg-[#E53935]' },
-            { id: 'fanlar', label: 'Fanlar', icon: Icons.Dna, color: 'bg-[#F57C00]' },
-            { id: 'journals', label: 'Jurnallar', icon: Icons.BookText, color: 'bg-[#D32F2F]' },
-            { id: 'news', label: 'Global Health News', icon: Globe, color: 'bg-[#2196F3]' },
-            { id: 'ai', label: 'AI Markazi', icon: Sparkles, color: 'bg-[#673AB7]' }
-          ].map((item) => (
-            <button 
-              key={item.id} 
-              onClick={() => onNavigate(item.id as Page)}
-              className="flex flex-col items-center gap-2 group min-w-[76px] sm:min-w-0 sm:flex-1 snap-start"
-            >
-              <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-[1.25rem] flex items-center justify-center text-white shadow-md transition-transform duration-300 group-hover:scale-110 group-active:scale-95 ${item.color}`}>
-                <item.icon className="w-6 h-6 sm:w-7 sm:h-7" strokeWidth={2} />
+      {/* Main Layout Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 px-4 md:px-8 max-w-7xl mx-auto">
+        {/* Left Column */}
+        <div className="space-y-8">
+          {/* Core Learning */}
+          <section>
+            <div className="flex items-center gap-4 mb-4">
+              <h2 className="text-[10px] md:text-xs font-bold text-foreground/80 tracking-widest uppercase">ASOSIY <span className="text-foreground/40 font-medium">(CORE LEARNING)</span></h2>
+              <div className="flex-1 h-px bg-border/50"></div>
+            </div>
+            <div className="flex justify-between gap-2 overflow-x-auto custom-scrollbar pb-2">
+              {[
+                { id: 'fanlar', label: 'Fanlar', icon: Icons.Dna, color: 'bg-[#F57C00]' },
+                { id: 'library', label: 'Kutubxona', icon: BookOpen, color: 'bg-[#1877F2]' },
+                { id: 'videos', label: 'Videolar', icon: Video, color: 'bg-[#1976D2]' },
+                { id: 'mnemonics', label: 'Mnemonika', icon: Brain, color: 'bg-[#9C27B0]' },
+                { id: 'symptoms', label: 'Simptomlar', icon: Icons.Activity, color: 'bg-[#FF9800]' },
+              ].map((item) => (
+                <button 
+                  key={item.id} 
+                  onClick={() => onNavigate(item.id as Page)}
+                  className="flex flex-col items-center gap-2 group min-w-[64px] flex-1"
+                >
+                  <div className={`w-14 h-14 md:w-16 md:h-16 rounded-2xl flex items-center justify-center text-white shadow-sm transition-transform duration-200 group-hover:scale-105 group-active:scale-95 ${item.color}`}>
+                    <item.icon className="w-7 h-7 md:w-8 md:h-8" strokeWidth={1.5} />
+                  </div>
+                  <span className="text-[11px] md:text-xs font-medium text-foreground/80 group-hover:text-foreground transition-colors text-center">{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {/* Practice & Assessment */}
+          <section>
+            <div className="flex items-center gap-4 mb-4">
+              <h2 className="text-[10px] md:text-xs font-bold text-foreground/80 tracking-widest uppercase">AMALIYOT <span className="text-foreground/40 font-medium">(PRACTICE & ASSESSMENT)</span></h2>
+              <div className="flex-1 h-px bg-border/50"></div>
+            </div>
+            <div className="grid grid-cols-4 gap-3">
+              {[
+                { id: 'quiz', label: 'Testlar', icon: Icons.ClipboardList, bgColor: 'bg-[#FFF3E0]', iconColor: 'text-[#FF9800]' },
+                { id: 'osce', label: 'OSCE', icon: Stethoscope, bgColor: 'bg-[#E0F2F1]', iconColor: 'text-[#00BFA5]' },
+                { id: 'patients', label: 'Bemorlar', icon: Icons.Users, bgColor: 'bg-[#F3E5F5]', iconColor: 'text-[#9C27B0]' },
+                { id: 'laboratory', label: 'Laboratoriya', icon: Icons.FlaskConical, bgColor: 'bg-[#E3F2FD]', iconColor: 'text-[#2196F3]' },
+              ].map((item) => (
+                <button 
+                  key={item.id} 
+                  onClick={() => onNavigate(item.id as Page)}
+                  className="flex flex-col items-center gap-2 group"
+                >
+                  <div className={`w-full aspect-square max-w-[80px] rounded-2xl flex items-center justify-center transition-transform duration-200 group-hover:scale-105 group-active:scale-95 ${item.bgColor}`}>
+                    <item.icon className={`w-8 h-8 md:w-10 md:h-10 ${item.iconColor}`} strokeWidth={1.5} />
+                  </div>
+                  <span className="text-[11px] md:text-xs font-medium text-foreground/80 group-hover:text-foreground transition-colors text-center">{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        {/* Right Column */}
+        <div className="space-y-8">
+          {/* Clinical Tools & AI */}
+          <section>
+            <div className="flex items-center gap-4 mb-4">
+              <h2 className="text-[10px] md:text-xs font-bold text-foreground/80 tracking-widest uppercase">KLINIKA <span className="text-foreground/40 font-medium">(CLINICAL TOOLS & AI)</span></h2>
+              <div className="flex-1 h-px bg-border/50"></div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[
+                { id: 'pharma', label: 'Farmakologiya', icon: Icons.Pill, iconColor: 'text-[#00BFA5]' },
+                { id: 'journals', label: 'Jurnallar', icon: Icons.BookText, iconColor: 'text-[#78909C]' },
+                { id: 'tutor', label: 'AI Tutor', icon: Icons.Bot, iconColor: 'text-[#2196F3]' },
+                { id: 'news', label: 'Global Health News', icon: Globe, iconColor: 'text-[#78909C]' },
+              ].map((item) => (
+                <button 
+                  key={item.id} 
+                  onClick={() => onNavigate(item.id as Page)}
+                  className="flex items-center gap-3 bg-card border border-border/60 p-4 rounded-2xl hover:bg-secondary/50 transition-colors group shadow-sm"
+                >
+                  <div className={`p-2 rounded-xl bg-secondary/50 group-hover:bg-background transition-colors ${item.iconColor}`}>
+                    <item.icon className="w-6 h-6" strokeWidth={1.5} />
+                  </div>
+                  <span className="font-medium text-sm text-foreground/90">{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {/* AI Center */}
+          <section>
+            <div className="flex items-center gap-4 mb-4">
+              <div className="bg-[#00BFA5] text-white text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> AI
               </div>
-              <span className="text-[10px] sm:text-xs font-semibold text-foreground/80 group-hover:text-foreground transition-colors text-center leading-tight whitespace-normal sm:whitespace-nowrap">{item.label}</span>
-            </button>
-          ))}
+              <h2 className="text-[10px] md:text-xs font-bold text-foreground/80 tracking-widest uppercase">AI MARKAZI</h2>
+              <div className="flex-1 h-px bg-border/50"></div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button 
+                onClick={() => onNavigate('ai')}
+                className="flex items-center gap-3 bg-card border border-border/60 p-4 rounded-2xl hover:bg-secondary/50 transition-colors group shadow-sm"
+              >
+                <div className="p-2 rounded-xl bg-secondary/50 group-hover:bg-background transition-colors text-[#673AB7]">
+                  <Sparkles className="w-6 h-6" strokeWidth={1.5} />
+                </div>
+                <span className="font-medium text-sm text-foreground/90">AI Markazi</span>
+              </button>
+            </div>
+          </section>
         </div>
-      </motion.div>
-
-      {/* Features Grid */}
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <FeatureCard 
-          title={t('featSubjectsTitle')}
-          description={t('featSubjectsDesc')}
-          onClick={() => onNavigate('fanlar')}
-          color="emerald"
-          icon={<BookOpen />}
-        />
-        <FeatureCard 
-          title={t('featLibraryTitle')}
-          description={t('featLibraryDesc')}
-          onClick={() => onNavigate('library')}
-          color="blue"
-          icon={<BookOpen />}
-        />
-        <FeatureCard 
-          title={t('featMnemonicsTitle')}
-          description={t('featMnemonicsDesc')}
-          onClick={() => onNavigate('mnemonics')}
-          color="purple"
-          icon={<Brain />}
-        />
-        <FeatureCard 
-          title={t('featVideosTitle')}
-          description={t('featVideosDesc')}
-          onClick={() => onNavigate('videos')}
-          color="red"
-          icon={<Video />}
-        />
-        <FeatureCard 
-          title={t('featSymptomsTitle')}
-          description={t('featSymptomsDesc')}
-          onClick={() => onNavigate('symptoms')}
-          color="emerald"
-          icon={<Stethoscope />}
-        />
-        <FeatureCard 
-          title={t('featQuizTitle')}
-          description={t('featQuizDesc')}
-          onClick={() => onNavigate('quiz')}
-          color="blue"
-          icon={<CheckCircle2 />}
-        />
-        <FeatureCard 
-          title={t('featAITitle')}
-          description={t('featAIDesc')}
-          onClick={() => onNavigate('ai')}
-          color="purple"
-          icon={<Sparkles />}
-        />
-        <FeatureCard 
-          title={t('featOSCETitle')}
-          description={t('featOSCEDesc')}
-          onClick={() => onNavigate('osce')}
-          color="emerald"
-          icon={<Stethoscope />}
-        />
-        <FeatureCard 
-          title={t('featNewsTitle')}
-          description={t('featNewsDesc')}
-          onClick={() => onNavigate('news')}
-          color="blue"
-          icon={<Globe />}
-        />
-        {sections.map((sec, idx) => {
-          const Icon = (Icons[sec.icon as keyof typeof Icons] as React.ElementType) || Plus;
-          return (
-            <FeatureCard 
-              key={sec.id || idx}
-              title={sec.title}
-              description={sec.content}
-              onClick={() => showAlert(t('comingSoon'), `${t('comingSoonDesc')} ${sec.title}`)}
-              color={sec.color}
-              icon={<Icon />}
-            />
-          );
-        })}
-      </section>
-
-      {/* Coming Soon Section */}
-      <section className="bg-primary rounded-2xl p-8 md:p-12 text-primary-foreground overflow-hidden relative shadow-sm shadow-primary/20">
-        <div className="relative z-10 max-w-2xl">
-          <span className="inline-block bg-white/20 backdrop-blur-md text-xs font-medium px-3 py-1.5 rounded-full mb-6 uppercase tracking-wider">Tez kunda</span>
-          <h2 className="text-3xl md:text-4xl font-semibold mb-4 tracking-tight">Virtual Bemor Simulyatori</h2>
-          <p className="text-primary-foreground/80 mb-8 text-lg leading-relaxed">
-            Haqiqiy klinik holatlarni virtual muhitda boshqarish va qaror qabul qilish ko'nikmalarini rivojlantirish uchun yangi bo'lim ustida ishlayapmiz.
-          </p>
-          <div className="flex items-center gap-3 text-sm font-medium bg-black/10 w-fit px-4 py-2 rounded-xl backdrop-blur-sm">
-            <Info className="w-4 h-4" />
-            <span>Yangi yangiliklardan xabardor bo'lish uchun bizni kuzatib boring.</span>
-          </div>
-        </div>
-        <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 opacity-10 pointer-events-none">
-          <Stethoscope className="w-96 h-96" />
-        </div>
-      </section>
+      </div>
 
     </motion.div>
   );
@@ -1472,7 +1542,7 @@ function MnemonicsPage({ data, handleAIExplain, updateProgress }: { data: Mnemon
   );
 }
 
-function VideosPage({ data, handleAIExplain, updateProgress }: { data: VideoData[], handleAIExplain: (title: string, context: string) => void, updateProgress?: (field: any, value: any) => void }) {
+function VideosPage({ data, handleAIExplain, updateProgress, saveActivity }: { data: VideoData[], handleAIExplain: (title: string, context: string) => void, updateProgress?: (field: any, value: any) => void, saveActivity?: (type: 'test' | 'video', details: any) => void }) {
   const { t } = useTranslation();
   const [selectedFilter, setSelectedFilter] = useState(t('videosAll'));
   const [activeVideo, setActiveVideo] = useState<VideoData | null>(null);
@@ -1486,6 +1556,12 @@ function VideosPage({ data, handleAIExplain, updateProgress }: { data: VideoData
       setActiveVideo(v);
       if (updateProgress) {
         updateProgress('videosWatched', (prev: number) => prev + 1);
+      }
+      if (saveActivity) {
+        saveActivity('video', {
+          title: v.title,
+          category: v.category
+        });
       }
     }
   };
@@ -1696,9 +1772,9 @@ function SymptomsPage({ data, handleAIExplain, updateProgress }: { data: Symptom
   );
 }
 
-function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, questions }: { handleAIExplain: (title: string, context: string) => void, showAlert: (title: string, content: string) => void, user: any, updateProgress: (field: any, value: any) => void, fanlar: Subject[], questions: Question[] }) {
+function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivity, fanlar, questions }: { handleAIExplain: (title: string, context: string) => void, showAlert: (title: string, content: string) => void, user: any, updateProgress: (field: any, value: any) => void, saveActivity?: (type: 'test' | 'video', details: any) => void, fanlar: Subject[], questions: Question[] }) {
   const { t } = useTranslation();
-  const [step, setStep] = useState<'subjects' | 'topics' | 'quiz' | 'result' | 'review'>('subjects');
+  const [step, setStep] = useState<'subjects' | 'topics' | 'quiz' | 'result' | 'review' | 'retry_request'>('subjects');
   const [selectedSubject, setSelectedSubject] = useState<any>(null);
   const [selectedTopic, setSelectedTopic] = useState<any>(null);
   
@@ -1708,8 +1784,35 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
   const [score, setScore] = useState(0);
   const [startTime, setStartTime] = useState(0);
   const [timeTaken, setTimeTaken] = useState(0);
+  const [cheatCount, setCheatCount] = useState(0);
+  const [userAttempts, setUserAttempts] = useState<Record<string, number>>({});
+  const [requestSent, setRequestSent] = useState<Record<string, boolean>>({});
   
   const [scoreboard, setScoreboard] = useState<{name: string, surname: string, score: number, time: number, topic: string}[]>([]);
+
+  useEffect(() => {
+    if (user) {
+      const fetchAttempts = async () => {
+        const userRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userRef);
+        if (userDoc.exists()) {
+          setUserAttempts(userDoc.data().quizAttempts || {});
+        }
+        
+        // Check requests
+        const requestsQuery = await getDocs(collection(db, 'quizRequests'));
+        const sent: Record<string, boolean> = {};
+        requestsQuery.forEach(doc => {
+          const data = doc.data();
+          if (data.userId === user.uid && data.status === 'pending') {
+            sent[data.topic] = true;
+          }
+        });
+        setRequestSent(sent);
+      };
+      fetchAttempts();
+    }
+  }, [user, step]);
 
   const dynamicSubjects = useMemo(() => {
     return fanlar.map(f => {
@@ -1722,6 +1825,7 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
           return {
             id: t.id,
             name: t.title,
+            timeLimit: t.timeLimit,
             questions: topicQuestions.map(q => ({
               id: q.id,
               text: q.question,
@@ -1736,11 +1840,13 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
   }, [fanlar, questions]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('meduz_quiz_scores');
+    const saved = localStorage.getItem('meduz_quiz_scores_v2');
     if (saved) setScoreboard(JSON.parse(saved));
   }, []);
 
   const [userAnswers, setUserAnswers] = useState<(number | null)[]>([]);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [shuffledOptionsMap, setShuffledOptionsMap] = useState<Record<number, number[]>>({});
 
   const handleSubjectSelect = (subject: any) => {
     setSelectedSubject(subject);
@@ -1749,14 +1855,86 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
 
   const handleTopicSelect = (topic: any) => {
     setSelectedTopic(topic);
+    if (userAttempts[topic.name] >= 3) {
+      setStep('retry_request');
+      return;
+    }
     setStep('quiz');
     setCurrentQuestionIdx(0);
     setScore(0);
+    setCheatCount(0);
     setStartTime(Date.now());
     setIsAnswered(false);
     setSelectedOption(null);
     setUserAnswers(new Array(topic.questions.length).fill(null));
+    
+    const newShuffledMap: Record<number, number[]> = {};
+    topic.questions.forEach((q: any, qIdx: number) => {
+      const indices = q.options.map((_: any, i: number) => i);
+      for (let i = indices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [indices[i], indices[j]] = [indices[j], indices[i]];
+      }
+      newShuffledMap[qIdx] = indices;
+    });
+    setShuffledOptionsMap(newShuffledMap);
+
+    if (topic.timeLimit) {
+      setTimeLeft(topic.timeLimit * 60);
+    } else {
+      setTimeLeft(null);
+    }
   };
+
+  useEffect(() => {
+    if (step === 'quiz' && timeLeft !== null && timeLeft > 0) {
+      const timer = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev && prev <= 1) {
+            clearInterval(timer);
+            finishQuiz(score);
+            showAlert("Vaqt tugadi", "Test ishlash uchun ajratilgan vaqt tugadi.");
+            return 0;
+          }
+          return prev ? prev - 1 : 0;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [step, timeLeft, score]);
+
+  useEffect(() => {
+    const handleBlur = () => {
+      if (step === 'quiz') {
+        const newCheatCount = cheatCount + 1;
+        setCheatCount(newCheatCount);
+        
+        if (newCheatCount >= 3) {
+          showAlert("Test yakunlandi", "Siz 3 marta testdan chiqib ketdingiz. Test avtomatik tarzda yakunlandi.");
+          finishQuiz(score);
+        } else {
+          showAlert("Ogohlantirish", `Test vaqtida boshqa oynaga o'tish taqiqlanadi! (Qoidabuzarlik: ${newCheatCount}/3). Joriy savol xato deb belgilandi.`);
+          if (!isAnswered) {
+            // Mark as incorrect and move to next
+            const newUserAnswers = [...userAnswers];
+            newUserAnswers[currentQuestionIdx] = -1; // -1 means skipped/incorrect due to cheating
+            setUserAnswers(newUserAnswers);
+            
+            if (currentQuestionIdx < selectedTopic.questions.length - 1) {
+              setCurrentQuestionIdx(prev => prev + 1);
+              setSelectedOption(null);
+              setIsAnswered(false);
+            } else {
+              finishQuiz(score);
+            }
+          }
+        }
+      }
+    };
+
+    window.addEventListener('blur', handleBlur);
+    return () => window.removeEventListener('blur', handleBlur);
+  }, [step, cheatCount, isAnswered, currentQuestionIdx, selectedTopic, score, userAnswers]);
 
   const handleAnswer = (idx: number) => {
     if (isAnswered) return;
@@ -1789,6 +1967,22 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
     
     if (user) {
       updateProgress('quizScore', (prev: number) => prev + finalScore);
+      if (saveActivity) {
+        saveActivity('test', {
+          subject: selectedSubject.name,
+          topic: selectedTopic.name,
+          score: finalScore,
+          total: selectedTopic.questions.length
+        });
+      }
+      
+      // Update attempts
+      const newAttempts = (userAttempts[selectedTopic.name] || 0) + 1;
+      setUserAttempts(prev => ({ ...prev, [selectedTopic.name]: newAttempts }));
+      const userRef = doc(db, 'users', user.uid);
+      updateDoc(userRef, {
+        [`quizAttempts.${selectedTopic.name}`]: newAttempts
+      }).catch(console.error);
     }
     
     const nameParts = user?.displayName?.split(' ') || ['Mehmon', ''];
@@ -1805,7 +1999,7 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
       .slice(0, 10);
       
     setScoreboard(newBoard);
-    localStorage.setItem('meduz_quiz_scores', JSON.stringify(newBoard));
+    localStorage.setItem('meduz_quiz_scores_v2', JSON.stringify(newBoard));
     
     // Update score state to final score so result screen shows correct score
     setScore(finalScore);
@@ -1911,6 +2105,66 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
       generatePDF();
     }
   }, [step]);
+
+  if (step === 'retry_request') {
+    const handleRequestRetry = async () => {
+      if (!user) return;
+      try {
+        await addDoc(collection(db, 'quizRequests'), {
+          userId: user.uid,
+          userEmail: user.email,
+          userName: user.displayName || 'Mehmon',
+          topic: selectedTopic.name,
+          subject: selectedSubject.name,
+          status: 'pending',
+          createdAt: Date.now()
+        });
+        setRequestSent(prev => ({ ...prev, [selectedTopic.name]: true }));
+        showAlert("So'rov yuborildi", "Sizning so'rovingiz adminga yuborildi. Ruxsat berilgach, testni qayta ishlashingiz mumkin.");
+        
+        // Open email client
+        const subject = encodeURIComponent(`Testni qayta ishlash uchun so'rov: ${selectedTopic.name}`);
+        const body = encodeURIComponent(`Salom Admin,\n\nMen "${selectedTopic.name}" mavzusi bo'yicha test ishlash limitini tugatdim. Iltimos, qayta ishlash uchun ruxsat bering.\n\nFoydalanuvchi: ${user.displayName || 'Mehmon'}\nEmail: ${user.email}\nUID: ${user.uid}`);
+        window.location.href = `mailto:muhammadboburolimjonov62@gmail.com?subject=${subject}&body=${body}`;
+        
+      } catch (error) {
+        console.error("Error sending request:", error);
+        showAlert("Xatolik", "So'rov yuborishda xatolik yuz berdi.");
+      }
+    };
+
+    return (
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-md mx-auto mt-20 p-8 bg-card rounded-3xl shadow-sm border border-border text-center">
+        <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-6">
+          <AlertTriangle className="w-8 h-8" />
+        </div>
+        <h2 className="text-2xl font-semibold text-foreground mb-4">Limit tugadi</h2>
+        <p className="text-foreground/70 mb-8">
+          Siz "{selectedTopic.name}" mavzusi bo'yicha test ishlash limitini (3 marta) tugatdingiz. Qayta ishlash uchun adminga so'rov yuborishingiz kerak.
+        </p>
+        
+        {requestSent[selectedTopic.name] ? (
+          <div className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 p-4 rounded-xl font-medium">
+            So'rov yuborilgan. Kuting...
+          </div>
+        ) : (
+          <button
+            onClick={handleRequestRetry}
+            className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+          >
+            Qayta ishlash uchun maxsus iltimos yo'llang
+          </button>
+        )}
+        
+        <button
+          onClick={() => setStep('topics')}
+          className="mt-4 w-full py-3 text-foreground/60 hover:text-foreground hover:bg-secondary rounded-xl transition-all font-medium"
+        >
+          Orqaga qaytish
+        </button>
+      </motion.div>
+    );
+  }
 
   if (step === 'subjects') {
     return (
@@ -2059,6 +2313,12 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
                 <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} className="h-full bg-primary" />
               </div>
             </div>
+            {timeLeft !== null && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 text-red-600 dark:text-red-400 rounded-lg font-mono text-sm font-semibold whitespace-nowrap">
+                <Clock className="w-4 h-4" />
+                {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+              </div>
+            )}
             <button 
               onClick={() => {
                 if (window.confirm('Testni to\'xtatmoqchimisiz?')) {
@@ -2077,7 +2337,9 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
           <h3 className="text-xl md:text-2xl font-semibold text-foreground leading-snug tracking-tight">{currentQ.text}</h3>
           
           <div className="grid grid-cols-1 gap-3">
-            {currentQ.options.map((option: string, idx: number) => {
+            {(shuffledOptionsMap[currentQuestionIdx] || currentQ.options.map((_: any, i: number) => i)).map((originalIdx: number) => {
+              const option = currentQ.options[originalIdx];
+              const idx = originalIdx;
               let stateClass = "border-border/40 hover:border-primary/50 hover:bg-primary/5 text-foreground";
               if (isAnswered) {
                 if (idx === currentQ.correct) stateClass = "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
@@ -2089,7 +2351,7 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
 
               return (
                 <button 
-                  key={idx}
+                  key={originalIdx}
                   onClick={() => handleAnswer(idx)}
                   disabled={isAnswered}
                   className={`w-full text-left p-4 rounded-xl border-2 font-medium transition-all duration-200 flex justify-between items-center group ${stateClass}`}
@@ -2211,13 +2473,15 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, fanlar, qu
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 pl-14">
-                  {q.options.map((option: string, oIdx: number) => {
+                  {(shuffledOptionsMap[qIdx] || q.options.map((_: any, i: number) => i)).map((originalIdx: number) => {
+                    const option = q.options[originalIdx];
+                    const oIdx = originalIdx;
                     let optionClass = "border-border/40 text-foreground/60";
                     if (oIdx === q.correct) optionClass = "border-emerald-500 bg-emerald-500/10 text-emerald-600 font-bold";
                     else if (oIdx === userAnswer && !isCorrect) optionClass = "border-red-500 bg-red-500/10 text-red-600 font-bold";
 
                     return (
-                      <div key={oIdx} className={`p-4 rounded-xl border-2 flex justify-between items-center ${optionClass}`}>
+                      <div key={originalIdx} className={`p-4 rounded-xl border-2 flex justify-between items-center ${optionClass}`}>
                         <span className="text-base">{option}</span>
                         {oIdx === q.correct && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
                         {oIdx === userAnswer && !isCorrect && <X className="w-5 h-5 text-red-500" />}
@@ -2261,6 +2525,24 @@ function FanlarPage({ data }: { data: Subject[] }) {
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [activeTab, setActiveTab] = useState<'videos' | 'guides'>('videos');
 
+  const [completedTopics, setCompletedTopics] = useState<string[]>(() => {
+    const saved = localStorage.getItem('meduz_completed_topics');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [filter, setFilter] = useState<'all' | 'completed' | 'incomplete' | 'has-videos' | 'has-guides'>('all');
+  const [sort, setSort] = useState<'default' | 'videos-desc' | 'videos-asc' | 'guides-desc' | 'guides-asc'>('default');
+
+  useEffect(() => {
+    localStorage.setItem('meduz_completed_topics', JSON.stringify(completedTopics));
+  }, [completedTopics]);
+
+  const toggleTopicCompletion = (topicId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setCompletedTopics(prev => 
+      prev.includes(topicId) ? prev.filter(id => id !== topicId) : [...prev, topicId]
+    );
+  };
+
   if (selectedTopic) {
     return (
       <motion.div
@@ -2278,7 +2560,23 @@ function FanlarPage({ data }: { data: Subject[] }) {
         </button>
 
         <div className="bg-card border border-border rounded-3xl p-8 shadow-sm">
-          <h2 className="text-3xl font-bold text-foreground mb-4">{selectedTopic.title}</h2>
+          <div className="flex justify-between items-start mb-4">
+            <h2 className="text-3xl font-bold text-foreground">{selectedTopic.title}</h2>
+            <button
+              onClick={(e) => toggleTopicCompletion(selectedTopic.id, e)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition-colors ${
+                completedTopics.includes(selectedTopic.id)
+                  ? 'bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20'
+                  : 'bg-secondary text-foreground/70 hover:bg-secondary/80'
+              }`}
+            >
+              {completedTopics.includes(selectedTopic.id) ? (
+                <><Icons.CheckCircle2 className="w-5 h-5" /> Bajarilgan</>
+              ) : (
+                <><Icons.Circle className="w-5 h-5" /> Bajarilmagan</>
+              )}
+            </button>
+          </div>
           <p className="text-foreground/60 text-lg leading-relaxed mb-8">{selectedTopic.description}</p>
 
           <div className="flex gap-4 border-b border-border mb-8">
@@ -2349,6 +2647,22 @@ function FanlarPage({ data }: { data: Subject[] }) {
   }
 
   if (selectedSubject) {
+    let filteredTopics = selectedSubject.topics.filter(topic => {
+      if (filter === 'completed') return completedTopics.includes(topic.id);
+      if (filter === 'incomplete') return !completedTopics.includes(topic.id);
+      if (filter === 'has-videos') return topic.videos.length > 0;
+      if (filter === 'has-guides') return topic.guides.length > 0;
+      return true;
+    });
+
+    filteredTopics.sort((a, b) => {
+      if (sort === 'videos-desc') return b.videos.length - a.videos.length;
+      if (sort === 'videos-asc') return a.videos.length - b.videos.length;
+      if (sort === 'guides-desc') return b.guides.length - a.guides.length;
+      if (sort === 'guides-asc') return a.guides.length - b.guides.length;
+      return 0; // default
+    });
+
     return (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -2369,14 +2683,58 @@ function FanlarPage({ data }: { data: Subject[] }) {
           <p className="text-foreground/60 text-lg leading-relaxed">{selectedSubject.description}</p>
         </div>
 
+        <div className="flex flex-col sm:flex-row gap-4 mb-6">
+          <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-4 py-2 shadow-sm flex-1 sm:flex-none">
+            <Icons.Filter className="w-4 h-4 text-foreground/50" />
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as any)}
+              className="bg-transparent border-none text-sm font-medium text-foreground focus:ring-0 outline-none w-full cursor-pointer"
+            >
+              <option value="all">Barcha mavzular</option>
+              <option value="completed">Bajarilgan</option>
+              <option value="incomplete">Bajarilmagan</option>
+              <option value="has-videos">Videolar mavjud</option>
+              <option value="has-guides">Qo'llanmalar mavjud</option>
+            </select>
+          </div>
+          
+          <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-4 py-2 shadow-sm flex-1 sm:flex-none">
+            <Icons.ArrowDownUp className="w-4 h-4 text-foreground/50" />
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as any)}
+              className="bg-transparent border-none text-sm font-medium text-foreground focus:ring-0 outline-none w-full cursor-pointer"
+            >
+              <option value="default">Standart tartib</option>
+              <option value="videos-desc">Videolar (ko'pdan kamga)</option>
+              <option value="videos-asc">Videolar (kamdan ko'pga)</option>
+              <option value="guides-desc">Qo'llanmalar (ko'pdan kamga)</option>
+              <option value="guides-asc">Qo'llanmalar (kamdan ko'pga)</option>
+            </select>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {selectedSubject.topics.map(topic => (
+          {filteredTopics.map(topic => (
             <button
               key={topic.id}
               onClick={() => setSelectedTopic(topic)}
-              className="text-left bg-card border border-border rounded-3xl p-6 shadow-sm hover:shadow-md hover:border-primary/30 transition-all group"
+              className="text-left bg-card border border-border rounded-3xl p-6 shadow-sm hover:shadow-md hover:border-primary/30 transition-all group relative overflow-hidden"
             >
-              <h3 className="text-xl font-bold text-foreground mb-3 group-hover:text-primary transition-colors">{topic.title}</h3>
+              <div className="flex justify-between items-start mb-3">
+                <h3 className="text-xl font-bold text-foreground group-hover:text-primary transition-colors pr-8">{topic.title}</h3>
+                <div 
+                  onClick={(e) => toggleTopicCompletion(topic.id, e)}
+                  className="absolute top-6 right-6 z-10 p-1 rounded-full hover:bg-secondary transition-colors"
+                >
+                  {completedTopics.includes(topic.id) ? (
+                    <Icons.CheckCircle2 className="w-6 h-6 text-emerald-500" />
+                  ) : (
+                    <Icons.Circle className="w-6 h-6 text-foreground/20 group-hover:text-foreground/40" />
+                  )}
+                </div>
+              </div>
               <p className="text-foreground/60 text-sm line-clamp-2 mb-6">{topic.description}</p>
               <div className="flex items-center gap-4 text-sm font-medium text-foreground/50">
                 <span className="flex items-center gap-1.5"><Video className="w-4 h-4" /> {topic.videos.length} {t('fanlarVideosCount')}</span>
@@ -2384,6 +2742,12 @@ function FanlarPage({ data }: { data: Subject[] }) {
               </div>
             </button>
           ))}
+          {filteredTopics.length === 0 && (
+            <div className="col-span-full text-center py-12 text-foreground/50">
+              <Icons.Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
+              <p>Ushbu filtrlarga mos mavzular topilmadi.</p>
+            </div>
+          )}
         </div>
       </motion.div>
     );
@@ -2428,6 +2792,47 @@ function FanlarPage({ data }: { data: Subject[] }) {
   );
 }
 
+function TopicTimeLimitEditor({ fanlar, setFanlar, subjectTitle, topicTitle, showAlert }: { fanlar: Subject[], setFanlar: (data: Subject[]) => void, subjectTitle: string, topicTitle: string, showAlert: (t: string, m: string) => void }) {
+  const subject = fanlar.find(s => s.title === subjectTitle);
+  const topic = subject?.topics.find(t => t.title === topicTitle);
+  const [timeLimit, setTimeLimit] = useState(topic?.timeLimit ? topic.timeLimit.toString() : '');
+
+  const handleSave = () => {
+    const updatedFanlar = fanlar.map(s => {
+      if (s.title === subjectTitle) {
+        return {
+          ...s,
+          topics: s.topics.map(t => {
+            if (t.title === topicTitle) {
+              return { ...t, timeLimit: timeLimit ? parseInt(timeLimit) : undefined };
+            }
+            return t;
+          })
+        };
+      }
+      return s;
+    });
+    setFanlar(updatedFanlar);
+    showAlert("Saqlandi", "Ushbu test uchun vaqt limiti muvaffaqiyatli saqlandi.");
+  };
+
+  return (
+    <div className="flex items-center gap-2 mt-2 px-6 py-2 bg-secondary/20 border-y border-border">
+      <span className="text-sm font-medium text-foreground/80">Ushbu test uchun vaqt limiti (daqiqa):</span>
+      <input 
+        type="number" 
+        value={timeLimit} 
+        onChange={e => setTimeLimit(e.target.value)} 
+        className="w-24 px-3 py-1.5 rounded-lg border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary"
+        placeholder="Yo'q"
+      />
+      <button onClick={handleSave} className="px-4 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+        Saqlash
+      </button>
+    </div>
+  );
+}
+
 function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections, settings, library, osceScenarios, fanlar, setFanlar, appSettings, setAppSettings, news, setNews, journals, setJournals, onUpdate, onUpdateLibrary, themeColor, setThemeColor, showAlert, showConfirm }: { 
   mnemonics: Mnemonic[], 
   questions: Question[], 
@@ -2453,7 +2858,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   showAlert: (title: string, content: string) => void,
   showConfirm: (title: string, content: string, onConfirm: () => void) => void
 }) {
-  const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'settings' | 'library' | 'osce' | 'fanlar' | 'appSettings' | 'news' | 'journals'>('mnemonics');
+  const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'settings' | 'library' | 'osce' | 'fanlar' | 'appSettings' | 'news' | 'journals' | 'quizRequests' | 'laboratory' | 'pharma' | 'tutor' | 'ai'>('videos');
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
   const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({});
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
@@ -2465,6 +2870,21 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [quizRequests, setQuizRequests] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      const fetchRequests = async () => {
+        const q = query(collection(db, 'quizRequests'), orderBy('createdAt', 'desc'));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+          const reqs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setQuizRequests(reqs);
+        });
+        return unsubscribe;
+      };
+      fetchRequests();
+    }
+  }, [isAdmin]);
 
   const handleLogin = async () => {
     setLoading(true);
@@ -2654,17 +3074,22 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
             
             <div className="space-y-1">
               {[
-                { id: 'mnemonics', label: 'Mnemonikalar', icon: Brain },
-                { id: 'questions', label: 'Testlar', icon: CheckCircle2 },
-                { id: 'symptoms', label: 'Simptomlar', icon: Stethoscope },
-                { id: 'videos', label: 'Videolar', icon: Video },
-                { id: 'patients', label: 'Bemorlar', icon: Heart },
-                { id: 'library', label: 'Kutubxona', icon: BookOpen },
-                { id: 'osce', label: 'OSCE Ssenariylari', icon: Stethoscope },
-                { id: 'sections', label: 'Bo\'limlar', icon: Plus },
                 { id: 'fanlar', label: 'Fanlar', icon: BookOpen },
-                { id: 'news', label: 'Yangiliklar', icon: Globe },
+                { id: 'library', label: 'Kutubxona', icon: BookOpen },
+                { id: 'videos', label: 'Videolar', icon: Video },
+                { id: 'mnemonics', label: 'Mnemonika', icon: Brain },
+                { id: 'symptoms', label: 'Simptomlar', icon: Stethoscope },
+                { id: 'questions', label: 'Testlar', icon: CheckCircle2 },
+                { id: 'osce', label: 'OSCE', icon: Stethoscope },
+                { id: 'patients', label: 'Bemorlar', icon: Heart },
+                { id: 'laboratory', label: 'Laboratoriya', icon: Icons.FlaskConical },
+                { id: 'pharma', label: 'Farmakologiya', icon: Icons.Pill },
                 { id: 'journals', label: 'Jurnallar', icon: BookOpen },
+                { id: 'news', label: 'Global Health News', icon: Globe },
+                { id: 'tutor', label: 'AI Tutor', icon: Icons.Bot },
+                { id: 'ai', label: 'AI Markazi', icon: Sparkles },
+                { id: 'sections', label: 'Bo\'limlar', icon: Plus },
+                { id: 'quizRequests', label: 'Test So\'rovlari', icon: AlertTriangle },
                 { id: 'appSettings', label: 'Ilova Sozlamalari', icon: Settings },
                 { id: 'settings', label: 'Sozlamalar', icon: Settings },
               ].map(tab => {
@@ -2749,16 +3174,45 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
 
         {/* Main Content Area */}
         <div className="flex-1 space-y-8">
+          {activeTab === 'quizRequests' ? (
+            <QuizRequestsTab 
+              requests={quizRequests} 
+              onApprove={async (req) => {
+                try {
+                  // Update request status
+                  await updateDoc(doc(db, 'quizRequests', req.id), { status: 'approved' });
+                  // Reset attempts for user
+                  const userRef = doc(db, 'users', req.userId);
+                  await updateDoc(userRef, {
+                    [`quizAttempts.${req.topic}`]: 0
+                  });
+                  showAlert("Muvaffaqiyatli", "Ruxsat berildi va limit nolga tushirildi.");
+                } catch (e) {
+                  console.error(e);
+                  showAlert("Xatolik", "Xatolik yuz berdi.");
+                }
+              }}
+              onReject={async (req) => {
+                try {
+                  await updateDoc(doc(db, 'quizRequests', req.id), { status: 'rejected' });
+                  showAlert("Muvaffaqiyatli", "So'rov rad etildi.");
+                } catch (e) {
+                  console.error(e);
+                  showAlert("Xatolik", "Xatolik yuz berdi.");
+                }
+              }}
+            />
+          ) : (
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
             <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
               <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
                 <h3 className="font-medium text-foreground flex items-center gap-2">
-                  {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'patients' ? <Heart className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'osce' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : activeTab === 'fanlar' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'news' ? <Globe className="w-5 h-5 text-primary" /> : activeTab === 'journals' ? <BookOpen className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
-                  {activeTab === 'mnemonics' ? 'Mnemonikalar Ro\'yxati' : activeTab === 'questions' ? 'Testlar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'patients' ? 'Bemorlar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'osce' ? 'OSCE Ssenariylari' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : activeTab === 'fanlar' ? 'Fanlar Ro\'yxati' : activeTab === 'news' ? 'Yangiliklar Ro\'yxati' : activeTab === 'journals' ? 'Jurnallar Ro\'yxati' : activeTab === 'appSettings' ? 'Ilova Sozlamalari' : 'Tizim Sozlamalari'}
+                  {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'patients' ? <Heart className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'osce' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : activeTab === 'fanlar' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'news' ? <Globe className="w-5 h-5 text-primary" /> : activeTab === 'journals' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'laboratory' ? <Icons.FlaskConical className="w-5 h-5 text-primary" /> : activeTab === 'pharma' ? <Icons.Pill className="w-5 h-5 text-primary" /> : activeTab === 'tutor' ? <Icons.Bot className="w-5 h-5 text-primary" /> : activeTab === 'ai' ? <Sparkles className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
+                  {activeTab === 'mnemonics' ? 'Mnemonika Ro\'yxati' : activeTab === 'questions' ? 'Testlar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'patients' ? 'Bemorlar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'osce' ? 'OSCE Ssenariylari' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : activeTab === 'fanlar' ? 'Fanlar Ro\'yxati' : activeTab === 'news' ? 'Yangiliklar Ro\'yxati' : activeTab === 'journals' ? 'Jurnallar Ro\'yxati' : activeTab === 'appSettings' ? 'Ilova Sozlamalari' : activeTab === 'laboratory' ? 'Laboratoriya' : activeTab === 'pharma' ? 'Farmakologiya' : activeTab === 'tutor' ? 'AI Tutor' : activeTab === 'ai' ? 'AI Markazi' : 'Tizim Sozlamalari'}
                 </h3>
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">
-                    {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : activeTab === 'osce' ? osceScenarios : activeTab === 'fanlar' ? fanlar : activeTab === 'news' ? news : activeTab === 'journals' ? journals : activeTab === 'appSettings' ? [] : sections).length} ta element
+                    {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : activeTab === 'osce' ? osceScenarios : activeTab === 'fanlar' ? fanlar : activeTab === 'news' ? news : activeTab === 'journals' ? journals : activeTab === 'appSettings' || activeTab === 'laboratory' || activeTab === 'pharma' || activeTab === 'tutor' || activeTab === 'ai' ? [] : sections).length} ta element
                   </span>
                   <button 
                     onClick={handleRestoreOldTests} 
@@ -2817,23 +3271,37 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                                   <div className="font-medium text-foreground/90 group-hover:text-primary transition-colors flex items-center gap-2">
                                     <ChevronRight className={`w-3 h-3 transition-transform ${expandedTopics[topic] ? 'rotate-90' : ''}`} />
                                     {topic}
+                                    {fanlar.find(s => s.title === subject)?.topics.find(t => t.title === topic)?.timeLimit && (
+                                      <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full ml-2">
+                                        {fanlar.find(s => s.title === subject)?.topics.find(t => t.title === topic)?.timeLimit} min
+                                      </span>
+                                    )}
                                   </div>
                                 </td>
                               </tr>
-                              {expandedTopics[topic] && qs.map(q => (
-                                <tr key={q.id} className="hover:bg-secondary/50 transition-colors group">
-                                  <td className="px-6 py-2 pl-20 border-l-2 border-primary/20">
-                                    <div className="text-sm text-foreground/80 group-hover:text-primary transition-colors flex items-center gap-2">
-                                      <CheckCircle2 className="w-3 h-3" /> {q.question}
-                                    </div>
-                                    <div className="text-[10px] text-foreground/50 mt-1 ml-5">{q.difficulty}</div>
-                                  </td>
-                                  <td className="px-6 py-2 text-right flex justify-end gap-1">
-                                    <button onClick={(e) => { e.stopPropagation(); setEditingQuestion(q); }} className="p-1.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-3.5 h-3.5" /></button>
-                                    <button onClick={(e) => { e.stopPropagation(); deleteItem('questions', q.id!); }} className="p-1.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
-                                  </td>
-                                </tr>
-                              ))}
+                              {expandedTopics[topic] && (
+                                <>
+                                  <tr>
+                                    <td colSpan={2} className="p-0">
+                                      <TopicTimeLimitEditor fanlar={fanlar} setFanlar={setFanlar} subjectTitle={subject} topicTitle={topic} showAlert={showAlert} />
+                                    </td>
+                                  </tr>
+                                  {qs.map(q => (
+                                    <tr key={q.id} className="hover:bg-secondary/50 transition-colors group">
+                                      <td className="px-6 py-2 pl-20 border-l-2 border-primary/20">
+                                        <div className="text-sm text-foreground/80 group-hover:text-primary transition-colors flex items-center gap-2">
+                                          <CheckCircle2 className="w-3 h-3" /> {q.question}
+                                        </div>
+                                        <div className="text-[10px] text-foreground/50 mt-1 ml-5">{q.difficulty}</div>
+                                      </td>
+                                      <td className="px-6 py-2 text-right flex justify-end gap-1">
+                                        <button onClick={(e) => { e.stopPropagation(); setEditingQuestion(q); }} className="p-1.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-3.5 h-3.5" /></button>
+                                        <button onClick={(e) => { e.stopPropagation(); deleteItem('questions', q.id!); }} className="p-1.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </>
+                              )}
                             </React.Fragment>
                           ))}
                         </React.Fragment>
@@ -3026,6 +3494,13 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                         </td>
                       </tr>
                     )}
+                    {(activeTab === 'laboratory' || activeTab === 'pharma' || activeTab === 'tutor' || activeTab === 'ai') && (
+                      <tr>
+                        <td colSpan={2} className="px-6 py-8 text-center text-foreground/60">
+                          <p>Bu bo'lim hozircha admin paneldan boshqarilmaydi yoki tez orada qo'shiladi.</p>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -3053,9 +3528,15 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                 {activeTab === 'journals' && <JournalForm onAdd={async (data) => { setJournals([...journals, { ...data, id: Date.now().toString() }]); return true; }} />}
                 {activeTab === 'appSettings' && <AppSettingsForm appSettings={appSettings} setAppSettings={setAppSettings} />}
                 {activeTab === 'settings' && <SettingsForm settings={settings} onUpdate={onUpdate} themeColor={themeColor} setThemeColor={setThemeColor} showAlert={showAlert} />}
+                {(activeTab === 'laboratory' || activeTab === 'pharma' || activeTab === 'tutor' || activeTab === 'ai') && (
+                  <div className="text-center py-8 text-foreground/60">
+                    <p>Ushbu bo'lim uchun sozlamalar mavjud emas.</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
+          )}
         </div>
       </div>
     </motion.div>
@@ -3120,6 +3601,67 @@ function AppSettingsForm({ appSettings, setAppSettings }: { appSettings: any, se
   );
 }
 
+function QuizRequestsTab({ requests, onApprove, onReject }: { requests: any[], onApprove: (req: any) => void, onReject: (req: any) => void }) {
+  return (
+    <div className="space-y-6">
+      <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+        <h3 className="text-xl font-medium text-foreground mb-6 flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 text-amber-500" /> Test So'rovlari
+        </h3>
+        
+        {requests.length === 0 ? (
+          <div className="text-center py-12 bg-secondary/30 rounded-xl border border-dashed border-border">
+            <p className="text-foreground/60">Hozircha so'rovlar yo'q</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {requests.map(req => (
+              <div key={req.id} className="flex items-center justify-between p-4 bg-secondary/20 rounded-xl border border-border/50">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-medium text-foreground">{req.userName}</span>
+                    <span className="text-xs text-foreground/50">({req.userEmail})</span>
+                  </div>
+                  <div className="text-sm text-foreground/70">
+                    <span className="font-medium">Fan:</span> {req.subject} <br/>
+                    <span className="font-medium">Mavzu:</span> {req.topic}
+                  </div>
+                  <div className="text-xs text-foreground/40 mt-2">
+                    {new Date(req.createdAt).toLocaleString()}
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  {req.status === 'pending' ? (
+                    <>
+                      <button 
+                        onClick={() => onApprove(req)}
+                        className="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-600 transition-colors"
+                      >
+                        Ruxsat berish
+                      </button>
+                      <button 
+                        onClick={() => onReject(req)}
+                        className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 transition-colors"
+                      >
+                        Rad etish
+                      </button>
+                    </>
+                  ) : (
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${req.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                      {req.status === 'approved' ? 'Ruxsat berilgan' : 'Rad etilgan'}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCancelEditSubject, onCancelEditTopic }: { fanlar: Subject[], setFanlar: (data: Subject[]) => void, editSubjectData?: Subject | null, editTopicData?: { subjectId: string, topic: Topic } | null, onCancelEditSubject?: () => void, onCancelEditTopic?: () => void }) {
   const [newSubject, setNewSubject] = useState({ title: '', description: '', icon: 'BookOpen' });
   const [newTopic, setNewTopic] = useState({ subjectId: '', title: '', description: '' });
@@ -3136,7 +3678,7 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
 
   useEffect(() => {
     if (editTopicData) {
-      setNewTopic({ subjectId: editTopicData.subjectId, title: editTopicData.topic.title, description: editTopicData.topic.description });
+      setNewTopic({ subjectId: editTopicData.subjectId, title: editTopicData.topic.title, description: editTopicData.topic.description || '' });
     } else {
       setNewTopic({ subjectId: '', title: '', description: '' });
     }
@@ -3173,7 +3715,7 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
   const handleAddTopic = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTopic.subjectId || !newTopic.title) return;
-    
+
     if (editTopicData) {
       const updatedFanlar = fanlar.map(sub => {
         if (sub.id === editTopicData.subjectId) {
@@ -3736,13 +4278,16 @@ function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar }: { onAdd
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const submitData = {
+      ...formData
+    };
     if (editData && onEdit) {
-      if (await onEdit(editData.id!, formData)) {
+      if (await onEdit(editData.id!, submitData)) {
         setFormData({ subject: fanlar[0]?.title || '', topic: fanlar[0]?.topics[0]?.title || '', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
         if (onCancelEdit) onCancelEdit();
       }
     } else {
-      if (await onAdd(formData)) setFormData({ subject: fanlar[0]?.title || '', topic: fanlar[0]?.topics[0]?.title || '', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
+      if (await onAdd(submitData)) setFormData({ subject: fanlar[0]?.title || '', topic: fanlar[0]?.topics[0]?.title || '', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
     }
   };
 
@@ -4280,10 +4825,12 @@ function AIPage() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [sources, setSources] = useState<any[]>([]);
 
   const handleAnalysis = async () => {
     if (!file) return;
     setLoading(true);
+    setSources([]);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const reader = new FileReader();
@@ -4315,17 +4862,27 @@ function AIPage() {
     if (!prompt) return;
     setLoading(true);
     setResult(null);
+    setSources([]);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Qidiruv so'rovi: "${prompt}". Iltimos, ushbu mavzuga oid 6 ta yuqori sifatli va aniq rasmlarni toping. Natijani faqat Markdown formatida, rasmlar ro'yxati ko'rinishida qaytaring. Har bir rasm uchun: ![Rasm nomi](rasm_url) formatidan foydalaning. Hech qanday qo'shimcha matn yozmang, faqat rasmlar bo'lsin.`,
+        contents: `Qidiruv so'rovi: "${prompt}". Iltimos, ushbu tibbiy mavzuga oid 6 ta eng yaxshi, yuqori sifatli va aniq rasmlarni toping. Natijani faqat Markdown formatida qaytaring. Har bir rasm uchun faqat quyidagi formatdan foydalaning:
+![Rasm nomi](rasm_url)
+Hech qanday raqamlash, ro'yxat (bullet points) yoki qo'shimcha matn yozmang. Faqat rasmlar ketma-ketligi bo'lsin.`,
         config: {
           tools: [{ googleSearch: {} }]
         }
       });
       
       setResult(response.text || "Rasmlar topilmadi.");
+      
+      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+      if (chunks) {
+        const extractedSources = chunks.map(chunk => chunk.web).filter(Boolean);
+        setSources(extractedSources);
+      }
+      
       setLoading(false);
     } catch (error) {
       console.error(error);
@@ -4338,17 +4895,29 @@ function AIPage() {
     if (!prompt) return;
     setLoading(true);
     setResult(null);
+    setSources([]);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Qidiruv so'rovi: "${prompt}". Iltimos, ushbu tibbiy mavzu yoki atama haqida batafsil, ishonchli va tushunarli ma'lumot bering. Javobni Markdown formatida qaytaring.`,
+        contents: `Qidiruv so'rovi: "${prompt}". Iltimos, ushbu tibbiy mavzu yoki atama haqida batafsil, ishonchli va tushunarli ma'lumot bering. Ma'lumotni quyidagi tuzilmada taqdim eting:
+1. Qisqacha ta'rif
+2. Asosiy belgilari va sabablari (agar kasallik bo'lsa) yoki ishlash prinsipi (agar jarayon/qurilma bo'lsa)
+3. Diagnostika va davolash usullari (yoki ahamiyati)
+Javobni chiroyli Markdown formatida qaytaring.`,
         config: {
           tools: [{ googleSearch: {} }]
         }
       });
       
       setResult(response.text || "Ma'lumot topilmadi.");
+      
+      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+      if (chunks) {
+        const extractedSources = chunks.map(chunk => chunk.web).filter(Boolean);
+        setSources(extractedSources);
+      }
+      
       setLoading(false);
     } catch (error) {
       console.error(error);
@@ -4422,9 +4991,52 @@ function AIPage() {
               </div>
               Natija:
             </h4>
-            <div className="prose prose-neutral max-w-none text-foreground/80 prose-img:rounded-2xl prose-img:shadow-lg prose-img:w-full prose-img:object-cover prose-img:max-h-[400px]">
-              <Markdown>{result}</Markdown>
-            </div>
+            
+            {activeTool === 'image_search' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <Markdown
+                  components={{
+                    img: ({node, ...props}) => (
+                      <div className="relative group overflow-hidden rounded-2xl shadow-sm border border-border/50 bg-secondary/20 aspect-video">
+                        <img {...props} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                          <p className="text-white text-sm font-medium truncate">{props.alt}</p>
+                        </div>
+                      </div>
+                    ),
+                    p: ({node, children}) => <>{children}</>
+                  }}
+                >
+                  {result}
+                </Markdown>
+              </div>
+            ) : (
+              <div className="prose prose-neutral max-w-none text-foreground/80 prose-img:rounded-2xl prose-img:shadow-lg prose-img:w-full prose-img:object-cover prose-img:max-h-[400px]">
+                <Markdown>{result}</Markdown>
+              </div>
+            )}
+
+            {sources.length > 0 && (
+              <div className="mt-8 pt-6 border-t border-border/40">
+                <h5 className="font-medium text-foreground mb-4 flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-primary" />
+                  Foydalanilgan manbalar:
+                </h5>
+                <div className="flex flex-wrap gap-2">
+                  {sources.map((source, idx) => (
+                    <a 
+                      key={idx} 
+                      href={source.uri} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-card border border-border/40 rounded-lg text-xs font-medium text-foreground/70 hover:text-primary hover:border-primary/30 transition-colors"
+                    >
+                      {source.title || new URL(source.uri).hostname}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
       </div>

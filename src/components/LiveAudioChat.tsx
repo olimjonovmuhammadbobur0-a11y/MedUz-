@@ -38,13 +38,19 @@ export function LiveAudioChat({ systemInstruction, initialMessage, onEnd }: Live
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
         
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+        if (audioContextRef.current.state === 'suspended') {
+          await audioContextRef.current.resume();
+        }
         streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
         
         const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
         processorRef.current = audioContextRef.current.createScriptProcessor(4096, 1, 1);
         
         source.connect(processorRef.current);
-        processorRef.current.connect(audioContextRef.current.destination);
+        const silentNode = audioContextRef.current.createGain();
+        silentNode.gain.value = 0;
+        processorRef.current.connect(silentNode);
+        silentNode.connect(audioContextRef.current.destination);
         
         const sessionPromise = ai.live.connect({
           model: "gemini-3.1-flash-live-preview",
@@ -53,10 +59,7 @@ export function LiveAudioChat({ systemInstruction, initialMessage, onEnd }: Live
             speechConfig: {
               voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } },
             },
-            systemInstruction,
-            generationConfig: {
-              responseModalities: ["AUDIO"],
-            },
+            systemInstruction: { parts: [{ text: systemInstruction }] },
             outputAudioTranscription: {},
             inputAudioTranscription: {},
           } as any, // Cast to any to bypass strict type checking for transcription fields if not in types yet
@@ -154,7 +157,8 @@ export function LiveAudioChat({ systemInstruction, initialMessage, onEnd }: Live
                 }
               }
               
-              const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+              const audioPart = message.serverContent?.modelTurn?.parts?.find((p: any) => p.inlineData?.data);
+              const base64Audio = audioPart?.inlineData?.data;
               if (base64Audio && audioContextRef.current) {
                 const binaryString = atob(base64Audio);
                 const len = binaryString.length;
@@ -163,7 +167,7 @@ export function LiveAudioChat({ systemInstruction, initialMessage, onEnd }: Live
                   bytes[i] = binaryString.charCodeAt(i);
                 }
                 
-                const audioBuffer = audioContextRef.current.createBuffer(1, bytes.length / 2, 24000);
+                const audioBuffer = audioContextRef.current.createBuffer(1, Math.floor(bytes.length / 2), 24000);
                 const channelData = audioBuffer.getChannelData(0);
                 const dataView = new DataView(bytes.buffer);
                 for (let i = 0; i < channelData.length; i++) {
@@ -192,9 +196,9 @@ export function LiveAudioChat({ systemInstruction, initialMessage, onEnd }: Live
                 handleEnd();
               }
             },
-            onerror: (err) => {
+            onerror: (err: any) => {
               console.error("Live API Error:", err);
-              if (isMounted) setError("Connection error occurred");
+              if (isMounted) setError(err.message || "Connection error occurred");
             }
           }
         });
@@ -221,7 +225,7 @@ export function LiveAudioChat({ systemInstruction, initialMessage, onEnd }: Live
         streamRef.current.getTracks().forEach(t => t.stop());
       }
       if (audioContextRef.current) {
-        audioContextRef.current.close();
+        audioContextRef.current.close().catch(() => {});
       }
       if (sessionRef.current) {
         sessionRef.current.then((session: any) => {

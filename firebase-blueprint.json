@@ -106,6 +106,21 @@
         "data": { "type": "object" }
       },
       "required": ["data"]
+    },
+    "QuizRequest": {
+      "title": "QuizRequest",
+      "description": "Request to retake a quiz",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userName": { "type": "string" },
+        "topic": { "type": "string" },
+        "subject": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["userId", "userEmail", "userName", "topic", "subject", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -144,6 +159,10 @@
     "/library/{libraryId}": {
       "schema": { "$ref": "Library" },
       "description": "Library data"
+    },
+    "/quizRequests/{requestId}": {
+      "schema": { "$ref": "QuizRequest" },
+      "description": "Quiz retake requests"
     }
   }
 }

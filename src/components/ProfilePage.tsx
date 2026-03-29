@@ -1,24 +1,30 @@
 import React, { useEffect, useState } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Trophy, PlayCircle, Brain, Activity, User, Mail, Star, Award } from 'lucide-react';
+import { Trophy, PlayCircle, Brain, Activity, User, Mail, Star, Award, ChevronRight, Calendar } from 'lucide-react';
 
 export function ProfilePage({ user }: { user: any }) {
   const [progress, setProgress] = useState<any>(null);
+  const [testHistory, setTestHistory] = useState<any[]>([]);
+  const [videoHistory, setVideoHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'stats' | 'tests' | 'videos'>('stats');
 
   useEffect(() => {
     if (user) {
       const userRef = doc(db, 'users', user.uid);
       const unsubscribe = onSnapshot(userRef, (docSnap) => {
         if (docSnap.exists()) {
-          setProgress(docSnap.data().progress || {
+          const data = docSnap.data();
+          setProgress(data.progress_v2 || {
             quizScore: 0,
             videosWatched: 0,
             mnemonicsRead: 0,
             symptomsChecked: 0
           });
+          setTestHistory(data.testHistory_v2 || []);
+          setVideoHistory(data.videoHistory_v2 || []);
         }
         setLoading(false);
       }, (error) => {
@@ -42,6 +48,17 @@ export function ProfilePage({ user }: { user: any }) {
     );
   }
 
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat('uz-UZ', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(date);
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       {/* Profile Header */}
@@ -51,7 +68,7 @@ export function ProfilePage({ user }: { user: any }) {
         className="bg-card rounded-3xl p-8 border border-border shadow-sm flex flex-col md:flex-row items-center gap-6"
       >
         {user.photoURL ? (
-          <img src={user.photoURL} alt={user.displayName} className="w-24 h-24 rounded-full border-4 border-primary/20" referrerPolicy="no-referrer" />
+          <img src={user.photoURL} alt={user.displayName} className="w-24 h-24 rounded-full border-4 border-primary/20 object-cover" referrerPolicy="no-referrer" />
         ) : (
           <div className="w-24 h-24 rounded-full bg-primary/10 text-primary flex items-center justify-center text-3xl font-bold">
             {user.displayName?.charAt(0) || 'U'}
@@ -72,10 +89,32 @@ export function ProfilePage({ user }: { user: any }) {
 
       {/* Progress Stats */}
       <div>
-        <h2 className="text-2xl font-bold text-foreground mb-6 flex items-center gap-2">
-          <Star className="w-6 h-6 text-accent" />
-          Mening Natijalarim
-        </h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <Star className="w-6 h-6 text-accent" />
+            Mening Natijalarim
+          </h2>
+          <div className="flex gap-2 bg-secondary/50 p-1 rounded-xl">
+            <button 
+              onClick={() => setActiveTab('stats')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'stats' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              Umumiy
+            </button>
+            <button 
+              onClick={() => setActiveTab('tests')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'tests' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              Testlar tarixi
+            </button>
+            <button 
+              onClick={() => setActiveTab('videos')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'videos' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              Videolar tarixi
+            </button>
+          </div>
+        </div>
         
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -84,53 +123,150 @@ export function ProfilePage({ user }: { user: any }) {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard 
-              icon={<Trophy className="w-6 h-6 text-yellow-500" />}
-              title="Testlar"
-              value={progress?.quizScore || 0}
-              subtitle="To'g'ri javoblar"
-              color="bg-yellow-500/10"
-            />
-            <StatCard 
-              icon={<PlayCircle className="w-6 h-6 text-blue-500" />}
-              title="Videolar"
-              value={progress?.videosWatched || 0}
-              subtitle="Ko'rilgan videolar"
-              color="bg-blue-500/10"
-            />
-            <StatCard 
-              icon={<Brain className="w-6 h-6 text-purple-500" />}
-              title="Mnemonikalar"
-              value={progress?.mnemonicsRead || 0}
-              subtitle="O'rganilgan"
-              color="bg-purple-500/10"
-            />
-            <StatCard 
-              icon={<Activity className="w-6 h-6 text-green-500" />}
-              title="Simptomlar"
-              value={progress?.symptomsChecked || 0}
-              subtitle="Tekshirilgan"
-              color="bg-green-500/10"
-            />
-          </div>
+          <AnimatePresence mode="wait">
+            {activeTab === 'stats' && (
+              <motion.div 
+                key="stats"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+              >
+                <StatCard 
+                  icon={<Trophy className="w-6 h-6 text-yellow-500" />}
+                  title="Testlar"
+                  value={progress?.quizScore || 0}
+                  subtitle="To'g'ri javoblar"
+                  color="bg-yellow-500/10"
+                  onClick={() => setActiveTab('tests')}
+                />
+                <StatCard 
+                  icon={<PlayCircle className="w-6 h-6 text-blue-500" />}
+                  title="Videolar"
+                  value={progress?.videosWatched || 0}
+                  subtitle="Ko'rilgan videolar"
+                  color="bg-blue-500/10"
+                  onClick={() => setActiveTab('videos')}
+                />
+                <StatCard 
+                  icon={<Brain className="w-6 h-6 text-purple-500" />}
+                  title="Mnemonikalar"
+                  value={progress?.mnemonicsRead || 0}
+                  subtitle="O'rganilgan"
+                  color="bg-purple-500/10"
+                />
+                <StatCard 
+                  icon={<Activity className="w-6 h-6 text-green-500" />}
+                  title="Simptomlar"
+                  value={progress?.symptomsChecked || 0}
+                  subtitle="Tekshirilgan"
+                  color="bg-green-500/10"
+                />
+              </motion.div>
+            )}
+
+            {activeTab === 'tests' && (
+              <motion.div 
+                key="tests"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="bg-card border border-border rounded-2xl overflow-hidden"
+              >
+                {testHistory.length > 0 ? (
+                  <div className="divide-y divide-border/50">
+                    {testHistory.map((test, idx) => (
+                      <div key={idx} className="p-4 sm:p-6 hover:bg-secondary/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-4">
+                          <div className="bg-yellow-500/10 p-3 rounded-xl shrink-0">
+                            <Trophy className="w-6 h-6 text-yellow-600" />
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-foreground text-lg">{test.topic}</h4>
+                            <p className="text-muted-foreground text-sm">{test.subject}</p>
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground mt-2">
+                              <Calendar className="w-3 h-3" />
+                              {formatDate(test.date)}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="bg-secondary px-4 py-2 rounded-xl border border-border/50 text-center shrink-0">
+                          <div className="text-2xl font-bold text-foreground">{test.score} <span className="text-sm text-muted-foreground font-medium">/ {test.total}</span></div>
+                          <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider">To'g'ri javob</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-12 text-center text-muted-foreground">
+                    <Trophy className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                    <p>Hali hech qanday test ishlanmagan.</p>
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {activeTab === 'videos' && (
+              <motion.div 
+                key="videos"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="bg-card border border-border rounded-2xl overflow-hidden"
+              >
+                {videoHistory.length > 0 ? (
+                  <div className="divide-y divide-border/50">
+                    {videoHistory.map((video, idx) => (
+                      <div key={idx} className="p-4 sm:p-6 hover:bg-secondary/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-4">
+                          <div className="bg-blue-500/10 p-3 rounded-xl shrink-0">
+                            <PlayCircle className="w-6 h-6 text-blue-600" />
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-foreground text-lg">{video.title}</h4>
+                            <p className="text-muted-foreground text-sm">{video.category}</p>
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground mt-2">
+                              <Calendar className="w-3 h-3" />
+                              {formatDate(video.date)}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="bg-emerald-500/10 text-emerald-600 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider shrink-0 self-start sm:self-auto">
+                          Ko'rilgan
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-12 text-center text-muted-foreground">
+                    <PlayCircle className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                    <p>Hali hech qanday video ko'rilmagan.</p>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         )}
       </div>
     </div>
   );
 }
 
-function StatCard({ icon, title, value, subtitle, color }: { icon: React.ReactNode, title: string, value: number, subtitle: string, color: string }) {
+function StatCard({ icon, title, value, subtitle, color, onClick }: { icon: React.ReactNode, title: string, value: number, subtitle: string, color: string, onClick?: () => void }) {
   return (
     <motion.div 
       whileHover={{ y: -4 }}
-      className="bg-card rounded-2xl p-6 border border-border shadow-sm flex flex-col"
+      onClick={onClick}
+      className={`bg-card rounded-2xl p-6 border border-border shadow-sm flex flex-col ${onClick ? 'cursor-pointer hover:border-primary/30 hover:shadow-md transition-all' : ''}`}
     >
-      <div className="flex items-center gap-3 mb-4">
-        <div className={`p-3 rounded-xl ${color}`}>
-          {icon}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className={`p-3 rounded-xl ${color}`}>
+            {icon}
+          </div>
+          <h3 className="font-semibold text-foreground">{title}</h3>
         </div>
-        <h3 className="font-semibold text-foreground">{title}</h3>
+        {onClick && <ChevronRight className="w-4 h-4 text-muted-foreground opacity-50" />}
       </div>
       <div className="mt-auto">
         <div className="text-3xl font-bold text-foreground mb-1">{value}</div>

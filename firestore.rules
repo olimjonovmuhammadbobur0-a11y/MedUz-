@@ -39,7 +39,13 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId) && request.resource.data.role == 'user';
-      allow update: if isOwner(userId) && request.resource.data.role == resource.data.role;
+      allow update: if isOwner(userId) && request.resource.data.role == resource.data.role || isAdmin();
+    }
+
+    match /quizRequests/{requestId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
     }
 
     match /mnemonics/{docId} {

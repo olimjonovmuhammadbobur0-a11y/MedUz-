@@ -77,6 +77,7 @@ export interface Topic {
   description?: string;
   videos: VideoLecture[];
   guides: Guide[];
+  timeLimit?: number;
 }
 
 export interface Subject {
