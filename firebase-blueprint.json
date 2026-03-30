@@ -121,6 +121,28 @@
         "createdAt": { "type": "number" }
       },
       "required": ["userId", "userEmail", "userName", "topic", "subject", "status", "createdAt"]
+    },
+    "Fanlar": {
+      "title": "Fanlar",
+      "description": "Subjects and topics data",
+      "type": "object",
+      "properties": {
+        "data": { "type": "array" }
+      },
+      "required": ["data"]
+    },
+    "OSCEScenario": {
+      "title": "OSCEScenario",
+      "description": "OSCE scenario data",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "systemInstruction": { "type": "string" },
+        "initialMessage": { "type": "string" },
+        "patientInfo": { "type": "object" }
+      },
+      "required": ["title", "description", "systemInstruction", "initialMessage"]
     }
   },
   "firestore": {
@@ -163,6 +185,14 @@
     "/quizRequests/{requestId}": {
       "schema": { "$ref": "QuizRequest" },
       "description": "Quiz retake requests"
+    },
+    "/fanlar/{fanlarId}": {
+      "schema": { "$ref": "Fanlar" },
+      "description": "Subjects and topics"
+    },
+    "/osce_scenarios/{scenarioId}": {
+      "schema": { "$ref": "OSCEScenario" },
+      "description": "OSCE scenarios"
     }
   }
 }

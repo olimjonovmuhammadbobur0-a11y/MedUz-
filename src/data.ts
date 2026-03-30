@@ -6,15 +6,24 @@ export interface Mnemonic {
   explanation: string;
 }
 
+export interface CaseQuestionItem {
+  question: string;
+  aiAnswerGuide: string;
+}
+
 export interface Question {
   id?: string;
   subject: string;
   topic: string;
   difficulty: string;
+  type?: 'test' | 'case';
+  scenario?: string;
   question: string;
   options: string[];
   correct: number;
   explanation: string;
+  aiAnswerGuide?: string;
+  caseQuestions?: CaseQuestionItem[];
 }
 
 export interface SymptomData {

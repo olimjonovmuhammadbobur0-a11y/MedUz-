@@ -69,7 +69,7 @@ import { explainMedicalTopic } from './services/aiService';
 import { LiveAudioChat } from './components/LiveAudioChat';
 import { quizData } from './quizData';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { doc, getDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc, writeBatch, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc, writeBatch, query, orderBy, onSnapshot, where } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
 const getYouTubeEmbedUrl = (url: string) => {
@@ -1781,12 +1781,27 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
+  const [caseText, setCaseText] = useState('');
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [caseScores, setCaseScores] = useState<Record<number, { score: number, feedback: string }>>({});
   const [score, setScore] = useState(0);
   const [startTime, setStartTime] = useState(0);
   const [timeTaken, setTimeTaken] = useState(0);
   const [cheatCount, setCheatCount] = useState(0);
   const [userAttempts, setUserAttempts] = useState<Record<string, number>>({});
   const [requestSent, setRequestSent] = useState<Record<string, boolean>>({});
+  const [motivationalMessage, setMotivationalMessage] = useState<string | null>(null);
+  
+  const motivationalMessages = [
+    "Siz juda to'g'ri topdingiz!",
+    "Ajoyib natija!",
+    "Barakalla, davom eting!",
+    "Qoyilmaqom!",
+    "Juda yaxshi, to'g'ri javob!",
+    "Sizning bilimlaringiz tahsinga sazovor!",
+    "Zo'r! Xuddi shunday davom eting!",
+    "Mukammal javob!"
+  ];
   
   const [scoreboard, setScoreboard] = useState<{name: string, surname: string, score: number, time: number, topic: string}[]>([]);
 
@@ -1828,10 +1843,13 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
             timeLimit: t.timeLimit,
             questions: topicQuestions.map(q => ({
               id: q.id,
+              type: q.type || 'test',
+              scenario: q.scenario || '',
               text: q.question,
-              options: q.options,
-              correct: q.correct,
-              explanation: q.explanation
+              options: q.options || [],
+              correct: q.correct || 0,
+              explanation: q.explanation,
+              aiAnswerGuide: q.aiAnswerGuide || ''
             }))
           };
         }).filter(t => t.questions.length > 0)
@@ -1866,6 +1884,9 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
     setStartTime(Date.now());
     setIsAnswered(false);
     setSelectedOption(null);
+    setCaseText('');
+    setIsEvaluating(false);
+    setCaseScores({});
     setUserAnswers(new Array(topic.questions.length).fill(null));
     
     const newShuffledMap: Record<number, number[]> = {};
@@ -1948,6 +1969,66 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
     let isCorrect = idx === selectedTopic.questions[currentQuestionIdx].correct;
     if (isCorrect) {
       setScore(s => s + 1);
+      const randomMessage = motivationalMessages[Math.floor(Math.random() * motivationalMessages.length)];
+      setMotivationalMessage(randomMessage);
+    }
+  };
+
+  const handleCaseSubmit = async () => {
+    if (!caseText.trim()) return;
+    setIsEvaluating(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const currentQ = selectedTopic.questions[currentQuestionIdx];
+      const prompt = `You are an expert medical evaluator. Evaluate the student's answer to the following clinical case.
+      
+Clinical Scenario: ${currentQ.scenario}
+Question: ${currentQ.question}
+Expected AI Answer Guide / Rubric: ${currentQ.aiAnswerGuide}
+
+Student's Answer: ${caseText}
+
+Evaluate the student's answer based on the rubric.
+1. Provide a score from 0 to 100.
+2. Provide a brief feedback explaining what was good and what was missing.
+
+Return ONLY a JSON object in this format:
+{
+  "score": number,
+  "feedback": "string"
+}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: { responseMimeType: "application/json" }
+      });
+      
+      const result = JSON.parse(response.text || '{}');
+      
+      setCaseScores(prev => ({
+        ...prev,
+        [currentQuestionIdx]: {
+          score: result.score || 0,
+          feedback: result.feedback || "Baholashda xatolik yuz berdi."
+        }
+      }));
+      
+      if (result.score >= 70) {
+        const randomMessage = motivationalMessages[Math.floor(Math.random() * motivationalMessages.length)];
+        setMotivationalMessage(randomMessage);
+      }
+      
+      const newUserAnswers = [...userAnswers];
+      newUserAnswers[currentQuestionIdx] = caseText as any;
+      setUserAnswers(newUserAnswers);
+      
+      setIsAnswered(true);
+    } catch (error) {
+      console.error(error);
+      showAlert("Xatolik", "Javobni baholashda xatolik yuz berdi.");
+    } finally {
+      setIsEvaluating(false);
     }
   };
 
@@ -1956,6 +2037,8 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
       setCurrentQuestionIdx(prev => prev + 1);
       setSelectedOption(null);
       setIsAnswered(false);
+      setCaseText('');
+      setMotivationalMessage(null);
     } else {
       finishQuiz(score);
     }
@@ -1965,14 +2048,38 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
     const time = Math.floor((Date.now() - startTime) / 1000);
     setTimeTaken(time);
     
+    const testQuestions = selectedTopic?.questions?.filter((q: any) => q.type === 'test') || [];
+    const caseQuestions = selectedTopic?.questions?.filter((q: any) => q.type === 'case') || [];
+    
+    let finalPercentage = 0;
+    let testPercentage = 0;
+    let casePercentage = 0;
+
+    if (testQuestions.length > 0) {
+      testPercentage = (finalScore / testQuestions.length) * 100;
+    }
+
+    if (caseQuestions.length > 0) {
+      const totalCaseScore = Object.values(caseScores).reduce((acc, curr) => acc + curr.score, 0);
+      casePercentage = totalCaseScore / caseQuestions.length;
+    }
+
+    if (testQuestions.length > 0 && caseQuestions.length > 0) {
+      finalPercentage = Math.round((testPercentage * 0.7) + (casePercentage * 0.3));
+    } else if (testQuestions.length > 0) {
+      finalPercentage = Math.round(testPercentage);
+    } else if (caseQuestions.length > 0) {
+      finalPercentage = Math.round(casePercentage);
+    }
+
     if (user) {
       updateProgress('quizScore', (prev: number) => prev + finalScore);
       if (saveActivity) {
         saveActivity('test', {
           subject: selectedSubject.name,
           topic: selectedTopic.name,
-          score: finalScore,
-          total: selectedTopic.questions.length
+          score: finalPercentage,
+          total: 100
         });
       }
       
@@ -1989,7 +2096,7 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
     const newScore = { 
       name: nameParts[0] || 'Mehmon', 
       surname: nameParts.slice(1).join(' ') || '', 
-      score: finalScore, 
+      score: finalPercentage, 
       time,
       topic: selectedTopic.name
     };
@@ -2013,7 +2120,29 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
   };
 
   const totalQuestions = selectedTopic?.questions?.length || 1;
-  const percentage = Math.round((score / totalQuestions) * 100);
+  const testQuestions = selectedTopic?.questions?.filter((q: any) => q.type === 'test') || [];
+  const caseQuestions = selectedTopic?.questions?.filter((q: any) => q.type === 'case') || [];
+  
+  let percentage = 0;
+  let testPercentage = 0;
+  let casePercentage = 0;
+
+  if (testQuestions.length > 0) {
+    testPercentage = (score / testQuestions.length) * 100;
+  }
+
+  if (caseQuestions.length > 0) {
+    const totalCaseScore = Object.values(caseScores).reduce((acc, curr) => acc + curr.score, 0);
+    casePercentage = totalCaseScore / caseQuestions.length;
+  }
+
+  if (testQuestions.length > 0 && caseQuestions.length > 0) {
+    percentage = Math.round((testPercentage * 0.7) + (casePercentage * 0.3));
+  } else if (testQuestions.length > 0) {
+    percentage = Math.round(testPercentage);
+  } else if (caseQuestions.length > 0) {
+    percentage = Math.round(casePercentage);
+  }
   
   let resultMessage = "";
   let resultColor = "";
@@ -2077,7 +2206,17 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
       doc.setFontSize(24);
       doc.setTextColor(15, 23, 42);
       doc.setFont("helvetica", "bold");
-      doc.text(`Natija: ${score} / ${totalQuestions} (${percentage}%)`, width / 2, 120, { align: "center" });
+      
+      let scoreText = `Umumiy Foiz: ${percentage}%`;
+      if (testQuestions.length > 0 && caseQuestions.length > 0) {
+        scoreText += ` (Test: ${score}/${testQuestions.length}, Masala: ${Math.round(casePercentage)}/100)`;
+      } else if (testQuestions.length > 0) {
+        scoreText = `Natija: ${score} / ${testQuestions.length} (${percentage}%)`;
+      } else if (caseQuestions.length > 0) {
+        scoreText = `Natija: ${Math.round(casePercentage)} / 100 (${percentage}%)`;
+      }
+      
+      doc.text(scoreText, width / 2, 120, { align: "center" });
 
       // Message
       doc.setFontSize(18);
@@ -2334,35 +2473,76 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
         </div>
 
         <div className="bg-card border border-border/40 rounded-2xl p-6 md:p-8 shadow-sm space-y-6">
+          {currentQ.type === 'case' && currentQ.scenario && (
+            <div className="bg-secondary/50 p-4 rounded-xl border border-border/40 mb-6">
+              <h4 className="font-semibold text-primary mb-2">Klinik vaziyat:</h4>
+              <p className="text-foreground/80 leading-relaxed whitespace-pre-wrap">{currentQ.scenario}</p>
+            </div>
+          )}
+          
           <h3 className="text-xl md:text-2xl font-semibold text-foreground leading-snug tracking-tight">{currentQ.text}</h3>
           
-          <div className="grid grid-cols-1 gap-3">
-            {(shuffledOptionsMap[currentQuestionIdx] || currentQ.options.map((_: any, i: number) => i)).map((originalIdx: number) => {
-              const option = currentQ.options[originalIdx];
-              const idx = originalIdx;
-              let stateClass = "border-border/40 hover:border-primary/50 hover:bg-primary/5 text-foreground";
-              if (isAnswered) {
-                if (idx === currentQ.correct) stateClass = "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
-                else if (idx === selectedOption) stateClass = "border-red-500 bg-red-500/10 text-red-600 dark:text-red-400";
-                else stateClass = "border-border/40 opacity-40 text-foreground";
-              } else if (idx === selectedOption) {
-                stateClass = "border-primary bg-primary/10 text-primary";
-              }
+          {currentQ.type === 'test' ? (
+            <div className="grid grid-cols-1 gap-3">
+              {(shuffledOptionsMap[currentQuestionIdx] || currentQ.options.map((_: any, i: number) => i)).map((originalIdx: number) => {
+                const option = currentQ.options[originalIdx];
+                const idx = originalIdx;
+                let stateClass = "border-border/40 hover:border-primary/50 hover:bg-primary/5 text-foreground";
+                if (isAnswered) {
+                  if (idx === currentQ.correct) stateClass = "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+                  else if (idx === selectedOption) stateClass = "border-red-500 bg-red-500/10 text-red-600 dark:text-red-400";
+                  else stateClass = "border-border/40 opacity-40 text-foreground";
+                } else if (idx === selectedOption) {
+                  stateClass = "border-primary bg-primary/10 text-primary";
+                }
 
-              return (
-                <button 
-                  key={originalIdx}
-                  onClick={() => handleAnswer(idx)}
-                  disabled={isAnswered}
-                  className={`w-full text-left p-4 rounded-xl border-2 font-medium transition-all duration-200 flex justify-between items-center group ${stateClass}`}
+                return (
+                  <button 
+                    key={originalIdx}
+                    onClick={() => handleAnswer(idx)}
+                    disabled={isAnswered}
+                    className={`w-full text-left p-4 rounded-xl border-2 font-medium transition-all duration-200 flex justify-between items-center group ${stateClass}`}
+                  >
+                    <span className="text-base">{option}</span>
+                    {isAnswered && idx === currentQ.correct && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                    {isAnswered && idx === selectedOption && idx !== currentQ.correct && <X className="w-5 h-5 text-red-500" />}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <textarea
+                value={caseText}
+                onChange={(e) => setCaseText(e.target.value)}
+                disabled={isAnswered || isEvaluating}
+                placeholder="Javobingizni shu yerga yozing..."
+                className="w-full h-40 p-4 rounded-xl border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary resize-none"
+              />
+              {!isAnswered && (
+                <button
+                  onClick={handleCaseSubmit}
+                  disabled={!caseText.trim() || isEvaluating}
+                  className="w-full bg-primary text-primary-foreground py-3 rounded-xl font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
                 >
-                  <span className="text-base">{option}</span>
-                  {isAnswered && idx === currentQ.correct && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
-                  {isAnswered && idx === selectedOption && idx !== currentQ.correct && <X className="w-5 h-5 text-red-500" />}
+                  {isEvaluating ? (
+                    <><Loader2 className="w-5 h-5 animate-spin" /> Baholanmoqda...</>
+                  ) : (
+                    <>Javobni yuborish</>
+                  )}
                 </button>
-              );
-            })}
-          </div>
+              )}
+              {isAnswered && caseScores[currentQuestionIdx] && (
+                <div className="bg-primary/5 p-4 rounded-xl border border-primary/10 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-semibold text-primary">AI Bahosi:</h4>
+                    <span className="text-lg font-bold text-primary">{caseScores[currentQuestionIdx].score} / 100</span>
+                  </div>
+                  <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">{caseScores[currentQuestionIdx].feedback}</p>
+                </div>
+              )}
+            </div>
+          )}
 
           {isAnswered && (
             <motion.div 
@@ -2370,6 +2550,16 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
               animate={{ opacity: 1, y: 0 }}
               className="space-y-4 pt-4 border-t border-border/40"
             >
+              {motivationalMessage && (
+                <motion.div 
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="bg-green-500/10 text-green-600 p-4 rounded-xl border border-green-500/20 flex items-center gap-3"
+                >
+                  <Sparkles className="w-5 h-5" />
+                  <p className="font-medium">{motivationalMessage}</p>
+                </motion.div>
+              )}
               {currentQ.explanation && (
                 <div className="bg-primary/5 p-4 rounded-xl border border-primary/10">
                   <div className="flex items-center gap-2 mb-2 text-primary">
@@ -2413,12 +2603,20 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
           </motion.div>
           
           <div className="grid grid-cols-2 gap-6 relative z-10">
-            <div className="bg-secondary/50 p-6 rounded-2xl border border-border/40">
-              <p className="text-foreground/50 text-sm font-medium mb-2 uppercase tracking-wider">{t('quizScore')}</p>
-              <p className="text-5xl font-semibold text-foreground">{score} <span className="text-2xl text-foreground/40">/ {totalQuestions}</span></p>
-            </div>
-            <div className="bg-secondary/50 p-6 rounded-2xl border border-border/40">
-              <p className="text-foreground/50 text-sm font-medium mb-2 uppercase tracking-wider">Foiz</p>
+            {testQuestions.length > 0 && (
+              <div className="bg-secondary/50 p-6 rounded-2xl border border-border/40">
+                <p className="text-foreground/50 text-sm font-medium mb-2 uppercase tracking-wider">{t('quizScore')}</p>
+                <p className="text-5xl font-semibold text-foreground">{score} <span className="text-2xl text-foreground/40">/ {testQuestions.length}</span></p>
+              </div>
+            )}
+            {caseQuestions.length > 0 && (
+              <div className="bg-secondary/50 p-6 rounded-2xl border border-border/40">
+                <p className="text-foreground/50 text-sm font-medium mb-2 uppercase tracking-wider">Vaziyatli Masala</p>
+                <p className="text-5xl font-semibold text-foreground">{Math.round(casePercentage)} <span className="text-2xl text-foreground/40">/ 100</span></p>
+              </div>
+            )}
+            <div className={`bg-secondary/50 p-6 rounded-2xl border border-border/40 ${testQuestions.length > 0 && caseQuestions.length > 0 ? 'col-span-2' : ''}`}>
+              <p className="text-foreground/50 text-sm font-medium mb-2 uppercase tracking-wider">Umumiy Foiz</p>
               <p className="text-5xl font-semibold text-foreground">{percentage}%</p>
             </div>
           </div>
@@ -2461,6 +2659,41 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
         <div className="space-y-6">
           {selectedTopic.questions.map((q: any, qIdx: number) => {
             const userAnswer = userAnswers[qIdx];
+            
+            if (q.type === 'case') {
+              const caseScore = caseScores[qIdx];
+              return (
+                <div key={qIdx} className="bg-card border border-border/40 rounded-2xl p-6 md:p-8 shadow-sm space-y-6">
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold shrink-0 bg-primary/10 text-primary">
+                      {qIdx + 1}
+                    </div>
+                    <div className="space-y-4 flex-1">
+                      <h3 className="text-lg md:text-xl font-medium text-foreground leading-snug">{q.scenario}</h3>
+                      <p className="text-foreground/80 font-medium">{q.question}</p>
+                    </div>
+                  </div>
+
+                  <div className="pl-14 space-y-4">
+                    <div className="bg-secondary/30 p-4 rounded-xl border border-border/40">
+                      <p className="text-sm font-medium text-foreground/50 mb-2 uppercase tracking-wider">Sizning javobingiz</p>
+                      <p className="text-foreground whitespace-pre-wrap">{typeof userAnswer === 'string' ? userAnswer : 'Javob berilmagan'}</p>
+                    </div>
+                    
+                    {caseScore && (
+                      <div className="bg-primary/5 p-4 rounded-xl border border-primary/20">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-sm font-medium text-primary uppercase tracking-wider">AI Bahosi</p>
+                          <span className="font-bold text-primary">{caseScore.score} / 100</span>
+                        </div>
+                        <p className="text-foreground/80 text-sm whitespace-pre-wrap">{caseScore.feedback}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+
             const isCorrect = userAnswer === q.correct;
 
             return (
@@ -2469,11 +2702,11 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold shrink-0 ${isCorrect ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600'}`}>
                     {qIdx + 1}
                   </div>
-                  <h3 className="text-lg md:text-xl font-medium text-foreground leading-snug">{q.text}</h3>
+                  <h3 className="text-lg md:text-xl font-medium text-foreground leading-snug">{q.text || q.question}</h3>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 pl-14">
-                  {(shuffledOptionsMap[qIdx] || q.options.map((_: any, i: number) => i)).map((originalIdx: number) => {
+                  {(shuffledOptionsMap[qIdx] || q.options?.map((_: any, i: number) => i) || []).map((originalIdx: number) => {
                     const option = q.options[originalIdx];
                     const oIdx = originalIdx;
                     let optionClass = "border-border/40 text-foreground/60";
@@ -2489,7 +2722,7 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
                     );
                   })}
                 </div>
-
+                
                 {q.explanation && (
                   <div className="bg-primary/5 p-4 rounded-xl border border-primary/10 ml-14">
                     <div className="flex items-center gap-2 mb-2 text-primary">
@@ -2941,6 +3174,234 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
     }
   };
 
+  const editQuestionSubject = async (oldSubject: string) => {
+    const newSubject = prompt('Yangi fan nomini kiriting:', oldSubject);
+    if (!newSubject || newSubject === oldSubject) return;
+
+    showConfirm('Tahrirlash', `Barcha "${oldSubject}" faniga tegishli testlar "${newSubject}" faniga o'zgartiriladi. Davom etasizmi?`, async () => {
+      try {
+        setLoading(true);
+        const q = query(collection(db, 'questions'), where('subject', '==', oldSubject));
+        const snapshot = await getDocs(q);
+        
+        const batch = writeBatch(db);
+        snapshot.docs.forEach(doc => {
+          batch.update(doc.ref, { subject: newSubject });
+        });
+        
+        await batch.commit();
+
+        // Update fanlar
+        const updatedFanlar = fanlar.map(f => f.title === oldSubject ? { ...f, title: newSubject } : f);
+        await setFanlar(updatedFanlar);
+
+        onUpdate();
+        showAlert('Muvaffaqiyatli', 'Fan nomi o\'zgartirildi.');
+      } catch (error) {
+        console.error('Error updating question subject:', error);
+        showAlert('Xatolik', 'Fanni tahrirlashda xatolik yuz berdi.');
+      } finally {
+        setLoading(false);
+      }
+    });
+  };
+
+  const deleteQuestionSubject = async (subject: string) => {
+    showConfirm('O\'chirish', `Haqiqatan ham "${subject}" fanini va unga tegishli barcha testlarni o'chirmoqchimisiz?`, async () => {
+      try {
+        setLoading(true);
+        const q = query(collection(db, 'questions'), where('subject', '==', subject));
+        const snapshot = await getDocs(q);
+        
+        const batch = writeBatch(db);
+        snapshot.docs.forEach(doc => {
+          batch.delete(doc.ref);
+        });
+        
+        await batch.commit();
+
+        // Update fanlar
+        const updatedFanlar = fanlar.filter(f => f.title !== subject);
+        await setFanlar(updatedFanlar);
+
+        onUpdate();
+        showAlert('Muvaffaqiyatli', 'Fan va uning testlari o\'chirildi.');
+      } catch (error) {
+        console.error('Error deleting question subject:', error);
+        showAlert('Xatolik', 'Fanni o\'chirishda xatolik yuz berdi.');
+      } finally {
+        setLoading(false);
+      }
+    });
+  };
+
+  const editQuestionTopic = async (subject: string, oldTopic: string) => {
+    const newTopic = prompt('Yangi mavzu nomini kiriting:', oldTopic);
+    if (!newTopic || newTopic === oldTopic) return;
+
+    showConfirm('Tahrirlash', `Barcha "${oldTopic}" mavzusiga tegishli testlar "${newTopic}" mavzusiga o'zgartiriladi. Davom etasizmi?`, async () => {
+      try {
+        setLoading(true);
+        const q = query(collection(db, 'questions'), where('subject', '==', subject), where('topic', '==', oldTopic));
+        const snapshot = await getDocs(q);
+        
+        const batch = writeBatch(db);
+        snapshot.docs.forEach(doc => {
+          batch.update(doc.ref, { topic: newTopic });
+        });
+        
+        await batch.commit();
+
+        // Update fanlar
+        const updatedFanlar = fanlar.map(f => {
+          if (f.title === subject) {
+            return {
+              ...f,
+              topics: f.topics.map(t => t.title === oldTopic ? { ...t, title: newTopic } : t)
+            };
+          }
+          return f;
+        });
+        await setFanlar(updatedFanlar);
+
+        onUpdate();
+        showAlert('Muvaffaqiyatli', 'Mavzu nomi o\'zgartirildi.');
+      } catch (error) {
+        console.error('Error updating question topic:', error);
+        showAlert('Xatolik', 'Mavzuni tahrirlashda xatolik yuz berdi.');
+      } finally {
+        setLoading(false);
+      }
+    });
+  };
+
+  const deleteQuestionTopic = async (subject: string, topic: string) => {
+    showConfirm('O\'chirish', `Haqiqatan ham "${topic}" mavzusini va unga tegishli barcha testlarni o'chirmoqchimisiz?`, async () => {
+      try {
+        setLoading(true);
+        const q = query(collection(db, 'questions'), where('subject', '==', subject), where('topic', '==', topic));
+        const snapshot = await getDocs(q);
+        
+        const batch = writeBatch(db);
+        snapshot.docs.forEach(doc => {
+          batch.delete(doc.ref);
+        });
+        
+        await batch.commit();
+
+        // Update fanlar
+        const updatedFanlar = fanlar.map(f => {
+          if (f.title === subject) {
+            return {
+              ...f,
+              topics: f.topics.filter(t => t.title !== topic)
+            };
+          }
+          return f;
+        });
+        await setFanlar(updatedFanlar);
+
+        onUpdate();
+        showAlert('Muvaffaqiyatli', 'Mavzu va uning testlari o\'chirildi.');
+      } catch (error) {
+        console.error('Error deleting question topic:', error);
+        showAlert('Xatolik', 'Mavzuni o\'chirishda xatolik yuz berdi.');
+      } finally {
+        setLoading(false);
+      }
+    });
+  };
+
+  const handleEditQuestion = async (id: string, data: any) => {
+    try {
+      let updatedFanlar = [...fanlar];
+      let subjectExists = updatedFanlar.find(f => f.title === data.subject);
+      let fanlarChanged = false;
+
+      if (!subjectExists) {
+        subjectExists = {
+          id: Date.now().toString(),
+          title: data.subject,
+          description: '',
+          icon: 'BookOpen',
+          topics: []
+        };
+        updatedFanlar.push(subjectExists);
+        fanlarChanged = true;
+      }
+
+      let topicExists = subjectExists.topics.find(t => t.title === data.topic);
+      if (!topicExists) {
+        subjectExists.topics.push({
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          title: data.topic,
+          description: '',
+          questions: [],
+          videos: [],
+          guides: []
+        });
+        fanlarChanged = true;
+      }
+
+      if (fanlarChanged) {
+        await setFanlar(updatedFanlar);
+      }
+
+      await updateDoc(doc(db, 'questions', id), data);
+      onUpdate();
+      return true;
+    } catch (error) {
+      console.error('Error updating question:', error);
+      showAlert('Xatolik', 'Savolni tahrirlashda xatolik yuz berdi.');
+      return false;
+    }
+  };
+
+  const handleAddQuestion = async (data: any) => {
+    try {
+      let updatedFanlar = [...fanlar];
+      let subjectExists = updatedFanlar.find(f => f.title === data.subject);
+      let fanlarChanged = false;
+
+      if (!subjectExists) {
+        subjectExists = {
+          id: Date.now().toString(),
+          title: data.subject,
+          description: '',
+          icon: 'BookOpen',
+          topics: []
+        };
+        updatedFanlar.push(subjectExists);
+        fanlarChanged = true;
+      }
+
+      let topicExists = subjectExists.topics.find(t => t.title === data.topic);
+      if (!topicExists) {
+        subjectExists.topics.push({
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          title: data.topic,
+          description: '',
+          questions: [],
+          videos: [],
+          guides: []
+        });
+        fanlarChanged = true;
+      }
+
+      if (fanlarChanged) {
+        await setFanlar(updatedFanlar);
+      }
+
+      await addDoc(collection(db, 'questions'), data);
+      onUpdate();
+      return true;
+    } catch (error) {
+      console.error('Error adding question:', error);
+      showAlert('Xatolik', 'Savolni qo\'shishda xatolik yuz berdi.');
+      return false;
+    }
+  };
+
   const addItem = async (type: string, data: any) => {
     try {
       await addDoc(collection(db, type), data);
@@ -3246,67 +3707,117 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                         </td>
                       </tr>
                     ))}
-                    {activeTab === 'questions' && (
-                      Object.entries(
-                        questions.reduce((acc, q) => {
-                          if (!acc[q.subject]) acc[q.subject] = {};
-                          if (!acc[q.subject][q.topic]) acc[q.subject][q.topic] = [];
-                          acc[q.subject][q.topic].push(q);
-                          return acc;
-                        }, {} as Record<string, Record<string, Question[]>>)
-                      ).map(([subject, topics]) => (
-                        <React.Fragment key={subject}>
-                          <tr className="hover:bg-secondary/50 transition-colors group bg-secondary/10 cursor-pointer" onClick={() => toggleSubject(subject)}>
-                            <td colSpan={2} className="px-6 py-4">
-                              <div className="font-bold text-foreground group-hover:text-primary transition-colors flex items-center gap-2">
-                                <ChevronRight className={`w-4 h-4 transition-transform ${expandedSubjects[subject] ? 'rotate-90' : ''}`} />
-                                <BookOpen className="w-4 h-4" /> {subject}
-                              </div>
-                            </td>
-                          </tr>
-                          {expandedSubjects[subject] && Object.entries(topics).map(([topic, qs]) => (
-                            <React.Fragment key={topic}>
-                              <tr className="hover:bg-secondary/50 transition-colors group cursor-pointer" onClick={() => toggleTopic(topic)}>
-                                <td colSpan={2} className="px-6 py-3 pl-12 border-l-2 border-primary/20">
-                                  <div className="font-medium text-foreground/90 group-hover:text-primary transition-colors flex items-center gap-2">
-                                    <ChevronRight className={`w-3 h-3 transition-transform ${expandedTopics[topic] ? 'rotate-90' : ''}`} />
-                                    {topic}
-                                    {fanlar.find(s => s.title === subject)?.topics.find(t => t.title === topic)?.timeLimit && (
-                                      <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full ml-2">
-                                        {fanlar.find(s => s.title === subject)?.topics.find(t => t.title === topic)?.timeLimit} min
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                              {expandedTopics[topic] && (
-                                <>
-                                  <tr>
-                                    <td colSpan={2} className="p-0">
-                                      <TopicTimeLimitEditor fanlar={fanlar} setFanlar={setFanlar} subjectTitle={subject} topicTitle={topic} showAlert={showAlert} />
+                    {activeTab === 'questions' && (() => {
+                      const renderedQuestionIds = new Set<string>();
+                      return (
+                        <>
+                          {fanlar.map(subject => {
+                            const subjectQuestions = questions.filter(q => q.subject === subject.title);
+                            return (
+                              <React.Fragment key={subject.id}>
+                                <tr className="hover:bg-secondary/50 transition-colors group bg-secondary/10 cursor-pointer" onClick={() => toggleSubject(subject.title)}>
+                                  <td className="px-6 py-4">
+                                    <div className="font-bold text-foreground group-hover:text-primary transition-colors flex items-center gap-2">
+                                      <ChevronRight className={`w-4 h-4 transition-transform ${expandedSubjects[subject.title] ? 'rotate-90' : ''}`} />
+                                      <BookOpen className="w-4 h-4" /> {subject.title}
+                                      <span className="text-xs font-normal text-foreground/50 ml-2">({subjectQuestions.length} ta savol)</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 text-right flex justify-end gap-1" onClick={e => e.stopPropagation()}>
+                                    <button onClick={() => editQuestionSubject(subject.title)} className="p-2.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-4.5 h-4.5" /></button>
+                                    <button onClick={() => deleteQuestionSubject(subject.title)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                                  </td>
+                                </tr>
+                                {expandedSubjects[subject.title] && subject.topics.map(topic => {
+                                  const topicQuestions = subjectQuestions.filter(q => q.topic === topic.title);
+                                  topicQuestions.forEach(q => renderedQuestionIds.add(q.id!));
+                                  return (
+                                    <React.Fragment key={topic.id}>
+                                      <tr className="hover:bg-secondary/50 transition-colors group cursor-pointer" onClick={() => toggleTopic(topic.title)}>
+                                        <td className="px-6 py-3 pl-12 border-l-2 border-primary/20">
+                                          <div className="font-medium text-foreground/90 group-hover:text-primary transition-colors flex items-center gap-2">
+                                            <ChevronRight className={`w-3 h-3 transition-transform ${expandedTopics[topic.title] ? 'rotate-90' : ''}`} />
+                                            {topic.title}
+                                            {topic.timeLimit && (
+                                              <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full ml-2">
+                                                {topic.timeLimit} min
+                                              </span>
+                                            )}
+                                            <span className="text-xs font-normal text-foreground/50 ml-2">({topicQuestions.length} ta savol)</span>
+                                          </div>
+                                        </td>
+                                        <td className="px-6 py-3 text-right flex justify-end gap-1" onClick={e => e.stopPropagation()}>
+                                          <button onClick={() => editQuestionTopic(subject.title, topic.title)} className="p-2 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-4 h-4" /></button>
+                                          <button onClick={() => deleteQuestionTopic(subject.title, topic.title)} className="p-2 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4 h-4" /></button>
+                                        </td>
+                                      </tr>
+                                      {expandedTopics[topic.title] && (
+                                        <>
+                                          <tr>
+                                            <td colSpan={2} className="p-0">
+                                              <TopicTimeLimitEditor fanlar={fanlar} setFanlar={setFanlar} subjectTitle={subject.title} topicTitle={topic.title} showAlert={showAlert} />
+                                            </td>
+                                          </tr>
+                                          {topicQuestions.map(q => (
+                                            <tr key={q.id} className="hover:bg-secondary/50 transition-colors group">
+                                              <td className="px-6 py-2 pl-20 border-l-2 border-primary/20">
+                                                <div className="text-sm text-foreground/80 group-hover:text-primary transition-colors flex items-center gap-2">
+                                                  {q.type === 'case' ? <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[10px] uppercase">Vaziyatli</span> : <CheckCircle2 className="w-3 h-3" />}
+                                                  {q.question}
+                                                </div>
+                                                <div className="text-[10px] text-foreground/50 mt-1 ml-5">{q.difficulty}</div>
+                                              </td>
+                                              <td className="px-6 py-2 text-right flex justify-end gap-1">
+                                                <button onClick={(e) => { e.stopPropagation(); setEditingQuestion(q); }} className="p-1.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-3.5 h-3.5" /></button>
+                                                <button onClick={(e) => { e.stopPropagation(); deleteItem('questions', q.id!); }} className="p-1.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </>
+                                      )}
+                                    </React.Fragment>
+                                  );
+                                })}
+                              </React.Fragment>
+                            );
+                          })}
+                          {(() => {
+                            const orphanedQuestions = questions.filter(q => !renderedQuestionIds.has(q.id!));
+                            if (orphanedQuestions.length === 0) return null;
+                            return (
+                              <React.Fragment>
+                                <tr className="hover:bg-secondary/50 transition-colors group bg-red-50/50 cursor-pointer" onClick={() => toggleSubject('orphaned')}>
+                                  <td className="px-6 py-4">
+                                    <div className="font-bold text-red-600 flex items-center gap-2">
+                                      <ChevronRight className={`w-4 h-4 transition-transform ${expandedSubjects['orphaned'] ? 'rotate-90' : ''}`} />
+                                      <BookOpen className="w-4 h-4" /> Boshqa savollar (Fanga biriktirilmagan)
+                                      <span className="text-xs font-normal ml-2">({orphanedQuestions.length} ta savol)</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 text-right"></td>
+                                </tr>
+                                {expandedSubjects['orphaned'] && orphanedQuestions.map(q => (
+                                  <tr key={q.id} className="hover:bg-secondary/50 transition-colors group">
+                                    <td className="px-6 py-2 pl-12 border-l-2 border-red-500/20">
+                                      <div className="text-sm text-foreground/80 group-hover:text-primary transition-colors flex items-center gap-2">
+                                        <span className="bg-red-100 text-red-600 px-1.5 py-0.5 rounded text-[10px] uppercase">{q.subject} - {q.topic}</span>
+                                        {q.type === 'case' ? <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[10px] uppercase">Vaziyatli</span> : <CheckCircle2 className="w-3 h-3" />}
+                                        {q.question}
+                                      </div>
+                                      <div className="text-[10px] text-foreground/50 mt-1 ml-5">{q.difficulty}</div>
+                                    </td>
+                                    <td className="px-6 py-2 text-right flex justify-end gap-1">
+                                      <button onClick={(e) => { e.stopPropagation(); setEditingQuestion(q); }} className="p-1.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-3.5 h-3.5" /></button>
+                                      <button onClick={(e) => { e.stopPropagation(); deleteItem('questions', q.id!); }} className="p-1.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
                                     </td>
                                   </tr>
-                                  {qs.map(q => (
-                                    <tr key={q.id} className="hover:bg-secondary/50 transition-colors group">
-                                      <td className="px-6 py-2 pl-20 border-l-2 border-primary/20">
-                                        <div className="text-sm text-foreground/80 group-hover:text-primary transition-colors flex items-center gap-2">
-                                          <CheckCircle2 className="w-3 h-3" /> {q.question}
-                                        </div>
-                                        <div className="text-[10px] text-foreground/50 mt-1 ml-5">{q.difficulty}</div>
-                                      </td>
-                                      <td className="px-6 py-2 text-right flex justify-end gap-1">
-                                        <button onClick={(e) => { e.stopPropagation(); setEditingQuestion(q); }} className="p-1.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-3.5 h-3.5" /></button>
-                                        <button onClick={(e) => { e.stopPropagation(); deleteItem('questions', q.id!); }} className="p-1.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </>
-                              )}
-                            </React.Fragment>
-                          ))}
-                        </React.Fragment>
-                      ))
-                    )}
+                                ))}
+                              </React.Fragment>
+                            );
+                          })()}
+                        </>
+                      );
+                    })()}
                     {activeTab === 'symptoms' && symptoms.map(s => (
                       <tr key={s.id} className="hover:bg-secondary/50 transition-colors group">
                         <td className="px-6 py-4">
@@ -3516,7 +4027,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
               
               <div className="space-y-6">
                 {activeTab === 'mnemonics' && <MnemonicForm onAdd={(data) => addItem('mnemonics', data)} />}
-                {activeTab === 'questions' && <QuestionForm onAdd={(data) => addItem('questions', data)} onEdit={(id, data) => updateItem('questions', id, data)} onCancelEdit={() => setEditingQuestion(null)} editData={editingQuestion} fanlar={fanlar} />}
+                {activeTab === 'questions' && <QuestionForm onAdd={handleAddQuestion} onEdit={handleEditQuestion} onCancelEdit={() => setEditingQuestion(null)} editData={editingQuestion} fanlar={fanlar} />}
                 {activeTab === 'symptoms' && <SymptomForm onAdd={(data) => addItem('symptoms', data)} />}
                 {activeTab === 'videos' && <VideoForm onAdd={(data) => addItem('videos', data)} />}
                 {activeTab === 'patients' && <PatientForm onAdd={(data) => addItem('patients', data)} />}
@@ -4258,7 +4769,19 @@ function MnemonicForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
 }
 
 function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar }: { onAdd: (data: any) => Promise<boolean>, onEdit?: (id: string, data: any) => Promise<boolean>, onCancelEdit?: () => void, editData?: Question | null, fanlar: Subject[] }) {
-  const [formData, setFormData] = useState({ subject: fanlar[0]?.title || '', topic: fanlar[0]?.topics[0]?.title || '', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
+  const [formData, setFormData] = useState({ 
+    subject: fanlar[0]?.title || '', 
+    topic: fanlar[0]?.topics[0]?.title || '', 
+    difficulty: 'medium', 
+    type: 'test' as 'test' | 'case',
+    scenario: '',
+    question: '', 
+    options: ['', '', '', ''], 
+    correct: 0, 
+    explanation: '',
+    aiAnswerGuide: '',
+    caseQuestions: [{ question: '', aiAnswerGuide: '' }]
+  });
   
   useEffect(() => {
     if (editData) {
@@ -4266,67 +4789,205 @@ function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar }: { onAdd
         subject: editData.subject,
         topic: editData.topic,
         difficulty: editData.difficulty,
+        type: editData.type || 'test',
+        scenario: editData.scenario || '',
         question: editData.question,
-        options: editData.options,
-        correct: editData.correct,
-        explanation: editData.explanation
+        options: editData.options || ['', '', '', ''],
+        correct: editData.correct || 0,
+        explanation: editData.explanation || '',
+        aiAnswerGuide: editData.aiAnswerGuide || '',
+        caseQuestions: [{ question: editData.question || '', aiAnswerGuide: editData.aiAnswerGuide || '' }]
       });
     } else {
-      setFormData({ subject: fanlar[0]?.title || '', topic: fanlar[0]?.topics[0]?.title || '', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
+      setFormData(prev => {
+        const newSubject = prev.subject || fanlar[0]?.title || '';
+        const currentSubjectObj = fanlar.find(f => f.title === newSubject);
+        const newTopic = prev.topic || currentSubjectObj?.topics[0]?.title || '';
+
+        if (prev.subject === newSubject && prev.topic === newTopic) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          subject: newSubject,
+          topic: newTopic
+        };
+      });
     }
   }, [editData, fanlar]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const submitData = {
-      ...formData
-    };
+    
     if (editData && onEdit) {
+      const submitData = { ...formData };
+      if (formData.type === 'case') {
+        submitData.question = formData.caseQuestions[0].question;
+        submitData.aiAnswerGuide = formData.caseQuestions[0].aiAnswerGuide;
+      }
       if (await onEdit(editData.id!, submitData)) {
-        setFormData({ subject: fanlar[0]?.title || '', topic: fanlar[0]?.topics[0]?.title || '', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
+        setFormData(prev => ({ ...prev, question: '', options: ['', '', '', ''], correct: 0, explanation: '', scenario: '', aiAnswerGuide: '', caseQuestions: [{ question: '', aiAnswerGuide: '' }] }));
         if (onCancelEdit) onCancelEdit();
       }
     } else {
-      if (await onAdd(submitData)) setFormData({ subject: fanlar[0]?.title || '', topic: fanlar[0]?.topics[0]?.title || '', difficulty: 'medium', question: '', options: ['', '', '', ''], correct: 0, explanation: '' });
+      let success = true;
+      if (formData.type === 'case') {
+        for (const cq of formData.caseQuestions) {
+          if (!cq.question.trim()) continue;
+          const submitData = {
+            ...formData,
+            question: cq.question,
+            aiAnswerGuide: cq.aiAnswerGuide
+          };
+          const res = await onAdd(submitData);
+          if (!res) success = false;
+        }
+      } else {
+        const submitData = { ...formData };
+        success = await onAdd(submitData);
+      }
+      
+      if (success) {
+        setFormData(prev => ({ ...prev, question: '', options: ['', '', '', ''], correct: 0, explanation: '', scenario: '', aiAnswerGuide: '', caseQuestions: [{ question: '', aiAnswerGuide: '' }] }));
+      }
     }
   };
 
   const selectedSubject = fanlar.find(s => s.title === formData.subject) || fanlar[0];
 
+  const handleAddCaseQuestion = () => {
+    setFormData(prev => ({
+      ...prev,
+      caseQuestions: [...prev.caseQuestions, { question: '', aiAnswerGuide: '' }]
+    }));
+  };
+
+  const handleRemoveCaseQuestion = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      caseQuestions: prev.caseQuestions.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleCaseQuestionChange = (index: number, field: 'question' | 'aiAnswerGuide', value: string) => {
+    setFormData(prev => {
+      const newCaseQuestions = [...prev.caseQuestions];
+      newCaseQuestions[index][field] = value;
+      return { ...prev, caseQuestions: newCaseQuestions };
+    });
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.subject} onChange={e => {
-          const newSubject = fanlar.find(s => s.title === e.target.value);
-          setFormData({...formData, subject: e.target.value, topic: newSubject?.topics[0]?.title || ''});
-        }}>
-          {fanlar.map(s => (
-            <option key={s.id} value={s.title}>{s.title}</option>
-          ))}
+        <div>
+          <select
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={fanlar.some(s => s.title === formData.subject) ? formData.subject : (formData.subject ? 'custom' : '')}
+            onChange={e => {
+              if (e.target.value === 'new') {
+                const newSub = prompt('Yangi fan nomini kiriting:');
+                if (newSub) setFormData({...formData, subject: newSub, topic: ''});
+              } else if (e.target.value === 'custom') {
+                // Do nothing
+              } else {
+                const newSubject = fanlar.find(s => s.title === e.target.value);
+                setFormData({...formData, subject: e.target.value, topic: newSubject?.topics[0]?.title || ''});
+              }
+            }}
+          >
+            <option value="" disabled>Fanni tanlang</option>
+            {fanlar.map(s => (
+              <option key={s.id} value={s.title}>{s.title}</option>
+            ))}
+            {!fanlar.some(s => s.title === formData.subject) && formData.subject && (
+              <option value="custom">{formData.subject}</option>
+            )}
+            <option value="new" className="text-primary font-medium">+ Yangi fan qo'shish</option>
+          </select>
+        </div>
+        <div>
+          <select
+            className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+            value={selectedSubject?.topics.some(t => t.title === formData.topic) ? formData.topic : (formData.topic ? 'custom' : '')}
+            onChange={e => {
+              if (e.target.value === 'new') {
+                const newTop = prompt('Yangi mavzu nomini kiriting:');
+                if (newTop) setFormData({...formData, topic: newTop});
+              } else if (e.target.value === 'custom') {
+                // Do nothing
+              } else {
+                setFormData({...formData, topic: e.target.value});
+              }
+            }}
+          >
+            <option value="" disabled>Mavzuni tanlang</option>
+            {selectedSubject?.topics.map(t => (
+              <option key={t.id} value={t.title}>{t.title}</option>
+            ))}
+            {!selectedSubject?.topics.some(t => t.title === formData.topic) && formData.topic && (
+              <option value="custom">{formData.topic}</option>
+            )}
+            <option value="new" className="text-primary font-medium">+ Yangi mavzu qo'shish</option>
+          </select>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as 'test' | 'case'})}>
+          <option value="test">Oddiy test</option>
+          <option value="case">Vaziyatli masala</option>
         </select>
-        <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.topic} onChange={e => setFormData({...formData, topic: e.target.value})}>
-          {selectedSubject?.topics.map(t => (
-            <option key={t.id} value={t.title}>{t.title}</option>
-          ))}
+        <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.difficulty} onChange={e => setFormData({...formData, difficulty: e.target.value})}>
+          <option value="easy">Oson</option>
+          <option value="medium">O'rta</option>
+          <option value="hard">Qiyin</option>
         </select>
       </div>
-      <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.difficulty} onChange={e => setFormData({...formData, difficulty: e.target.value})}>
-        <option value="easy">Oson</option>
-        <option value="medium">O'rta</option>
-        <option value="hard">Qiyin</option>
-      </select>
-      <textarea placeholder="Savol" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.question} onChange={e => setFormData({...formData, question: e.target.value})} required />
-      {formData.options.map((opt, i) => (
-        <input key={i} placeholder={`Variant ${i+1}`} className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={opt} onChange={e => {
-          const newOpts = [...formData.options];
-          newOpts[i] = e.target.value;
-          setFormData({...formData, options: newOpts});
-        }} required />
-      ))}
-      <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.correct} onChange={e => setFormData({...formData, correct: parseInt(e.target.value)})}>
-        {formData.options.map((_, i) => <option key={i} value={i}>To'g'ri javob: Variant {i+1}</option>)}
-      </select>
-      <textarea placeholder="Tushuntirish" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.explanation} onChange={e => setFormData({...formData, explanation: e.target.value})} required />
+
+      {formData.type === 'case' && (
+        <textarea placeholder="Klinik vaziyat" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-32" value={formData.scenario} onChange={e => setFormData({...formData, scenario: e.target.value})} required />
+      )}
+
+      {formData.type === 'test' ? (
+        <>
+          <textarea placeholder="Savol" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.question} onChange={e => setFormData({...formData, question: e.target.value})} required />
+          
+          {formData.options.map((opt, i) => (
+            <input key={i} placeholder={`Variant ${i+1}`} className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={opt} onChange={e => {
+              const newOpts = [...formData.options];
+              newOpts[i] = e.target.value;
+              setFormData({...formData, options: newOpts});
+            }} required />
+          ))}
+          
+          <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.correct} onChange={e => setFormData({...formData, correct: parseInt(e.target.value)})}>
+            {formData.options.map((_, i) => <option key={i} value={i}>To'g'ri javob: Variant {i+1}</option>)}
+          </select>
+        </>
+      ) : (
+        <div className="space-y-4">
+          {formData.caseQuestions.map((cq, index) => (
+            <div key={index} className="p-4 border border-border rounded-xl bg-secondary/20 space-y-3 relative">
+              {formData.caseQuestions.length > 1 && !editData && (
+                <button type="button" onClick={() => handleRemoveCaseQuestion(index)} className="absolute top-2 right-2 p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+              <h4 className="text-sm font-medium text-foreground/70">Savol {index + 1}</h4>
+              <textarea placeholder="Savol" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-20" value={cq.question} onChange={e => handleCaseQuestionChange(index, 'question', e.target.value)} required />
+              <textarea placeholder="AI uchun yondashuv javoblari (talaba javobini baholash uchun mezonlar)" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={cq.aiAnswerGuide} onChange={e => handleCaseQuestionChange(index, 'aiAnswerGuide', e.target.value)} required />
+            </div>
+          ))}
+          {!editData && (
+            <button type="button" onClick={handleAddCaseQuestion} className="w-full py-2 border-2 border-dashed border-primary/30 text-primary rounded-xl font-medium text-sm hover:bg-primary/5 transition-colors flex items-center justify-center gap-2">
+              <Plus className="w-4 h-4" /> Yana savol qo'shish
+            </button>
+          )}
+        </div>
+      )}
+
+      <textarea placeholder="Tushuntirish" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.explanation} onChange={e => setFormData({...formData, explanation: e.target.value})} required={formData.type === 'test'} />
       <div className="flex gap-2">
         <button type="submit" className="flex-1 bg-primary text-primary-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-primary/90 transition-all">
           {editData ? 'Saqlash' : 'Qo\'shish'}

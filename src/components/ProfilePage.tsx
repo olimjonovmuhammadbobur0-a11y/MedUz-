@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Trophy, PlayCircle, Brain, Activity, User, Mail, Star, Award, ChevronRight, Calendar } from 'lucide-react';
+import { Trophy, PlayCircle, Brain, Activity, User, Mail, Star, Award, ChevronRight, Calendar, Trash2 } from 'lucide-react';
+import { Modal } from '../App';
 
 export function ProfilePage({ user }: { user: any }) {
   const [progress, setProgress] = useState<any>(null);
@@ -10,6 +11,9 @@ export function ProfilePage({ user }: { user: any }) {
   const [videoHistory, setVideoHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'stats' | 'tests' | 'videos'>('stats');
+  
+  const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean, type: 'test' | 'video' | null, index: number | null }>({ isOpen: false, type: null, index: null });
+  const [alertModal, setAlertModal] = useState<{ isOpen: boolean, title: string, content: string }>({ isOpen: false, title: '', content: '' });
 
   useEffect(() => {
     if (user) {
@@ -37,6 +41,32 @@ export function ProfilePage({ user }: { user: any }) {
       setLoading(false);
     }
   }, [user]);
+
+  const confirmDelete = (type: 'test' | 'video', index: number) => {
+    setDeleteModal({ isOpen: true, type, index });
+  };
+
+  const handleDeleteHistory = async () => {
+    if (!user || deleteModal.type === null || deleteModal.index === null) return;
+
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      if (deleteModal.type === 'test') {
+        const newHistory = [...testHistory];
+        newHistory.splice(deleteModal.index, 1);
+        await updateDoc(userRef, { testHistory_v2: newHistory });
+      } else {
+        const newHistory = [...videoHistory];
+        newHistory.splice(deleteModal.index, 1);
+        await updateDoc(userRef, { videoHistory_v2: newHistory });
+      }
+    } catch (error) {
+      console.error("Error deleting history:", error);
+      setAlertModal({ isOpen: true, title: "Xatolik", content: "Xatolik yuz berdi. Iltimos qaytadan urinib ko'ring." });
+    } finally {
+      setDeleteModal({ isOpen: false, type: null, index: null });
+    }
+  };
 
   if (!user) {
     return (
@@ -190,9 +220,18 @@ export function ProfilePage({ user }: { user: any }) {
                             </div>
                           </div>
                         </div>
-                        <div className="bg-secondary px-4 py-2 rounded-xl border border-border/50 text-center shrink-0">
-                          <div className="text-2xl font-bold text-foreground">{test.score} <span className="text-sm text-muted-foreground font-medium">/ {test.total}</span></div>
-                          <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider">To'g'ri javob</div>
+                        <div className="bg-secondary px-4 py-2 rounded-xl border border-border/50 text-center shrink-0 flex flex-col items-center justify-center gap-2">
+                          <div>
+                            <div className="text-2xl font-bold text-foreground">{test.score} <span className="text-sm text-muted-foreground font-medium">/ {test.total}</span></div>
+                            <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider">To'g'ri javob</div>
+                          </div>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); confirmDelete('test', idx); }}
+                            className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                            title="O'chirish"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -231,8 +270,17 @@ export function ProfilePage({ user }: { user: any }) {
                             </div>
                           </div>
                         </div>
-                        <div className="bg-emerald-500/10 text-emerald-600 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider shrink-0 self-start sm:self-auto">
-                          Ko'rilgan
+                        <div className="flex flex-col items-end gap-2 shrink-0 self-start sm:self-auto">
+                          <div className="bg-emerald-500/10 text-emerald-600 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider">
+                            Ko'rilgan
+                          </div>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); confirmDelete('video', idx); }}
+                            className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                            title="O'chirish"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -248,6 +296,22 @@ export function ProfilePage({ user }: { user: any }) {
           </AnimatePresence>
         )}
       </div>
+
+      <Modal
+        isOpen={deleteModal.isOpen}
+        title="Natijani o'chirish"
+        content="Ushbu natijani o'chirib tashlashni xohlaysizmi? Bu amalni ortga qaytarib bo'lmaydi."
+        onClose={() => setDeleteModal({ isOpen: false, type: null, index: null })}
+        onConfirm={handleDeleteHistory}
+        confirmText="O'chirish"
+      />
+
+      <Modal
+        isOpen={alertModal.isOpen}
+        title={alertModal.title}
+        content={alertModal.content}
+        onClose={() => setAlertModal({ isOpen: false, title: '', content: '' })}
+      />
     </div>
   );
 }
