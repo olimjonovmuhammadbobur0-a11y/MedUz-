@@ -1779,7 +1779,7 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
   const [selectedTopic, setSelectedTopic] = useState<any>(null);
   
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
-  const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [selectedOptions, setSelectedOptions] = useState<number[]>([]);
   const [isAnswered, setIsAnswered] = useState(false);
   const [caseText, setCaseText] = useState('');
   const [isEvaluating, setIsEvaluating] = useState(false);
@@ -1845,9 +1845,10 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
               id: q.id,
               type: q.type || 'test',
               scenario: q.scenario || '',
+              imageUrl: q.imageUrl || '',
               text: q.question,
               options: q.options || [],
-              correct: q.correct || 0,
+              correct: q.correct !== undefined ? q.correct : 0,
               explanation: q.explanation,
               aiAnswerGuide: q.aiAnswerGuide || ''
             }))
@@ -1862,7 +1863,7 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
     if (saved) setScoreboard(JSON.parse(saved));
   }, []);
 
-  const [userAnswers, setUserAnswers] = useState<(number | null)[]>([]);
+  const [userAnswers, setUserAnswers] = useState<(number | number[] | null)[]>([]);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [shuffledOptionsMap, setShuffledOptionsMap] = useState<Record<number, number[]>>({});
 
@@ -1883,7 +1884,7 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
     setCheatCount(0);
     setStartTime(Date.now());
     setIsAnswered(false);
-    setSelectedOption(null);
+    setSelectedOptions([]);
     setCaseText('');
     setIsEvaluating(false);
     setCaseScores({});
@@ -1943,7 +1944,7 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
             
             if (currentQuestionIdx < selectedTopic.questions.length - 1) {
               setCurrentQuestionIdx(prev => prev + 1);
-              setSelectedOption(null);
+              setSelectedOptions([]);
               setIsAnswered(false);
             } else {
               finishQuiz(score);
@@ -1959,14 +1960,37 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
 
   const handleAnswer = (idx: number) => {
     if (isAnswered) return;
-    setSelectedOption(idx);
+    const currentQ = selectedTopic.questions[currentQuestionIdx];
+    const isMultiple = Array.isArray(currentQ.correct) && currentQ.correct.length > 1;
+
+    if (isMultiple) {
+      setSelectedOptions(prev => 
+        prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+      );
+    } else {
+      setSelectedOptions([idx]);
+      submitAnswer([idx]);
+    }
+  };
+
+  const submitAnswer = (selected: number[]) => {
     setIsAnswered(true);
+    const currentQ = selectedTopic.questions[currentQuestionIdx];
+    const isMultiple = Array.isArray(currentQ.correct) && currentQ.correct.length > 1;
     
     const newUserAnswers = [...userAnswers];
-    newUserAnswers[currentQuestionIdx] = idx;
+    newUserAnswers[currentQuestionIdx] = isMultiple ? selected : selected[0];
     setUserAnswers(newUserAnswers);
     
-    let isCorrect = idx === selectedTopic.questions[currentQuestionIdx].correct;
+    let isCorrect = false;
+    if (isMultiple) {
+      const correctArr = currentQ.correct as number[];
+      isCorrect = selected.length === correctArr.length && selected.every(s => correctArr.includes(s));
+    } else {
+      const correctVal = Array.isArray(currentQ.correct) ? currentQ.correct[0] : currentQ.correct;
+      isCorrect = selected[0] === correctVal;
+    }
+
     if (isCorrect) {
       setScore(s => s + 1);
       const randomMessage = motivationalMessages[Math.floor(Math.random() * motivationalMessages.length)];
@@ -2035,7 +2059,7 @@ Return ONLY a JSON object in this format:
   const handleNextQuestion = () => {
     if (currentQuestionIdx < selectedTopic.questions.length - 1) {
       setCurrentQuestionIdx(prev => prev + 1);
-      setSelectedOption(null);
+      setSelectedOptions([]);
       setIsAnswered(false);
       setCaseText('');
       setMotivationalMessage(null);
@@ -2480,6 +2504,11 @@ Return ONLY a JSON object in this format:
             </div>
           )}
           
+          {currentQ.imageUrl && (
+            <div className="mb-6 rounded-xl overflow-hidden border border-border/40">
+              <img src={currentQ.imageUrl} alt="Question" className="w-full h-auto max-h-96 object-contain bg-secondary/20" />
+            </div>
+          )}
           <h3 className="text-xl md:text-2xl font-semibold text-foreground leading-snug tracking-tight">{currentQ.text}</h3>
           
           {currentQ.type === 'test' ? (
@@ -2487,12 +2516,17 @@ Return ONLY a JSON object in this format:
               {(shuffledOptionsMap[currentQuestionIdx] || currentQ.options.map((_: any, i: number) => i)).map((originalIdx: number) => {
                 const option = currentQ.options[originalIdx];
                 const idx = originalIdx;
+                const isMultiple = Array.isArray(currentQ.correct) && currentQ.correct.length > 1;
+                const correctArr = Array.isArray(currentQ.correct) ? currentQ.correct : [currentQ.correct];
+                const isCorrectOption = correctArr.includes(idx);
+                const isSelected = selectedOptions.includes(idx);
+
                 let stateClass = "border-border/40 hover:border-primary/50 hover:bg-primary/5 text-foreground";
                 if (isAnswered) {
-                  if (idx === currentQ.correct) stateClass = "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
-                  else if (idx === selectedOption) stateClass = "border-red-500 bg-red-500/10 text-red-600 dark:text-red-400";
+                  if (isCorrectOption) stateClass = "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+                  else if (isSelected) stateClass = "border-red-500 bg-red-500/10 text-red-600 dark:text-red-400";
                   else stateClass = "border-border/40 opacity-40 text-foreground";
-                } else if (idx === selectedOption) {
+                } else if (isSelected) {
                   stateClass = "border-primary bg-primary/10 text-primary";
                 }
 
@@ -2503,12 +2537,28 @@ Return ONLY a JSON object in this format:
                     disabled={isAnswered}
                     className={`w-full text-left p-4 rounded-xl border-2 font-medium transition-all duration-200 flex justify-between items-center group ${stateClass}`}
                   >
-                    <span className="text-base">{option}</span>
-                    {isAnswered && idx === currentQ.correct && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
-                    {isAnswered && idx === selectedOption && idx !== currentQ.correct && <X className="w-5 h-5 text-red-500" />}
+                    <div className="flex items-center gap-3">
+                      {isMultiple && (
+                        <div className={`w-5 h-5 rounded border flex items-center justify-center ${isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border/60'}`}>
+                          {isSelected && <CheckCircle2 className="w-3 h-3" />}
+                        </div>
+                      )}
+                      <span className="text-base">{option}</span>
+                    </div>
+                    {isAnswered && isCorrectOption && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                    {isAnswered && isSelected && !isCorrectOption && <X className="w-5 h-5 text-red-500" />}
                   </button>
                 );
               })}
+              {!isAnswered && Array.isArray(currentQ.correct) && currentQ.correct.length > 1 && (
+                <button
+                  onClick={() => submitAnswer(selectedOptions)}
+                  disabled={selectedOptions.length === 0}
+                  className="mt-4 w-full bg-primary text-primary-foreground py-3 rounded-xl font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Javobni tasdiqlash
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
@@ -2694,7 +2744,12 @@ Return ONLY a JSON object in this format:
               );
             }
 
-            const isCorrect = userAnswer === q.correct;
+            const isMultiple = Array.isArray(q.correct) && q.correct.length > 1;
+            const correctArr = Array.isArray(q.correct) ? q.correct : [q.correct];
+            const userArr = Array.isArray(userAnswer) ? userAnswer : [userAnswer];
+            const isCorrect = isMultiple 
+              ? userArr.length === correctArr.length && userArr.every((s: any) => correctArr.includes(s))
+              : userAnswer === q.correct;
 
             return (
               <div key={qIdx} className="bg-card border border-border/40 rounded-2xl p-6 md:p-8 shadow-sm space-y-6">
@@ -2702,22 +2757,39 @@ Return ONLY a JSON object in this format:
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold shrink-0 ${isCorrect ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600'}`}>
                     {qIdx + 1}
                   </div>
-                  <h3 className="text-lg md:text-xl font-medium text-foreground leading-snug">{q.text || q.question}</h3>
+                  <div className="flex-1">
+                    {q.imageUrl && (
+                      <div className="mb-4 rounded-xl overflow-hidden border border-border/40">
+                        <img src={q.imageUrl} alt="Question" className="w-full h-auto max-h-64 object-contain bg-secondary/20" />
+                      </div>
+                    )}
+                    <h3 className="text-lg md:text-xl font-medium text-foreground leading-snug">{q.text || q.question}</h3>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 pl-14">
                   {(shuffledOptionsMap[qIdx] || q.options?.map((_: any, i: number) => i) || []).map((originalIdx: number) => {
                     const option = q.options[originalIdx];
                     const oIdx = originalIdx;
+                    const isCorrectOption = correctArr.includes(oIdx);
+                    const isSelected = userArr.includes(oIdx);
+                    
                     let optionClass = "border-border/40 text-foreground/60";
-                    if (oIdx === q.correct) optionClass = "border-emerald-500 bg-emerald-500/10 text-emerald-600 font-bold";
-                    else if (oIdx === userAnswer && !isCorrect) optionClass = "border-red-500 bg-red-500/10 text-red-600 font-bold";
+                    if (isCorrectOption) optionClass = "border-emerald-500 bg-emerald-500/10 text-emerald-600 font-bold";
+                    else if (isSelected && !isCorrectOption) optionClass = "border-red-500 bg-red-500/10 text-red-600 font-bold";
 
                     return (
                       <div key={originalIdx} className={`p-4 rounded-xl border-2 flex justify-between items-center ${optionClass}`}>
-                        <span className="text-base">{option}</span>
-                        {oIdx === q.correct && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
-                        {oIdx === userAnswer && !isCorrect && <X className="w-5 h-5 text-red-500" />}
+                        <div className="flex items-center gap-3">
+                          {isMultiple && (
+                            <div className={`w-5 h-5 rounded border flex items-center justify-center ${isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border/60'}`}>
+                              {isSelected && <CheckCircle2 className="w-3 h-3" />}
+                            </div>
+                          )}
+                          <span className="text-base">{option}</span>
+                        </div>
+                        {isCorrectOption && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                        {isSelected && !isCorrectOption && <X className="w-5 h-5 text-red-500" />}
                       </div>
                     );
                   })}
@@ -3336,7 +3408,6 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
           id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
           title: data.topic,
           description: '',
-          questions: [],
           videos: [],
           guides: []
         });
@@ -3381,7 +3452,6 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
           id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
           title: data.topic,
           description: '',
-          questions: [],
           videos: [],
           guides: []
         });
@@ -4775,9 +4845,10 @@ function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar }: { onAdd
     difficulty: 'medium', 
     type: 'test' as 'test' | 'case',
     scenario: '',
+    imageUrl: '',
     question: '', 
     options: ['', '', '', ''], 
-    correct: 0, 
+    correct: [0] as number[], 
     explanation: '',
     aiAnswerGuide: '',
     caseQuestions: [{ question: '', aiAnswerGuide: '' }]
@@ -4791,9 +4862,10 @@ function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar }: { onAdd
         difficulty: editData.difficulty,
         type: editData.type || 'test',
         scenario: editData.scenario || '',
+        imageUrl: editData.imageUrl || '',
         question: editData.question,
         options: editData.options || ['', '', '', ''],
-        correct: editData.correct || 0,
+        correct: Array.isArray(editData.correct) ? editData.correct : [editData.correct ?? 0],
         explanation: editData.explanation || '',
         aiAnswerGuide: editData.aiAnswerGuide || '',
         caseQuestions: [{ question: editData.question || '', aiAnswerGuide: editData.aiAnswerGuide || '' }]
@@ -4827,7 +4899,7 @@ function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar }: { onAdd
         submitData.aiAnswerGuide = formData.caseQuestions[0].aiAnswerGuide;
       }
       if (await onEdit(editData.id!, submitData)) {
-        setFormData(prev => ({ ...prev, question: '', options: ['', '', '', ''], correct: 0, explanation: '', scenario: '', aiAnswerGuide: '', caseQuestions: [{ question: '', aiAnswerGuide: '' }] }));
+        setFormData(prev => ({ ...prev, question: '', imageUrl: '', options: ['', '', '', ''], correct: [0], explanation: '', scenario: '', aiAnswerGuide: '', caseQuestions: [{ question: '', aiAnswerGuide: '' }] }));
         if (onCancelEdit) onCancelEdit();
       }
     } else {
@@ -4849,7 +4921,7 @@ function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar }: { onAdd
       }
       
       if (success) {
-        setFormData(prev => ({ ...prev, question: '', options: ['', '', '', ''], correct: 0, explanation: '', scenario: '', aiAnswerGuide: '', caseQuestions: [{ question: '', aiAnswerGuide: '' }] }));
+        setFormData(prev => ({ ...prev, question: '', imageUrl: '', options: ['', '', '', ''], correct: [0], explanation: '', scenario: '', aiAnswerGuide: '', caseQuestions: [{ question: '', aiAnswerGuide: '' }] }));
       }
     }
   };
@@ -4875,6 +4947,43 @@ function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar }: { onAdd
       const newCaseQuestions = [...prev.caseQuestions];
       newCaseQuestions[index][field] = value;
       return { ...prev, caseQuestions: newCaseQuestions };
+    });
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({ ...prev, imageUrl: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleAddOption = () => {
+    setFormData(prev => ({ ...prev, options: [...prev.options, ''] }));
+  };
+
+  const handleRemoveOption = (index: number) => {
+    setFormData(prev => {
+      const newOpts = prev.options.filter((_, i) => i !== index);
+      const newCorrect = prev.correct.filter(c => c !== index).map(c => c > index ? c - 1 : c);
+      return { ...prev, options: newOpts, correct: newCorrect.length ? newCorrect : [0] };
+    });
+  };
+
+  const handleCorrectChange = (index: number) => {
+    setFormData(prev => {
+      const isCorrect = prev.correct.includes(index);
+      let newCorrect;
+      if (isCorrect) {
+        newCorrect = prev.correct.filter(c => c !== index);
+        if (newCorrect.length === 0) newCorrect = [0]; // Keep at least one correct answer
+      } else {
+        newCorrect = [...prev.correct, index];
+      }
+      return { ...prev, correct: newCorrect };
     });
   };
 
@@ -4951,19 +5060,48 @@ function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar }: { onAdd
 
       {formData.type === 'test' ? (
         <>
-          <textarea placeholder="Savol" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.question} onChange={e => setFormData({...formData, question: e.target.value})} required />
+          <div className="space-y-2">
+            <textarea placeholder="Savol" className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary h-24" value={formData.question} onChange={e => setFormData({...formData, question: e.target.value})} required />
+            <div className="flex items-center gap-2">
+              <input type="file" accept="image/*" onChange={handleImageUpload} className="text-sm text-foreground/70 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20" />
+              {formData.imageUrl && <img src={formData.imageUrl} alt="Preview" className="h-10 w-10 object-cover rounded-md" />}
+            </div>
+          </div>
           
-          {formData.options.map((opt, i) => (
-            <input key={i} placeholder={`Variant ${i+1}`} className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={opt} onChange={e => {
-              const newOpts = [...formData.options];
-              newOpts[i] = e.target.value;
-              setFormData({...formData, options: newOpts});
-            }} required />
-          ))}
-          
-          <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" value={formData.correct} onChange={e => setFormData({...formData, correct: parseInt(e.target.value)})}>
-            {formData.options.map((_, i) => <option key={i} value={i}>To'g'ri javob: Variant {i+1}</option>)}
-          </select>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium text-foreground">Variantlar va to'g'ri javoblar</h4>
+              <button type="button" onClick={handleAddOption} className="text-xs font-medium text-primary hover:text-primary/80 flex items-center gap-1">
+                <Plus className="w-3 h-3" /> Variant qo'shish
+              </button>
+            </div>
+            {formData.options.map((opt, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <input 
+                  type="checkbox" 
+                  checked={formData.correct.includes(i)} 
+                  onChange={() => handleCorrectChange(i)}
+                  className="w-5 h-5 rounded border-border text-primary focus:ring-primary"
+                />
+                <input 
+                  placeholder={`Variant ${i+1}`} 
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary" 
+                  value={opt} 
+                  onChange={e => {
+                    const newOpts = [...formData.options];
+                    newOpts[i] = e.target.value;
+                    setFormData({...formData, options: newOpts});
+                  }} 
+                  required 
+                />
+                {formData.options.length > 2 && (
+                  <button type="button" onClick={() => handleRemoveOption(i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </>
       ) : (
         <div className="space-y-4">

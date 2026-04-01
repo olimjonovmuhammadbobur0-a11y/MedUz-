@@ -18,9 +18,10 @@ export interface Question {
   difficulty: string;
   type?: 'test' | 'case';
   scenario?: string;
+  imageUrl?: string;
   question: string;
   options: string[];
-  correct: number;
+  correct: number | number[];
   explanation: string;
   aiAnswerGuide?: string;
   caseQuestions?: CaseQuestionItem[];
