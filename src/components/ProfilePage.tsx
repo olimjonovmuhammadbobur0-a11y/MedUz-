@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, getDoc, collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Trophy, PlayCircle, Brain, Activity, User, Mail, Star, Award, ChevronRight, Calendar, Trash2 } from 'lucide-react';
+import { Trophy, PlayCircle, Brain, Activity, User, Mail, Star, Award, ChevronRight, Calendar, Trash2, Edit2, Save, X, MessageCircle } from 'lucide-react';
 import { Modal } from '../App';
 
 export function ProfilePage({ user }: { user: any }) {
@@ -10,8 +10,19 @@ export function ProfilePage({ user }: { user: any }) {
   const [testHistory, setTestHistory] = useState<any[]>([]);
   const [videoHistory, setVideoHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'stats' | 'tests' | 'videos'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'tests' | 'videos' | 'personal'>('stats');
   
+  const [profileData, setProfileData] = useState({
+    firstName: '',
+    lastName: '',
+    university: '',
+    major: '',
+    course: '',
+    group: ''
+  });
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [winnerNotification, setWinnerNotification] = useState<{ message: string, telegram: string } | null>(null);
+
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean, type: 'test' | 'video' | null, index: number | null }>({ isOpen: false, type: null, index: null });
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean, title: string, content: string }>({ isOpen: false, title: '', content: '' });
 
@@ -29,6 +40,14 @@ export function ProfilePage({ user }: { user: any }) {
           });
           setTestHistory(data.testHistory_v2 || []);
           setVideoHistory(data.videoHistory_v2 || []);
+          setProfileData({
+            firstName: data.firstName || '',
+            lastName: data.lastName || '',
+            university: data.university || '',
+            major: data.major || '',
+            course: data.course || '',
+            group: data.group || ''
+          });
         }
         setLoading(false);
       }, (error) => {
@@ -36,11 +55,51 @@ export function ProfilePage({ user }: { user: any }) {
         setLoading(false);
       });
 
-      return () => unsubscribe();
+      // Check for winner notification
+      const checkWinner = async () => {
+        try {
+          const settingsRef = doc(db, 'settings', 'leaderboard');
+          const settingsSnap = await getDoc(settingsRef);
+          if (settingsSnap.exists()) {
+            const settings = settingsSnap.data();
+            if (settings.endDate && new Date() > new Date(settings.endDate)) {
+              // Period ended, check if current user is top 1
+              const q = query(collection(db, 'leaderboard'), orderBy('score', 'desc'), limit(1));
+              const lbSnap = await getDocs(q);
+              if (!lbSnap.empty && lbSnap.docs[0].id === user.uid) {
+                setWinnerNotification({
+                  message: settings.winnerMessage || "Faol bo'lganingiz uchun men bilan bog'laning!",
+                  telegram: settings.telegramUsername || ""
+                });
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Error checking winner status", err);
+        }
+      };
+      checkWinner();
+
+      return () => {
+        unsubscribe();
+      };
     } else {
       setLoading(false);
     }
   }, [user]);
+
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, profileData);
+      setIsEditingProfile(false);
+      setAlertModal({ isOpen: true, title: "Muvaffaqiyat", content: "Profil ma'lumotlari saqlandi!" });
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      setAlertModal({ isOpen: true, title: "Xatolik", content: "Xatolik yuz berdi. Iltimos qaytadan urinib ko'ring." });
+    }
+  };
 
   const confirmDelete = (type: 'test' | 'video', index: number) => {
     setDeleteModal({ isOpen: true, type, index });
@@ -117,6 +176,38 @@ export function ProfilePage({ user }: { user: any }) {
         </div>
       </motion.div>
 
+      {winnerNotification && (
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-gradient-to-r from-yellow-500/20 to-amber-500/20 border border-yellow-500/30 rounded-3xl p-6 md:p-8 relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-10">
+            <Trophy className="w-32 h-32 text-yellow-500" />
+          </div>
+          <div className="relative z-10 flex flex-col md:flex-row items-center gap-6">
+            <div className="bg-yellow-500/20 p-4 rounded-full shrink-0">
+              <Trophy className="w-10 h-10 text-yellow-600" />
+            </div>
+            <div className="text-center md:text-left flex-1">
+              <h3 className="text-2xl font-bold text-yellow-600 mb-2">Tabriklaymiz, Siz G'olibsiz!</h3>
+              <p className="text-foreground/80 font-medium">{winnerNotification.message}</p>
+            </div>
+            {winnerNotification.telegram && (
+              <a 
+                href={`https://t.me/${winnerNotification.telegram.replace('@', '')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 flex items-center gap-2 bg-[#0088cc] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#0077b3] transition-colors shadow-lg shadow-[#0088cc]/20"
+              >
+                <MessageCircle className="w-5 h-5" />
+                Bog'lanish
+              </a>
+            )}
+          </div>
+        </motion.div>
+      )}
+
       {/* Progress Stats */}
       <div>
         <div className="flex items-center justify-between mb-6">
@@ -124,7 +215,7 @@ export function ProfilePage({ user }: { user: any }) {
             <Star className="w-6 h-6 text-accent" />
             Mening Natijalarim
           </h2>
-          <div className="flex gap-2 bg-secondary/50 p-1 rounded-xl">
+          <div className="flex flex-wrap gap-2 bg-secondary/50 p-1 rounded-xl">
             <button 
               onClick={() => setActiveTab('stats')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'stats' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
@@ -142,6 +233,12 @@ export function ProfilePage({ user }: { user: any }) {
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'videos' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
             >
               Videolar tarixi
+            </button>
+            <button 
+              onClick={() => setActiveTab('personal')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'personal' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              Shaxsiy ma'lumotlar
             </button>
           </div>
         </div>
@@ -291,6 +388,114 @@ export function ProfilePage({ user }: { user: any }) {
                     <p>Hali hech qanday video ko'rilmagan.</p>
                   </div>
                 )}
+              </motion.div>
+            )}
+            {activeTab === 'personal' && (
+              <motion.div 
+                key="personal"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="bg-card border border-border rounded-2xl p-6 sm:p-8 overflow-hidden"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold text-foreground">Shaxsiy ma'lumotlar</h3>
+                  {!isEditingProfile ? (
+                    <button 
+                      onClick={() => setIsEditingProfile(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-xl font-medium hover:bg-primary/20 transition-colors"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                      Tahrirlash
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => setIsEditingProfile(false)}
+                        className="flex items-center gap-2 px-4 py-2 bg-secondary text-foreground rounded-xl font-medium hover:bg-secondary/80 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                        Bekor qilish
+                      </button>
+                      <button 
+                        onClick={handleSaveProfile}
+                        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors"
+                      >
+                        <Save className="w-4 h-4" />
+                        Saqlash
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">Ism</label>
+                    <input 
+                      type="text" 
+                      value={profileData.firstName}
+                      onChange={(e) => setProfileData({...profileData, firstName: e.target.value})}
+                      disabled={!isEditingProfile}
+                      placeholder="Ismingizni kiriting"
+                      className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary disabled:opacity-70 disabled:bg-secondary/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">Familiya</label>
+                    <input 
+                      type="text" 
+                      value={profileData.lastName}
+                      onChange={(e) => setProfileData({...profileData, lastName: e.target.value})}
+                      disabled={!isEditingProfile}
+                      placeholder="Familiyangizni kiriting"
+                      className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary disabled:opacity-70 disabled:bg-secondary/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">Universitet</label>
+                    <input 
+                      type="text" 
+                      value={profileData.university}
+                      onChange={(e) => setProfileData({...profileData, university: e.target.value})}
+                      disabled={!isEditingProfile}
+                      placeholder="Masalan: TMA, SamDTI..."
+                      className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary disabled:opacity-70 disabled:bg-secondary/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">Yo'nalish</label>
+                    <input 
+                      type="text" 
+                      value={profileData.major}
+                      onChange={(e) => setProfileData({...profileData, major: e.target.value})}
+                      disabled={!isEditingProfile}
+                      placeholder="Masalan: Davolash ishi"
+                      className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary disabled:opacity-70 disabled:bg-secondary/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">Kurs</label>
+                    <input 
+                      type="text" 
+                      value={profileData.course}
+                      onChange={(e) => setProfileData({...profileData, course: e.target.value})}
+                      disabled={!isEditingProfile}
+                      placeholder="Masalan: 3-kurs"
+                      className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary disabled:opacity-70 disabled:bg-secondary/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">Guruh</label>
+                    <input 
+                      type="text" 
+                      value={profileData.group}
+                      onChange={(e) => setProfileData({...profileData, group: e.target.value})}
+                      disabled={!isEditingProfile}
+                      placeholder="Masalan: 301-guruh"
+                      className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary disabled:opacity-70 disabled:bg-secondary/50"
+                    />
+                  </div>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

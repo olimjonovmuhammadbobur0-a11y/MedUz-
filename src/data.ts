@@ -96,6 +96,15 @@ export interface Subject {
   description: string;
   icon: string;
   topics: Topic[];
+  isLocked?: boolean;
+}
+
+export interface MessageItem {
+  id?: string;
+  title: string;
+  content: string;
+  date: string;
+  type: 'info' | 'warning' | 'success';
 }
 
 export interface OSCEScenario {

@@ -59,7 +59,9 @@ import {
   Users,
   CheckSquare,
   Microscope,
-  Mic
+  Mic,
+  Trophy,
+  MessageCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
@@ -71,6 +73,7 @@ import { quizData } from './quizData';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { doc, getDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc, writeBatch, query, orderBy, onSnapshot, where } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import Papa from 'papaparse';
 
 const getYouTubeEmbedUrl = (url: string) => {
   if (!url) return '';
@@ -79,7 +82,7 @@ const getYouTubeEmbedUrl = (url: string) => {
   return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : url;
 };
 
-type Page = 'home' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients' | 'osce' | 'tutor' | 'pharma' | 'fanlar' | 'news' | 'journals' | 'profile' | 'laboratory';
+type Page = 'home' | 'dashboard' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients' | 'osce' | 'tutor' | 'pharma' | 'fanlar' | 'news' | 'journals' | 'profile' | 'laboratory' | 'leaderboard';
 
 export function Modal({ isOpen, title, content, onClose, onConfirm, confirmText = "Tasdiqlash", cancelText = "Bekor qilish" }: { isOpen: boolean, title: string, content: string, onClose: () => void, onConfirm?: () => void, confirmText?: string, cancelText?: string }) {
   if (!isOpen) return null;
@@ -111,6 +114,7 @@ export function Modal({ isOpen, title, content, onClose, onConfirm, confirmText 
 }
 
 import { ProfilePage } from './components/ProfilePage';
+import { Leaderboard } from './components/Leaderboard';
 import { LaboratoryPage } from './components/LaboratoryPage';
 import { useTranslation, Language } from './i18n';
 
@@ -135,24 +139,55 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isMessagesMenuOpen, setIsMessagesMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
+  const messagesMenuRefDesktop = useRef<HTMLDivElement>(null);
+  const messagesMenuRefMobile = useRef<HTMLDivElement>(null);
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('meduz_dark_mode') === 'true');
   const [themeColor, setThemeColor] = useState(() => localStorage.getItem('meduz_theme') || '#2563eb');
   const [user, setUser] = useState<any>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   
   const { t, language, setLanguage } = useTranslation();
 
-  const updateProgress = async (field: 'quizScore' | 'videosWatched' | 'mnemonicsRead' | 'symptomsChecked', value: number | ((prev: number) => number)) => {
+  useEffect(() => {
+    const hasCleared = localStorage.getItem('meduz_force_cleared_v3');
+    if (!hasCleared) {
+      localStorage.removeItem('meduz_quiz_scores_v2');
+      localStorage.removeItem('meduz_quiz_attempts_v2');
+      localStorage.removeItem('meduz_watched_videos');
+      localStorage.removeItem('meduz_osce_progress');
+      localStorage.removeItem('meduz_completed_topics');
+      localStorage.setItem('meduz_force_cleared_v3', 'true');
+    }
+  }, []);
+
+  const updateProgress = async (field: 'quizScore' | 'osceScore' | 'videosWatched' | 'mnemonicsRead' | 'symptomsChecked', value: number | ((prev: number) => number)) => {
     if (!user) return;
     try {
       const userRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userRef);
       if (userDoc.exists()) {
-        const currentProgress = userDoc.data().progress_v2 || { quizScore: 0, videosWatched: 0, mnemonicsRead: 0, symptomsChecked: 0 };
+        const currentProgress = userDoc.data().progress_v2 || { quizScore: 0, osceScore: 0, videosWatched: 0, mnemonicsRead: 0, symptomsChecked: 0 };
         const newValue = typeof value === 'function' ? value(currentProgress[field] || 0) : value;
         await updateDoc(userRef, {
           [`progress_v2.${field}`]: newValue
         });
+
+        // Update public leaderboard collection if score-related fields change
+        if (field === 'quizScore' || field === 'osceScore') {
+          const totalScore = (field === 'quizScore' ? newValue : (currentProgress.quizScore || 0)) + 
+                             (field === 'osceScore' ? newValue : (currentProgress.osceScore || 0));
+          
+          const leaderboardRef = doc(db, 'leaderboard', user.uid);
+          await setDoc(leaderboardRef, {
+            uid: user.uid,
+            displayName: user.displayName || 'Anonim foydalanuvchi',
+            photoURL: user.photoURL || '',
+            score: totalScore,
+            lastUpdated: new Date().toISOString()
+          }, { merge: true });
+        }
       }
     } catch (error) {
       console.error("Error updating progress:", error);
@@ -228,18 +263,30 @@ export default function App() {
       if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
         setIsProfileMenuOpen(false);
       }
+      if (messagesMenuRefDesktop.current && !messagesMenuRefDesktop.current.contains(event.target as Node) &&
+          messagesMenuRefMobile.current && !messagesMenuRefMobile.current.contains(event.target as Node)) {
+        setIsMessagesMenuOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const handleGoogleLogin = async () => {
+    if (isLoggingIn) return;
+    setIsLoggingIn(true);
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Google login error:', error);
-      alert("Tizimga kirishda xatolik yuz berdi.");
+      if (error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
+        // User closed the popup, ignore
+        return;
+      }
+      alert("Tizimga kirishda xatolik yuz berdi: " + error.message);
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -289,6 +336,16 @@ export default function App() {
     const saved = localStorage.getItem('meduz_news');
     return saved ? JSON.parse(saved) : initialNews;
   });
+
+  const [messagesData, setMessagesData] = useState<any[]>([]);
+  useEffect(() => {
+    const q = query(collection(db, 'messages'), orderBy('date', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setMessagesData(msgs);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const [journalsData, setJournalsData] = useState<JournalItem[]>(() => {
     const saved = localStorage.getItem('meduz_journals');
@@ -771,6 +828,13 @@ export default function App() {
             {/* Desktop Nav Removed as requested */}
             
             <div className="hidden md:flex items-center gap-3 shrink-0">
+              <button 
+                onClick={() => navigate('leaderboard')}
+                className="flex items-center gap-2 px-4 py-2 mr-2 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-amber-600 hover:from-amber-500/20 hover:to-orange-500/20 border border-amber-500/20 transition-all font-medium"
+              >
+                <Icons.Trophy className="w-5 h-5" />
+                Reyting
+              </button>
               {user ? (
                 <div className="relative" ref={profileMenuRef}>
                   <button 
@@ -840,7 +904,8 @@ export default function App() {
               ) : (
                 <button 
                   onClick={handleGoogleLogin}
-                  className="flex items-center gap-2 bg-white text-gray-800 border border-gray-300 px-4 py-2 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm"
+                  disabled={isLoggingIn}
+                  className="flex items-center gap-2 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 border border-gray-300 dark:border-gray-600 px-4 py-2 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm disabled:opacity-50"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -848,10 +913,64 @@ export default function App() {
                     <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                     <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                   </svg>
-                  Google orqali kirish
+                  {isLoggingIn ? 'Kirilmoqda...' : 'Google orqali kirish'}
                 </button>
               )}
               
+              {user && (
+                <div className="relative" ref={messagesMenuRefDesktop}>
+                  <button
+                    onClick={() => setIsMessagesMenuOpen(!isMessagesMenuOpen)}
+                    className="p-2 rounded-xl bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground transition-all relative"
+                    title="Xabarlar (Dashboard)"
+                  >
+                    <MessageCircle className="w-5 h-5" />
+                    {messagesData.length > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full">
+                        {messagesData.length}
+                      </span>
+                    )}
+                  </button>
+                  <AnimatePresence>
+                    {isMessagesMenuOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.8, y: -10, filter: "blur(10px)" }}
+                        animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
+                        exit={{ opacity: 0, scale: 0.8, y: -10, filter: "blur(10px)" }}
+                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                        style={{ transformOrigin: "top right" }}
+                        className="absolute right-0 mt-2 w-80 bg-card rounded-2xl shadow-xl border border-border/50 overflow-hidden z-50"
+                      >
+                        <div className="p-4 border-b border-border/50 bg-secondary/30 flex justify-between items-center">
+                          <h3 className="font-semibold text-foreground">Xabarlar</h3>
+                          <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium">{messagesData.length} ta</span>
+                        </div>
+                        <div className="max-h-[400px] overflow-y-auto p-2 space-y-2">
+                          {messagesData.length === 0 ? (
+                            <div className="text-center py-8">
+                              <MessageCircle className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-50" />
+                              <p className="text-sm text-muted-foreground">Hozircha xabarlar yo'q</p>
+                            </div>
+                          ) : (
+                            messagesData.map((msg) => (
+                              <div key={msg.id} className={`p-3 rounded-xl border ${msg.type === 'info' ? 'bg-blue-500/10 border-blue-500/20' : msg.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20' : 'bg-green-500/10 border-green-500/20'}`}>
+                                <h4 className={`text-sm font-bold mb-1 ${msg.type === 'info' ? 'text-blue-600' : msg.type === 'warning' ? 'text-amber-600' : 'text-green-600'}`}>
+                                  {msg.title}
+                                </h4>
+                                <p className="text-xs text-foreground/80">{msg.content}</p>
+                                <p className="text-[10px] text-muted-foreground mt-2 text-right">
+                                  {new Date(msg.date).toLocaleDateString()}
+                                </p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+
               <select 
                 value={language}
                 onChange={(e) => setLanguage(e.target.value as Language)}
@@ -881,6 +1000,58 @@ export default function App() {
 
             {/* Mobile Menu Button */}
             <div className="md:hidden flex items-center gap-2">
+              {user && (
+                <div className="relative" ref={messagesMenuRefMobile}>
+                  <button
+                    onClick={() => setIsMessagesMenuOpen(!isMessagesMenuOpen)}
+                    className="p-2 rounded-xl bg-secondary text-foreground relative"
+                  >
+                    <MessageCircle className="w-5 h-5" />
+                    {messagesData.length > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full">
+                        {messagesData.length}
+                      </span>
+                    )}
+                  </button>
+                  <AnimatePresence>
+                    {isMessagesMenuOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.8, y: -10, filter: "blur(10px)" }}
+                        animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
+                        exit={{ opacity: 0, scale: 0.8, y: -10, filter: "blur(10px)" }}
+                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                        style={{ transformOrigin: "top right" }}
+                        className="absolute right-0 mt-2 w-[300px] bg-card rounded-2xl shadow-xl border border-border/50 overflow-hidden z-50"
+                      >
+                        <div className="p-4 border-b border-border/50 bg-secondary/30 flex justify-between items-center">
+                          <h3 className="font-semibold text-foreground">Xabarlar</h3>
+                          <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium">{messagesData.length} ta</span>
+                        </div>
+                        <div className="max-h-[300px] overflow-y-auto p-2 space-y-2">
+                          {messagesData.length === 0 ? (
+                            <div className="text-center py-8">
+                              <MessageCircle className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-50" />
+                              <p className="text-sm text-muted-foreground">Hozircha xabarlar yo'q</p>
+                            </div>
+                          ) : (
+                            messagesData.map((msg) => (
+                              <div key={msg.id} className={`p-3 rounded-xl border ${msg.type === 'info' ? 'bg-blue-500/10 border-blue-500/20' : msg.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20' : 'bg-green-500/10 border-green-500/20'}`}>
+                                <h4 className={`text-sm font-bold mb-1 ${msg.type === 'info' ? 'text-blue-600' : msg.type === 'warning' ? 'text-amber-600' : 'text-green-600'}`}>
+                                  {msg.title}
+                                </h4>
+                                <p className="text-xs text-foreground/80">{msg.content}</p>
+                                <p className="text-[10px] text-muted-foreground mt-2 text-right">
+                                  {new Date(msg.date).toLocaleDateString()}
+                                </p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
               <select 
                 value={language}
                 onChange={(e) => setLanguage(e.target.value as Language)}
@@ -961,7 +1132,8 @@ export default function App() {
                 ) : (
                   <button 
                     onClick={() => { handleGoogleLogin(); setIsMenuOpen(false); }}
-                    className="w-full flex items-center justify-center gap-2 bg-white text-gray-800 border border-gray-300 px-4 py-3 rounded-xl text-base font-medium hover:bg-gray-50 transition-colors shadow-sm mb-4"
+                    disabled={isLoggingIn}
+                    className="w-full flex items-center justify-center gap-2 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 border border-gray-300 dark:border-gray-600 px-4 py-3 rounded-xl text-base font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm mb-4 disabled:opacity-50"
                   >
                     <svg className="w-5 h-5" viewBox="0 0 24 24">
                       <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -969,7 +1141,7 @@ export default function App() {
                       <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                       <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                     </svg>
-                    Google orqali kirish
+                    {isLoggingIn ? 'Kirilmoqda...' : 'Google orqali kirish'}
                   </button>
                 )}
                 <MobileNavLink active={currentPage === 'fanlar'} onClick={() => { navigate('fanlar'); setIsMenuOpen(false); }}>{t('subjects')}</MobileNavLink>
@@ -978,6 +1150,7 @@ export default function App() {
                 <MobileNavLink active={currentPage === 'mnemonics'} onClick={() => { navigate('mnemonics'); setIsMenuOpen(false); }}>{t('mnemonics')}</MobileNavLink>
                 <MobileNavLink active={currentPage === 'symptoms'} onClick={() => { navigate('symptoms'); setIsMenuOpen(false); }}>{t('symptoms')}</MobileNavLink>
                 <MobileNavLink active={currentPage === 'quiz'} onClick={() => { navigate('quiz'); setIsMenuOpen(false); }}>{t('quiz')}</MobileNavLink>
+                <MobileNavLink active={currentPage === 'leaderboard'} onClick={() => { navigate('leaderboard'); setIsMenuOpen(false); }}>Reyting</MobileNavLink>
                 <MobileNavLink active={currentPage === 'osce'} onClick={() => { navigate('osce'); setIsMenuOpen(false); }}>{t('osce')}</MobileNavLink>
                 <MobileNavLink active={currentPage === 'patients'} onClick={() => { navigate('patients'); setIsMenuOpen(false); }}>{t('patients')}</MobileNavLink>
                 <MobileNavLink active={currentPage === 'laboratory'} onClick={() => { navigate('laboratory'); setIsMenuOpen(false); }}>Laboratoriya</MobileNavLink>
@@ -1010,7 +1183,7 @@ export default function App() {
           {currentPage === 'videos' && <VideosPage data={videosData} handleAIExplain={handleAIExplain} updateProgress={updateProgress} saveActivity={saveActivity} />}
           {currentPage === 'symptoms' && <SymptomsPage data={symptomsData} handleAIExplain={handleAIExplain} updateProgress={updateProgress} />}
           {currentPage === 'patients' && <PatientsPage patients={patientsData} onTreat={handleTreatPatient} onClearAdvice={handleClearAdvice} />}
-          {currentPage === 'osce' && <OSCEPage scenarios={osceScenarios} />}
+          {currentPage === 'osce' && <OSCEPage scenarios={osceScenarios} updateProgress={updateProgress} />}
           {currentPage === 'quiz' && <QuizPage handleAIExplain={handleAIExplain} showAlert={showAlert} user={user} updateProgress={updateProgress} saveActivity={saveActivity} fanlar={fanlarData} questions={questionsData} />}
           {currentPage === 'tutor' && <TutorPage />}
           {currentPage === 'pharma' && <PharmaPage />}
@@ -1035,6 +1208,7 @@ export default function App() {
             setNews={setNewsData}
             journals={journalsData}
             setJournals={setJournalsData}
+            messagesData={messagesData}
             onUpdate={fetchAllData} 
             onUpdateLibrary={handleUpdateLibrary}
             themeColor={themeColor}
@@ -1046,6 +1220,7 @@ export default function App() {
           {currentPage === 'journals' && <JournalsPage journals={journalsData} />}
           {currentPage === 'laboratory' && <LaboratoryPage />}
           {currentPage === 'profile' && <ProfilePage user={user} />}
+          {currentPage === 'leaderboard' && <Leaderboard onBack={() => setCurrentPage('home')} />}
         </AnimatePresence>
       </main>
 
@@ -1303,7 +1478,7 @@ function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate
               <h2 className="text-[10px] md:text-xs font-bold text-foreground/80 tracking-widest uppercase">AMALIYOT <span className="text-foreground/40 font-medium">(PRACTICE & ASSESSMENT)</span></h2>
               <div className="flex-1 h-px bg-border/50"></div>
             </div>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
               {[
                 { id: 'quiz', label: 'Testlar', icon: Icons.ClipboardList, bgColor: 'bg-[#FFF3E0]', iconColor: 'text-[#FF9800]' },
                 { id: 'osce', label: 'OSCE', icon: Stethoscope, bgColor: 'bg-[#E0F2F1]', iconColor: 'text-[#00BFA5]' },
@@ -1835,6 +2010,7 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
         id: f.id,
         name: f.title,
         icon: f.icon || "📚",
+        isLocked: f.isLocked || false,
         topics: f.topics.map(t => {
           const topicQuestions = questions.filter(q => q.subject === f.title && q.topic === t.title);
           return {
@@ -2359,29 +2535,42 @@ Return ONLY a JSON object in this format:
             ];
             const gradientClass = gradients[idx % gradients.length];
 
+            const isSubjectLocked = subject.isLocked && user?.role !== 'admin';
+            
             return (
               <motion.div
                 key={subject.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.1 }}
-                whileHover={{ y: -10, scale: 1.02 }}
-                onClick={() => handleSubjectSelect(subject)}
-                className="relative group cursor-pointer overflow-hidden rounded-[2.5rem] p-1 shadow-xl hover:shadow-2xl transition-all duration-500"
+                whileHover={!isSubjectLocked ? { y: -10, scale: 1.02 } : {}}
+                onClick={() => {
+                  if (isSubjectLocked) {
+                    showAlert('Yopiq fan', 'Ushbu fan testlari hozircha yopiq. Admin ruxsat berganidan so\'ng ishlashingiz mumkin.');
+                  } else {
+                    handleSubjectSelect(subject);
+                  }
+                }}
+                className={`relative group ${isSubjectLocked ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'} overflow-hidden rounded-[2.5rem] p-1 shadow-xl hover:shadow-2xl transition-all duration-500`}
               >
                 {/* Background Gradient Layer */}
-                <div className={`absolute inset-0 bg-gradient-to-br ${gradientClass} opacity-90 group-hover:opacity-100 transition-opacity duration-500`} />
+                <div className={`absolute inset-0 bg-gradient-to-br ${gradientClass} opacity-90 ${!isSubjectLocked && 'group-hover:opacity-100'} transition-opacity duration-500 ${isSubjectLocked && 'grayscale'}`} />
                 
                 {/* Glass Overlay */}
                 <div className="absolute inset-0 backdrop-blur-[1px] bg-white/5 border border-white/20 rounded-[2.5rem]" />
                 
                 {/* Content Container */}
                 <div className="relative p-10 flex flex-col items-center text-center text-white min-h-[320px] justify-center z-10">
+                  {isSubjectLocked && (
+                    <div className="absolute top-6 right-6 bg-black/30 p-3 rounded-full backdrop-blur-md">
+                      <Icons.Lock className="w-6 h-6 text-white" />
+                    </div>
+                  )}
                   {/* Icon with floating effect */}
                   <motion.div 
-                    animate={{ y: [0, -5, 0] }}
+                    animate={!isSubjectLocked ? { y: [0, -5, 0] } : {}}
                     transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                    className="mb-8 p-6 rounded-3xl bg-white/20 backdrop-blur-md shadow-2xl border border-white/30 group-hover:scale-110 transition-transform duration-500"
+                    className={`mb-8 p-6 rounded-3xl bg-white/20 backdrop-blur-md shadow-2xl border border-white/30 ${!isSubjectLocked && 'group-hover:scale-110'} transition-transform duration-500`}
                   >
                     <IconComponent className="w-12 h-12 text-white drop-shadow-lg" />
                   </motion.div>
@@ -2398,18 +2587,18 @@ Return ONLY a JSON object in this format:
                   {/* Action Button */}
                   <div className="mt-10">
                     <motion.div
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="bg-white text-blue-700 px-10 py-4 rounded-2xl font-black text-lg shadow-2xl opacity-0 group-hover:opacity-100 translate-y-6 group-hover:translate-y-0 transition-all duration-500"
+                      whileHover={!isSubjectLocked ? { scale: 1.05 } : {}}
+                      whileTap={!isSubjectLocked ? { scale: 0.95 } : {}}
+                      className={`bg-white ${isSubjectLocked ? 'text-gray-500' : 'text-blue-700'} px-10 py-4 rounded-2xl font-black text-lg shadow-2xl opacity-0 group-hover:opacity-100 translate-y-6 group-hover:translate-y-0 transition-all duration-500`}
                     >
-                      Testni boshlash
+                      {isSubjectLocked ? 'Yopiq' : 'Testni boshlash'}
                     </motion.div>
                   </div>
                 </div>
 
                 {/* Decorative Blobs */}
-                <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-3xl group-hover:bg-white/20 transition-all duration-700" />
-                <div className="absolute -left-10 -bottom-10 w-48 h-48 bg-black/10 rounded-full blur-3xl group-hover:bg-black/20 transition-all duration-700" />
+                <div className={`absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-3xl ${!isSubjectLocked && 'group-hover:bg-white/20'} transition-all duration-700`} />
+                <div className={`absolute -left-10 -bottom-10 w-48 h-48 bg-black/10 rounded-full blur-3xl ${!isSubjectLocked && 'group-hover:bg-black/20'} transition-all duration-700`} />
               </motion.div>
             );
           }) : (
@@ -3138,7 +3327,7 @@ function TopicTimeLimitEditor({ fanlar, setFanlar, subjectTitle, topicTitle, sho
   );
 }
 
-function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections, settings, library, osceScenarios, fanlar, setFanlar, appSettings, setAppSettings, news, setNews, journals, setJournals, onUpdate, onUpdateLibrary, themeColor, setThemeColor, showAlert, showConfirm }: { 
+function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections, settings, library, osceScenarios, fanlar, setFanlar, appSettings, setAppSettings, news, setNews, journals, setJournals, messagesData, onUpdate, onUpdateLibrary, themeColor, setThemeColor, showAlert, showConfirm }: { 
   mnemonics: Mnemonic[], 
   questions: Question[], 
   symptoms: SymptomData[], 
@@ -3156,6 +3345,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   setNews: (data: NewsItem[]) => void,
   journals: JournalItem[],
   setJournals: (data: JournalItem[]) => void,
+  messagesData: any[],
   onUpdate: () => void,
   onUpdateLibrary: (data: any) => void,
   themeColor: string,
@@ -3163,7 +3353,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   showAlert: (title: string, content: string) => void,
   showConfirm: (title: string, content: string, onConfirm: () => void) => void
 }) {
-  const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'settings' | 'library' | 'osce' | 'fanlar' | 'appSettings' | 'news' | 'journals' | 'quizRequests' | 'laboratory' | 'pharma' | 'tutor' | 'ai'>('videos');
+  const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'settings' | 'library' | 'osce' | 'fanlar' | 'appSettings' | 'news' | 'journals' | 'quizRequests' | 'laboratory' | 'pharma' | 'tutor' | 'ai' | 'leaderboard' | 'messages'>('videos');
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
   const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({});
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
@@ -3214,9 +3404,14 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
         await signOut(auth);
         setError(`Sizda admin huquqlari yo'q. UID: ${user.uid}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Login error:", err);
-      setError('Kirishda xatolik yuz berdi. Konsolni tekshiring.');
+      if (err.code === 'auth/cancelled-popup-request' || err.code === 'auth/popup-closed-by-user') {
+        // User closed the popup, ignore
+        setError('');
+      } else {
+        setError('Kirishda xatolik yuz berdi. Konsolni tekshiring.');
+      }
     } finally {
       setLoading(false);
     }
@@ -3621,6 +3816,8 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                 { id: 'ai', label: 'AI Markazi', icon: Sparkles },
                 { id: 'sections', label: 'Bo\'limlar', icon: Plus },
                 { id: 'quizRequests', label: 'Test So\'rovlari', icon: AlertTriangle },
+                { id: 'leaderboard', label: 'Reyting Sozlamalari', icon: Trophy },
+                { id: 'messages', label: 'Dashboard (Xabarlar)', icon: MessageCircle },
                 { id: 'appSettings', label: 'Ilova Sozlamalari', icon: Settings },
                 { id: 'settings', label: 'Sozlamalar', icon: Settings },
               ].map(tab => {
@@ -3738,12 +3935,12 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
             <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
               <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
                 <h3 className="font-medium text-foreground flex items-center gap-2">
-                  {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'patients' ? <Heart className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'osce' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : activeTab === 'fanlar' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'news' ? <Globe className="w-5 h-5 text-primary" /> : activeTab === 'journals' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'laboratory' ? <Icons.FlaskConical className="w-5 h-5 text-primary" /> : activeTab === 'pharma' ? <Icons.Pill className="w-5 h-5 text-primary" /> : activeTab === 'tutor' ? <Icons.Bot className="w-5 h-5 text-primary" /> : activeTab === 'ai' ? <Sparkles className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
-                  {activeTab === 'mnemonics' ? 'Mnemonika Ro\'yxati' : activeTab === 'questions' ? 'Testlar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'patients' ? 'Bemorlar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'osce' ? 'OSCE Ssenariylari' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : activeTab === 'fanlar' ? 'Fanlar Ro\'yxati' : activeTab === 'news' ? 'Yangiliklar Ro\'yxati' : activeTab === 'journals' ? 'Jurnallar Ro\'yxati' : activeTab === 'appSettings' ? 'Ilova Sozlamalari' : activeTab === 'laboratory' ? 'Laboratoriya' : activeTab === 'pharma' ? 'Farmakologiya' : activeTab === 'tutor' ? 'AI Tutor' : activeTab === 'ai' ? 'AI Markazi' : 'Tizim Sozlamalari'}
+                  {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'patients' ? <Heart className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'osce' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : activeTab === 'fanlar' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'news' ? <Globe className="w-5 h-5 text-primary" /> : activeTab === 'journals' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'laboratory' ? <Icons.FlaskConical className="w-5 h-5 text-primary" /> : activeTab === 'pharma' ? <Icons.Pill className="w-5 h-5 text-primary" /> : activeTab === 'tutor' ? <Icons.Bot className="w-5 h-5 text-primary" /> : activeTab === 'ai' ? <Sparkles className="w-5 h-5 text-primary" /> : activeTab === 'leaderboard' ? <Trophy className="w-5 h-5 text-primary" /> : activeTab === 'messages' ? <MessageCircle className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
+                  {activeTab === 'mnemonics' ? 'Mnemonika Ro\'yxati' : activeTab === 'questions' ? 'Testlar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'patients' ? 'Bemorlar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'osce' ? 'OSCE Ssenariylari' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : activeTab === 'fanlar' ? 'Fanlar Ro\'yxati' : activeTab === 'news' ? 'Yangiliklar Ro\'yxati' : activeTab === 'journals' ? 'Jurnallar Ro\'yxati' : activeTab === 'appSettings' ? 'Ilova Sozlamalari' : activeTab === 'leaderboard' ? 'Reyting Sozlamalari' : activeTab === 'messages' ? 'Xabarlar Ro\'yxati' : activeTab === 'laboratory' ? 'Laboratoriya' : activeTab === 'pharma' ? 'Farmakologiya' : activeTab === 'tutor' ? 'AI Tutor' : activeTab === 'ai' ? 'AI Markazi' : 'Tizim Sozlamalari'}
                 </h3>
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">
-                    {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : activeTab === 'osce' ? osceScenarios : activeTab === 'fanlar' ? fanlar : activeTab === 'news' ? news : activeTab === 'journals' ? journals : activeTab === 'appSettings' || activeTab === 'laboratory' || activeTab === 'pharma' || activeTab === 'tutor' || activeTab === 'ai' ? [] : sections).length} ta element
+                    {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : activeTab === 'osce' ? osceScenarios : activeTab === 'fanlar' ? fanlar : activeTab === 'news' ? news : activeTab === 'journals' ? journals : activeTab === 'messages' ? messagesData : activeTab === 'appSettings' || activeTab === 'leaderboard' || activeTab === 'laboratory' || activeTab === 'pharma' || activeTab === 'tutor' || activeTab === 'ai' ? [] : sections).length} ta element
                   </span>
                   <button 
                     onClick={handleRestoreOldTests} 
@@ -4107,6 +4304,28 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                 {activeTab === 'fanlar' && <FanlarForm fanlar={fanlar} setFanlar={setFanlar} editSubjectData={editingSubject} editTopicData={editingTopic} onCancelEditSubject={() => setEditingSubject(null)} onCancelEditTopic={() => setEditingTopic(null)} />}
                 {activeTab === 'news' && <NewsForm onAdd={async (data) => { setNews([...news, { ...data, id: Date.now().toString() }]); return true; }} />}
                 {activeTab === 'journals' && <JournalForm onAdd={async (data) => { setJournals([...journals, { ...data, id: Date.now().toString() }]); return true; }} />}
+                {activeTab === 'leaderboard' && <LeaderboardAdminForm showAlert={showAlert} />}
+                {activeTab === 'messages' && <MessagesAdminForm messages={messagesData} onAdd={async (data) => {
+                  try {
+                    await addDoc(collection(db, 'messages'), data);
+                    showAlert('Muvaffaqiyat', 'Xabar yuborildi');
+                    return true;
+                  } catch (e) {
+                    console.error(e);
+                    showAlert('Xatolik', 'Xabar yuborishda xatolik');
+                    return false;
+                  }
+                }} onDelete={async (id) => {
+                  try {
+                    await deleteDoc(doc(db, 'messages', id));
+                    showAlert('Muvaffaqiyat', 'Xabar o\'chirildi');
+                    return true;
+                  } catch (e) {
+                    console.error(e);
+                    showAlert('Xatolik', 'Xatolik yuz berdi');
+                    return false;
+                  }
+                }} />}
                 {activeTab === 'appSettings' && <AppSettingsForm appSettings={appSettings} setAppSettings={setAppSettings} />}
                 {activeTab === 'settings' && <SettingsForm settings={settings} onUpdate={onUpdate} themeColor={themeColor} setThemeColor={setThemeColor} showAlert={showAlert} />}
                 {(activeTab === 'laboratory' || activeTab === 'pharma' || activeTab === 'tutor' || activeTab === 'ai') && (
@@ -4124,8 +4343,231 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   );
 }
 
+function LeaderboardAdminForm({ showAlert }: { showAlert: (title: string, content: string) => void }) {
+  const [settings, setSettings] = useState({
+    startDate: '',
+    endDate: '',
+    telegramUsername: '',
+    winnerMessage: 'Faol bo\'lganingiz uchun men bilan bog\'laning!'
+  });
+  const [loading, setLoading] = useState(true);
+  const [isResetting, setIsResetting] = useState(false);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const docRef = doc(db, 'settings', 'leaderboard');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setSettings(docSnap.data() as any);
+        }
+      } catch (error) {
+        console.error("Error fetching leaderboard settings", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await setDoc(doc(db, 'settings', 'leaderboard'), settings);
+      showAlert("Muvaffaqiyat", "Reyting sozlamalari saqlandi!");
+    } catch (error) {
+      console.error("Error saving leaderboard settings", error);
+      showAlert("Xatolik", "Saqlashda xatolik yuz berdi.");
+    }
+  };
+
+  const handleResetAll = async () => {
+    if (!window.confirm("DIQQAT! Barcha foydalanuvchilarning natijalari (test, osce, videolar, va h.k.) va reyting to'liq tozalanadi. Buni ortga qaytarib bo'lmaydi. Davom etasizmi?")) return;
+    
+    setIsResetting(true);
+    try {
+      // 1. Clear leaderboard collection
+      const lbSnapshot = await getDocs(collection(db, 'leaderboard'));
+      let lbBatch = writeBatch(db);
+      let lbCount = 0;
+      for (const d of lbSnapshot.docs) {
+        lbBatch.delete(d.ref);
+        lbCount++;
+        if (lbCount % 400 === 0) {
+          await lbBatch.commit();
+          lbBatch = writeBatch(db);
+        }
+      }
+      if (lbCount % 400 !== 0) {
+        await lbBatch.commit();
+      }
+
+      // 2. Clear all users progress
+      const usersSnapshot = await getDocs(collection(db, 'users'));
+      
+      // Firestore batches are limited to 500 operations. We'll process in chunks if needed, 
+      // but for simplicity we'll do a simple loop with individual updates or smaller batches.
+      let batch = writeBatch(db);
+      let count = 0;
+      
+      for (const userDoc of usersSnapshot.docs) {
+        batch.update(userDoc.ref, {
+          progress_v2: {
+            quizScore: 0,
+            osceScore: 0,
+            videosWatched: 0,
+            mnemonicsRead: 0,
+            symptomsChecked: 0
+          },
+          testHistory_v2: [],
+          videoHistory_v2: []
+        });
+        count++;
+        if (count % 400 === 0) {
+          await batch.commit();
+          batch = writeBatch(db);
+        }
+      }
+      if (count % 400 !== 0) {
+        await batch.commit();
+      }
+
+      // Clear local storage for the admin
+      localStorage.removeItem('meduz_quiz_scores_v2');
+      localStorage.removeItem('meduz_quiz_attempts_v2');
+      localStorage.removeItem('meduz_watched_videos');
+      localStorage.removeItem('meduz_osce_progress');
+      localStorage.removeItem('meduz_completed_topics');
+
+      showAlert("Muvaffaqiyat", "Barcha natijalar va reyting muvaffaqiyatli tozalandi!");
+    } catch (error) {
+      console.error("Error resetting progress", error);
+      showAlert("Xatolik", `Tozalashda xatolik yuz berdi: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-center">Yuklanmoqda...</div>;
+
+  return (
+    <div className="space-y-8">
+      <form onSubmit={handleSave} className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Boshlanish sanasi</label>
+            <input 
+              type="date" 
+              value={settings.startDate}
+              onChange={e => setSettings({...settings, startDate: e.target.value})}
+              className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Tugash sanasi</label>
+            <input 
+              type="date" 
+              value={settings.endDate}
+              onChange={e => setSettings({...settings, endDate: e.target.value})}
+              className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Telegram Username (G'olib bilan bog'lanish uchun)</label>
+            <input 
+              type="text" 
+              placeholder="@username"
+              value={settings.telegramUsername}
+              onChange={e => setSettings({...settings, telegramUsername: e.target.value})}
+              className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">G'olibga yuboriladigan xabar</label>
+            <input 
+              type="text" 
+              value={settings.winnerMessage}
+              onChange={e => setSettings({...settings, winnerMessage: e.target.value})}
+              className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+        </div>
+        <button type="submit" className="bg-primary text-primary-foreground px-6 py-2.5 rounded-xl font-medium hover:bg-primary/90 transition-colors">
+          Sozlamalarni saqlash
+        </button>
+      </form>
+
+      <div className="pt-8 border-t border-border">
+        <h4 className="text-lg font-bold text-red-500 mb-4 flex items-center gap-2">
+          <Icons.AlertTriangle className="w-5 h-5" />
+          Xavfli Hudud (Danger Zone)
+        </h4>
+        <p className="text-sm text-muted-foreground mb-4">
+          Quyidagi tugma orqali barcha foydalanuvchilarning to'plagan ballari, test va video tarixlarini hamda reytingni to'liq tozalashingiz mumkin. Yangi mavsumni boshlashdan oldin ishlating.
+        </p>
+        <button 
+          onClick={handleResetAll}
+          disabled={isResetting}
+          className="bg-red-500 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center gap-2"
+        >
+          {isResetting ? 'Tozalanmoqda...' : 'Barcha natijalarni tozalash'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MessagesAdminForm({ messages, onAdd, onDelete }: { messages: any[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => Promise<boolean> }) {
+  const [formData, setFormData] = useState({ title: '', content: '', type: 'info' });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (await onAdd({ ...formData, date: new Date().toISOString() })) {
+      setFormData({ title: '', content: '', type: 'info' });
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <form onSubmit={handleSubmit} className="space-y-4 bg-secondary/30 p-6 rounded-2xl border border-border">
+        <h3 className="text-lg font-bold text-foreground mb-4">Yangi xabar yuborish</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input type="text" placeholder="Xabar sarlavhasi" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary" required />
+          <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as any})} className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary">
+            <option value="info">Ma'lumot (Ko'k)</option>
+            <option value="warning">Ogohlantirish (Sariq)</option>
+            <option value="success">Muvaffaqiyat (Yashil)</option>
+          </select>
+        </div>
+        <textarea placeholder="Xabar matni" value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary min-h-[100px]" required />
+        <button type="submit" className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-medium text-sm hover:bg-primary/90 transition-all">Yuborish</button>
+      </form>
+
+      <div className="space-y-4">
+        <h3 className="text-lg font-bold text-foreground">Yuborilgan xabarlar</h3>
+        {messages.map(msg => (
+          <div key={msg.id} className="bg-card p-4 rounded-xl border border-border flex justify-between items-start gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`w-2 h-2 rounded-full ${msg.type === 'info' ? 'bg-blue-500' : msg.type === 'warning' ? 'bg-amber-500' : 'bg-green-500'}`} />
+                <h4 className="font-bold text-foreground">{msg.title}</h4>
+              </div>
+              <p className="text-sm text-foreground/80 whitespace-pre-wrap">{msg.content}</p>
+              <p className="text-xs text-muted-foreground mt-2">{new Date(msg.date).toLocaleString('uz-UZ')}</p>
+            </div>
+            <button onClick={() => onDelete(msg.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
+        {messages.length === 0 && <p className="text-muted-foreground text-sm">Xabarlar yo'q</p>}
+      </div>
+    </div>
+  );
+}
+
 function AppSettingsForm({ appSettings, setAppSettings }: { appSettings: any, setAppSettings: (data: any) => void }) {
   const [formData, setFormData] = useState(appSettings);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -4133,8 +4575,64 @@ function AppSettingsForm({ appSettings, setAppSettings }: { appSettings: any, se
     alert('Sozlamalar saqlandi!');
   };
 
+  const handleSyncLeaderboard = async () => {
+    if (!window.confirm("Barcha foydalanuvchilarning natijalarini reytingga sinxronizatsiya qilishni xohlaysizmi? Bu biroz vaqt olishi mumkin.")) return;
+    
+    setIsSyncing(true);
+    try {
+      const usersSnapshot = await getDocs(collection(db, 'users'));
+      let count = 0;
+      
+      const syncPromises: Promise<void>[] = [];
+      
+      usersSnapshot.forEach((userDoc) => {
+        const userData = userDoc.data();
+        const quizScore = userData.progress_v2?.quizScore || 0;
+        const osceScore = userData.progress_v2?.osceScore || 0;
+        const totalScore = quizScore + osceScore;
+
+        if (totalScore > 0) {
+          const leaderboardRef = doc(db, 'leaderboard', userDoc.id);
+          syncPromises.push(
+            setDoc(leaderboardRef, {
+              uid: userDoc.id,
+              displayName: userData.displayName || 'Anonim foydalanuvchi',
+              photoURL: userData.photoURL || '',
+              score: totalScore,
+              lastUpdated: new Date().toISOString()
+            }, { merge: true })
+          );
+          count++;
+        }
+      });
+      
+      await Promise.all(syncPromises);
+      alert(`Muvaffaqiyatli! ${count} ta foydalanuvchi reytingga qo'shildi/yangilandi.`);
+    } catch (error) {
+      console.error("Error syncing leaderboard:", error);
+      alert("Xatolik yuz berdi. Konsolni tekshiring.");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="p-4 bg-secondary/50 rounded-xl border border-border mb-6">
+        <h4 className="font-medium text-foreground mb-2">Reytingni sinxronizatsiya qilish</h4>
+        <p className="text-sm text-foreground/60 mb-4">
+          Agar eski foydalanuvchilarning natijalari reytingda ko'rinmayotgan bo'lsa, ushbu tugmani bosing.
+        </p>
+        <button
+          type="button"
+          onClick={handleSyncLeaderboard}
+          disabled={isSyncing}
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+        >
+          {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          {isSyncing ? "Sinxronizatsiya qilinmoqda..." : "Reytingni yangilash"}
+        </button>
+      </div>
       <div>
         <label className="block text-sm font-medium text-foreground mb-1">Ilova Yaratuvchisi</label>
         <input
@@ -4244,16 +4742,16 @@ function QuizRequestsTab({ requests, onApprove, onReject }: { requests: any[], o
 }
 
 function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCancelEditSubject, onCancelEditTopic }: { fanlar: Subject[], setFanlar: (data: Subject[]) => void, editSubjectData?: Subject | null, editTopicData?: { subjectId: string, topic: Topic } | null, onCancelEditSubject?: () => void, onCancelEditTopic?: () => void }) {
-  const [newSubject, setNewSubject] = useState({ title: '', description: '', icon: 'BookOpen' });
+  const [newSubject, setNewSubject] = useState({ title: '', description: '', icon: 'BookOpen', isLocked: false });
   const [newTopic, setNewTopic] = useState({ subjectId: '', title: '', description: '' });
   const [newVideo, setNewVideo] = useState({ subjectId: '', topicId: '', title: '', description: '', videoUrl: '' });
   const [newGuide, setNewGuide] = useState({ subjectId: '', topicId: '', title: '', description: '', driveLink: '' });
 
   useEffect(() => {
     if (editSubjectData) {
-      setNewSubject({ title: editSubjectData.title, description: editSubjectData.description, icon: editSubjectData.icon });
+      setNewSubject({ title: editSubjectData.title, description: editSubjectData.description, icon: editSubjectData.icon, isLocked: editSubjectData.isLocked || false });
     } else {
-      setNewSubject({ title: '', description: '', icon: 'BookOpen' });
+      setNewSubject({ title: '', description: '', icon: 'BookOpen', isLocked: false });
     }
   }, [editSubjectData]);
 
@@ -4272,7 +4770,7 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
     if (editSubjectData) {
       const updatedFanlar = fanlar.map(sub => {
         if (sub.id === editSubjectData.id) {
-          return { ...sub, title: newSubject.title, description: newSubject.description, icon: newSubject.icon };
+          return { ...sub, title: newSubject.title, description: newSubject.description, icon: newSubject.icon, isLocked: newSubject.isLocked };
         }
         return sub;
       });
@@ -4285,10 +4783,11 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
         title: newSubject.title,
         description: newSubject.description,
         icon: newSubject.icon,
+        isLocked: newSubject.isLocked,
         topics: []
       };
       setFanlar([...fanlar, subject]);
-      setNewSubject({ title: '', description: '', icon: 'BookOpen' });
+      setNewSubject({ title: '', description: '', icon: 'BookOpen', isLocked: false });
       alert('Fan qo\'shildi!');
     }
   };
@@ -4441,6 +4940,15 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
             onChange={e => setNewSubject({...newSubject, icon: e.target.value})}
             required
           />
+          <label className="flex items-center gap-2 text-sm text-foreground">
+            <input 
+              type="checkbox" 
+              checked={newSubject.isLocked}
+              onChange={e => setNewSubject({...newSubject, isLocked: e.target.checked})}
+              className="rounded border-border text-primary focus:ring-primary"
+            />
+            Fan qulflanganmi? (Faqat ruxsat berilganlar ko'ra oladi)
+          </label>
           <div className="flex gap-2">
             <button type="submit" className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors">
               {editSubjectData ? 'Fanni Saqlash' : 'Fanni Qo\'shish'}
@@ -4987,9 +5495,91 @@ function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar }: { onAdd
     });
   };
 
+  const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        let successCount = 0;
+        let errorCount = 0;
+        
+        for (const row of results.data as any[]) {
+          try {
+            // Expected columns: subject, topic, difficulty, question, optionA, optionB, optionC, optionD, correct (A/B/C/D), explanation
+            if (!row.question || !row.optionA || !row.correct) {
+              errorCount++;
+              continue;
+            }
+
+            const options = [row.optionA, row.optionB, row.optionC, row.optionD].filter(Boolean);
+            let correctIndices = [0];
+            
+            // Map A, B, C, D to 0, 1, 2, 3
+            if (typeof row.correct === 'string') {
+              const correctMap: Record<string, number> = { 'A': 0, 'B': 1, 'C': 2, 'D': 3 };
+              const mapped = correctMap[row.correct.trim().toUpperCase()];
+              if (mapped !== undefined) correctIndices = [mapped];
+            }
+
+            const newQuestion = {
+              subject: row.subject || formData.subject,
+              topic: row.topic || formData.topic,
+              difficulty: row.difficulty || 'medium',
+              type: 'test',
+              question: row.question,
+              options: options,
+              correct: correctIndices,
+              explanation: row.explanation || ''
+            };
+
+            const success = await onAdd(newQuestion);
+            if (success) successCount++;
+            else errorCount++;
+          } catch (err) {
+            errorCount++;
+          }
+        }
+        
+        alert(`CSV yuklash yakunlandi!\nMuvaffaqiyatli: ${successCount}\nXatoliklar: ${errorCount}`);
+        e.target.value = '';
+      },
+      error: (error) => {
+        alert('CSV faylni o\'qishda xatolik: ' + error.message);
+      }
+    });
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+    <div className="space-y-6">
+      {!editData && (
+        <div className="p-4 border border-dashed border-primary/30 rounded-2xl bg-primary/5 flex flex-col items-center justify-center text-center space-y-3">
+          <div className="p-3 bg-primary/10 rounded-full text-primary">
+            <Icons.FileSpreadsheet className="w-6 h-6" />
+          </div>
+          <div>
+            <h4 className="font-semibold text-foreground">Excel/CSV orqali yuklash</h4>
+            <p className="text-xs text-foreground/60 mt-1 max-w-sm">
+              Ustunlar: subject, topic, difficulty, question, optionA, optionB, optionC, optionD, correct (A/B/C/D), explanation
+            </p>
+          </div>
+          <label className="cursor-pointer bg-primary text-primary-foreground px-4 py-2 rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors">
+            Fayl tanlash
+            <input type="file" accept=".csv" className="hidden" onChange={handleCSVUpload} />
+          </label>
+        </div>
+      )}
+
+      <div className="flex items-center gap-4">
+        <div className="h-[1px] flex-1 bg-border"></div>
+        <span className="text-xs font-medium text-foreground/40 uppercase tracking-wider">Yoki qo'lda kiritish</span>
+        <div className="h-[1px] flex-1 bg-border"></div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
         <div>
           <select
             className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
@@ -5137,6 +5727,7 @@ function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar }: { onAdd
         )}
       </div>
     </form>
+    </div>
   );
 }
 
@@ -6216,7 +6807,7 @@ function PatientsPage({ patients, onTreat, onClearAdvice }: { patients: Patient[
   );
 }
 
-function OSCEPage({ scenarios }: { scenarios: OSCEScenario[] }) {
+function OSCEPage({ scenarios, updateProgress }: { scenarios: OSCEScenario[], updateProgress: (field: string, value: any) => Promise<void> }) {
   const { t, language } = useTranslation();
   const [selectedScenario, setSelectedScenario] = useState<OSCEScenario | null>(null);
   const [messages, setMessages] = useState<{role: 'user' | 'model', text: string}[]>([]);
@@ -6392,7 +6983,17 @@ Format the output EXACTLY as follows using Markdown:
         }
       });
 
-      setEvaluation(response.text || t('osce_evaluation_error'));
+      const resultText = response.text || t('osce_evaluation_error');
+      setEvaluation(resultText);
+
+      // Extract overall score and update progress
+      const scoreMatch = resultText.match(/\*\*.*:\s*(\d+)\s*\/\s*100\*\*/i) || resultText.match(/(\d+)\s*\/\s*100/);
+      if (scoreMatch && scoreMatch[1]) {
+        const score = parseInt(scoreMatch[1], 10);
+        if (!isNaN(score)) {
+          await updateProgress('osceScore', (prev: number) => (prev || 0) + score);
+        }
+      }
     } catch (error) {
       console.error(error);
       setEvaluation(t('osce_evaluation_error'));

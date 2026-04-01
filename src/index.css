@@ -19,18 +19,18 @@
 }
 
 .dark {
-  --primary: #00BFA5; /* Teal for dark mode primary */
-  --primary-foreground: #0A2540;
-  --secondary: #112A46; /* Slightly lighter than background */
-  --secondary-foreground: #e2e8f0;
-  --accent: #00E5C0;
-  --accent-foreground: #0A2540;
-  --background: #0A2540; /* Deep Medical Blue */
-  --foreground: #f8fafc;
-  --card: #0D2E4E;
-  --card-foreground: #f8fafc;
-  --border: #1A3F63;
-  --input: #112A46;
+  --primary: #00BFA5; /* Keep Teal as primary in dark mode for contrast */
+  --primary-foreground: #121212;
+  --secondary: #27272a; /* Zinc 800 */
+  --secondary-foreground: #fafafa;
+  --accent: #38bdf8; /* Sky 400 */
+  --accent-foreground: #121212;
+  --background: #121212; /* Very dark, easy on eyes */
+  --foreground: #fafafa;
+  --card: #18181b; /* Zinc 900 */
+  --card-foreground: #fafafa;
+  --border: #27272a; /* Zinc 800 */
+  --input: #27272a;
   --ring: #00BFA5;
 }
 
