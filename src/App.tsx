@@ -279,11 +279,11 @@ export default function App() {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
     } catch (error: any) {
-      console.error('Google login error:', error);
       if (error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
         // User closed the popup, ignore
         return;
       }
+      console.error('Google login error:', error);
       alert("Tizimga kirishda xatolik yuz berdi: " + error.message);
     } finally {
       setIsLoggingIn(false);
@@ -825,16 +825,100 @@ export default function App() {
               <span className="text-2xl font-bold tracking-tight text-foreground group-hover:text-accent transition-colors">Med<span className="text-accent">Uz</span></span>
             </div>
 
-            {/* Desktop Nav Removed as requested */}
-            
-            <div className="hidden md:flex items-center gap-3 shrink-0">
+            {/* Desktop Nav */}
+            <div className="hidden md:flex items-center gap-2 lg:gap-3 shrink-0">
               <button 
                 onClick={() => navigate('leaderboard')}
-                className="flex items-center gap-2 px-4 py-2 mr-2 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-amber-600 hover:from-amber-500/20 hover:to-orange-500/20 border border-amber-500/20 transition-all font-medium"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-amber-600 hover:from-amber-500/20 hover:to-orange-500/20 border border-amber-500/20 transition-all font-medium"
               >
                 <Icons.Trophy className="w-5 h-5" />
-                Reyting
+                <span className="hidden lg:inline">Reyting</span>
               </button>
+
+              {user && (
+                <div className="relative" ref={messagesMenuRefDesktop}>
+                  <button
+                    onClick={() => setIsMessagesMenuOpen(!isMessagesMenuOpen)}
+                    className="p-2.5 rounded-xl bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground transition-all relative"
+                    title="Xabarlar (Dashboard)"
+                  >
+                    <MessageCircle className="w-5 h-5" />
+                    {messagesData.length > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full shadow-sm border-2 border-background">
+                        {messagesData.length}
+                      </span>
+                    )}
+                  </button>
+                  <AnimatePresence>
+                    {isMessagesMenuOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.8, y: -10, filter: "blur(10px)" }}
+                        animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
+                        exit={{ opacity: 0, scale: 0.8, y: -10, filter: "blur(10px)" }}
+                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                        style={{ transformOrigin: "top right" }}
+                        className="absolute right-0 mt-2 w-80 bg-card rounded-2xl shadow-xl border border-border/50 overflow-hidden z-50"
+                      >
+                        <div className="p-4 border-b border-border/50 bg-secondary/30 flex justify-between items-center">
+                          <h3 className="font-semibold text-foreground">Xabarlar</h3>
+                          <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium">{messagesData.length} ta</span>
+                        </div>
+                        <div className="max-h-[400px] overflow-y-auto p-2 space-y-2">
+                          {messagesData.length === 0 ? (
+                            <div className="text-center py-8">
+                              <MessageCircle className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-50" />
+                              <p className="text-sm text-muted-foreground">Hozircha xabarlar yo'q</p>
+                            </div>
+                          ) : (
+                            messagesData.map((msg) => (
+                              <div key={msg.id} className={`p-3 rounded-xl border ${msg.type === 'info' ? 'bg-blue-500/10 border-blue-500/20' : msg.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20' : 'bg-green-500/10 border-green-500/20'}`}>
+                                <h4 className={`text-sm font-bold mb-1 ${msg.type === 'info' ? 'text-blue-600' : msg.type === 'warning' ? 'text-amber-600' : 'text-green-600'}`}>
+                                  {msg.title}
+                                </h4>
+                                <p className="text-xs text-foreground/80">{msg.content}</p>
+                                <p className="text-[10px] text-muted-foreground mt-2 text-right">
+                                  {new Date(msg.date).toLocaleDateString()}
+                                </p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+
+              <div className="h-6 w-px bg-border mx-1"></div>
+
+              <select 
+                value={language}
+                onChange={(e) => setLanguage(e.target.value as Language)}
+                className="p-2 rounded-xl bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground transition-all outline-none cursor-pointer text-sm font-medium appearance-none text-center"
+              >
+                <option value="uz">UZ</option>
+                <option value="ru">RU</option>
+                <option value="en">EN</option>
+              </select>
+
+              <button 
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="p-2.5 rounded-xl bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground transition-all"
+                title={isDarkMode ? "Kunduzgi rejim" : "Tungi rejim"}
+              >
+                {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </button>
+              
+              <button 
+                onClick={() => navigate('admin')}
+                className="p-2.5 rounded-xl bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground transition-all"
+                title="Admin Panel"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+
+              <div className="h-6 w-px bg-border mx-1"></div>
+
               {user ? (
                 <div className="relative" ref={profileMenuRef}>
                   <button 
@@ -851,7 +935,7 @@ export default function App() {
                       )}
                       <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-card"></div>
                     </div>
-                    <div className="flex flex-col items-start pr-2">
+                    <div className="hidden lg:flex flex-col items-start pr-2">
                       <span className="text-sm font-semibold text-foreground leading-tight">{user.displayName?.split(' ')[0]}</span>
                       <span className="text-[10px] text-foreground/60 font-medium uppercase tracking-wider">Shifokor</span>
                     </div>
@@ -905,101 +989,28 @@ export default function App() {
                 <button 
                   onClick={handleGoogleLogin}
                   disabled={isLoggingIn}
-                  className="flex items-center gap-2 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 border border-gray-300 dark:border-gray-600 px-4 py-2 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm disabled:opacity-50"
+                  className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-50"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="currentColor"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="currentColor"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="currentColor"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="currentColor"/>
                   </svg>
-                  {isLoggingIn ? 'Kirilmoqda...' : 'Google orqali kirish'}
+                  {isLoggingIn ? 'Kirilmoqda...' : 'Kirish'}
                 </button>
               )}
-              
-              {user && (
-                <div className="relative" ref={messagesMenuRefDesktop}>
-                  <button
-                    onClick={() => setIsMessagesMenuOpen(!isMessagesMenuOpen)}
-                    className="p-2 rounded-xl bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground transition-all relative"
-                    title="Xabarlar (Dashboard)"
-                  >
-                    <MessageCircle className="w-5 h-5" />
-                    {messagesData.length > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full">
-                        {messagesData.length}
-                      </span>
-                    )}
-                  </button>
-                  <AnimatePresence>
-                    {isMessagesMenuOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.8, y: -10, filter: "blur(10px)" }}
-                        animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
-                        exit={{ opacity: 0, scale: 0.8, y: -10, filter: "blur(10px)" }}
-                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                        style={{ transformOrigin: "top right" }}
-                        className="absolute right-0 mt-2 w-80 bg-card rounded-2xl shadow-xl border border-border/50 overflow-hidden z-50"
-                      >
-                        <div className="p-4 border-b border-border/50 bg-secondary/30 flex justify-between items-center">
-                          <h3 className="font-semibold text-foreground">Xabarlar</h3>
-                          <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium">{messagesData.length} ta</span>
-                        </div>
-                        <div className="max-h-[400px] overflow-y-auto p-2 space-y-2">
-                          {messagesData.length === 0 ? (
-                            <div className="text-center py-8">
-                              <MessageCircle className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-50" />
-                              <p className="text-sm text-muted-foreground">Hozircha xabarlar yo'q</p>
-                            </div>
-                          ) : (
-                            messagesData.map((msg) => (
-                              <div key={msg.id} className={`p-3 rounded-xl border ${msg.type === 'info' ? 'bg-blue-500/10 border-blue-500/20' : msg.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20' : 'bg-green-500/10 border-green-500/20'}`}>
-                                <h4 className={`text-sm font-bold mb-1 ${msg.type === 'info' ? 'text-blue-600' : msg.type === 'warning' ? 'text-amber-600' : 'text-green-600'}`}>
-                                  {msg.title}
-                                </h4>
-                                <p className="text-xs text-foreground/80">{msg.content}</p>
-                                <p className="text-[10px] text-muted-foreground mt-2 text-right">
-                                  {new Date(msg.date).toLocaleDateString()}
-                                </p>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )}
-
-              <select 
-                value={language}
-                onChange={(e) => setLanguage(e.target.value as Language)}
-                className="p-2 rounded-xl bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground transition-all outline-none cursor-pointer text-sm font-medium appearance-none text-center"
-              >
-                <option value="uz">UZ</option>
-                <option value="ru">RU</option>
-                <option value="en">EN</option>
-              </select>
-
-              <button 
-                onClick={() => setIsDarkMode(!isDarkMode)}
-                className="p-2 rounded-xl bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground transition-all"
-                title={isDarkMode ? "Kunduzgi rejim" : "Tungi rejim"}
-              >
-                {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-              </button>
-              
-              <button 
-                onClick={() => navigate('admin')}
-                className="p-2 rounded-xl bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground transition-all"
-                title="Admin Panel"
-              >
-                <Settings className="w-5 h-5" />
-              </button>
             </div>
 
             {/* Mobile Menu Button */}
-            <div className="md:hidden flex items-center gap-2">
+            <div className="md:hidden flex items-center gap-1.5">
+              <button 
+                onClick={() => navigate('leaderboard')}
+                className="p-2 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-amber-600 hover:from-amber-500/20 hover:to-orange-500/20 border border-amber-500/20 transition-all"
+                title="Reyting"
+              >
+                <Icons.Trophy className="w-5 h-5" />
+              </button>
               {user && (
                 <div className="relative" ref={messagesMenuRefMobile}>
                   <button
@@ -1008,7 +1019,7 @@ export default function App() {
                   >
                     <MessageCircle className="w-5 h-5" />
                     {messagesData.length > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full">
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full shadow-sm border-2 border-background">
                         {messagesData.length}
                       </span>
                     )}
@@ -1021,7 +1032,7 @@ export default function App() {
                         exit={{ opacity: 0, scale: 0.8, y: -10, filter: "blur(10px)" }}
                         transition={{ type: "spring", stiffness: 300, damping: 20 }}
                         style={{ transformOrigin: "top right" }}
-                        className="absolute right-0 mt-2 w-[300px] bg-card rounded-2xl shadow-xl border border-border/50 overflow-hidden z-50"
+                        className="fixed top-[72px] right-4 left-4 sm:absolute sm:top-auto sm:right-0 sm:left-auto mt-2 sm:w-[320px] bg-card rounded-2xl shadow-xl border border-border/50 overflow-hidden z-50"
                       >
                         <div className="p-4 border-b border-border/50 bg-secondary/30 flex justify-between items-center">
                           <h3 className="font-semibold text-foreground">Xabarlar</h3>
@@ -3405,11 +3416,11 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
         setError(`Sizda admin huquqlari yo'q. UID: ${user.uid}`);
       }
     } catch (err: any) {
-      console.error("Login error:", err);
       if (err.code === 'auth/cancelled-popup-request' || err.code === 'auth/popup-closed-by-user') {
         // User closed the popup, ignore
         setError('');
       } else {
+        console.error("Login error:", err);
         setError('Kirishda xatolik yuz berdi. Konsolni tekshiring.');
       }
     } finally {
@@ -4398,7 +4409,7 @@ function LeaderboardAdminForm({ showAlert }: { showAlert: (title: string, conten
           lbBatch = writeBatch(db);
         }
       }
-      if (lbCount % 400 !== 0) {
+      if (lbCount > 0 && lbCount % 400 !== 0) {
         await lbBatch.commit();
       }
 
@@ -4411,7 +4422,7 @@ function LeaderboardAdminForm({ showAlert }: { showAlert: (title: string, conten
       let count = 0;
       
       for (const userDoc of usersSnapshot.docs) {
-        batch.update(userDoc.ref, {
+        batch.set(userDoc.ref, {
           progress_v2: {
             quizScore: 0,
             osceScore: 0,
@@ -4420,15 +4431,16 @@ function LeaderboardAdminForm({ showAlert }: { showAlert: (title: string, conten
             symptomsChecked: 0
           },
           testHistory_v2: [],
-          videoHistory_v2: []
-        });
+          videoHistory_v2: [],
+          quizAttempts: {}
+        }, { merge: true });
         count++;
         if (count % 400 === 0) {
           await batch.commit();
           batch = writeBatch(db);
         }
       }
-      if (count % 400 !== 0) {
+      if (count > 0 && count % 400 !== 0) {
         await batch.commit();
       }
 
