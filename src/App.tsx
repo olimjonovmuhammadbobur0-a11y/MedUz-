@@ -71,7 +71,7 @@ import { explainMedicalTopic } from './services/aiService';
 import { LiveAudioChat } from './components/LiveAudioChat';
 import { quizData } from './quizData';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { doc, getDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc, writeBatch, query, orderBy, onSnapshot, where } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc, writeBatch, query, orderBy, onSnapshot, where, arrayUnion } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import Papa from 'papaparse';
 
@@ -82,7 +82,7 @@ const getYouTubeEmbedUrl = (url: string) => {
   return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : url;
 };
 
-type Page = 'home' | 'dashboard' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients' | 'osce' | 'tutor' | 'pharma' | 'fanlar' | 'news' | 'journals' | 'profile' | 'laboratory' | 'leaderboard';
+type Page = 'home' | 'dashboard' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients' | 'osce' | 'tutor' | 'pharma' | 'fanlar' | 'news' | 'journals' | 'profile' | 'laboratory' | 'leaderboard' | 'duel';
 
 export function Modal({ isOpen, title, content, onClose, onConfirm, confirmText = "Tasdiqlash", cancelText = "Bekor qilish" }: { isOpen: boolean, title: string, content: string, onClose: () => void, onConfirm?: () => void, confirmText?: string, cancelText?: string }) {
   if (!isOpen) return null;
@@ -116,6 +116,7 @@ export function Modal({ isOpen, title, content, onClose, onConfirm, confirmText 
 import { ProfilePage } from './components/ProfilePage';
 import { Leaderboard } from './components/Leaderboard';
 import { LaboratoryPage } from './components/LaboratoryPage';
+import { DuelArena } from './components/DuelArena';
 import { useTranslation, Language } from './i18n';
 
 function getPatientAvatar(patientInfo?: { age: number, gender: 'male' | 'female' }, className: string = "w-10 h-10 text-foreground/40") {
@@ -137,6 +138,7 @@ function getPatientAvatar(patientInfo?: { age: number, gender: 'male' | 'female'
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
+  const [activeDuelId, setActiveDuelId] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isMessagesMenuOpen, setIsMessagesMenuOpen] = useState(false);
@@ -338,6 +340,8 @@ export default function App() {
   });
 
   const [messagesData, setMessagesData] = useState<any[]>([]);
+  const [duelsData, setDuelsData] = useState<any[]>([]);
+
   useEffect(() => {
     const q = query(collection(db, 'messages'), orderBy('date', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -346,6 +350,80 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'duels'), where('opponentId', '==', user.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const duels = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setDuelsData(duels);
+    });
+    
+    const q2 = query(collection(db, 'duels'), where('challengerId', '==', user.uid));
+    const unsubscribe2 = onSnapshot(q2, (snapshot) => {
+      const duels = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setDuelsData(prev => {
+        const combined = [...prev, ...duels];
+        // Remove duplicates if any
+        const unique = combined.filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
+        // Sort by createdAt desc
+        return unique.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+      });
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribe2();
+    };
+  }, [user]);
+
+  // Claim duel rewards
+  useEffect(() => {
+    if (!user) return;
+    duelsData.forEach(async (duel) => {
+      if (duel.status === 'completed') {
+        const claimedBy = duel.claimedBy || [];
+        if (!claimedBy.includes(user.uid)) {
+          try {
+            const isChallenger = duel.challengerId === user.uid;
+            const myScore = isChallenger ? duel.challengerScore : duel.opponentScore;
+            const otherScore = isChallenger ? duel.opponentScore : duel.challengerScore;
+            
+            const isWinner = duel.winnerId === user.uid;
+            const isTie = duel.winnerId === 'tie';
+            
+            const totalPoints = myScore + (isWinner ? 50 : 10);
+            
+            // Update user score
+            const userRef = doc(db, 'users', user.uid);
+            const userSnap = await getDoc(userRef);
+            if (userSnap.exists()) {
+              const userData = userSnap.data();
+              const newScore = (userData.progress_v2?.quizScore || 0) + totalPoints;
+              await updateDoc(userRef, {
+                'progress_v2.quizScore': newScore
+              });
+              
+              // Update leaderboard
+              const lbRef = doc(db, 'leaderboard', user.uid);
+              const lbSnap = await getDoc(lbRef);
+              if (lbSnap.exists()) {
+                await updateDoc(lbRef, { score: lbSnap.data().score + totalPoints });
+              }
+            }
+            
+            // Mark as claimed
+            await updateDoc(doc(db, 'duels', duel.id), {
+              claimedBy: arrayUnion(user.uid)
+            });
+            
+          } catch (e) {
+            console.error("Error claiming duel reward", e);
+          }
+        }
+      }
+    });
+  }, [duelsData, user]);
 
   const [journalsData, setJournalsData] = useState<JournalItem[]>(() => {
     const saved = localStorage.getItem('meduz_journals');
@@ -843,9 +921,9 @@ export default function App() {
                     title="Xabarlar (Dashboard)"
                   >
                     <MessageCircle className="w-5 h-5" />
-                    {messagesData.length > 0 && (
+                    {(messagesData.length > 0 || duelsData.filter(d => (d.opponentId === user?.uid && d.opponentScore === null) || (d.challengerId === user?.uid && d.challengerScore === null)).length > 0) && (
                       <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full shadow-sm border-2 border-background">
-                        {messagesData.length}
+                        {messagesData.length + duelsData.filter(d => (d.opponentId === user?.uid && d.opponentScore === null) || (d.challengerId === user?.uid && d.challengerScore === null)).length}
                       </span>
                     )}
                   </button>
@@ -861,10 +939,25 @@ export default function App() {
                       >
                         <div className="p-4 border-b border-border/50 bg-secondary/30 flex justify-between items-center">
                           <h3 className="font-semibold text-foreground">Xabarlar</h3>
-                          <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium">{messagesData.length} ta</span>
+                          <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium">{messagesData.length + duelsData.filter(d => (d.opponentId === user?.uid && d.opponentScore === null) || (d.challengerId === user?.uid && d.challengerScore === null)).length} ta</span>
                         </div>
                         <div className="max-h-[400px] overflow-y-auto p-2 space-y-2">
-                          {messagesData.length === 0 ? (
+                          {duelsData.filter(d => (d.opponentId === user?.uid && d.opponentScore === null) || (d.challengerId === user?.uid && d.challengerScore === null)).map(duel => (
+                            <div key={duel.id} className="p-3 rounded-xl border bg-red-500/10 border-red-500/20 cursor-pointer hover:bg-red-500/20 transition-colors" onClick={() => {
+                              setActiveDuelId(duel.id);
+                              setCurrentPage('duel');
+                              setIsMessagesMenuOpen(false);
+                            }}>
+                              <div className="flex items-center gap-2 mb-1">
+                                <Icons.Swords className="w-4 h-4 text-red-500" />
+                                <h4 className="text-sm font-bold text-red-600">Duelga chorlov!</h4>
+                              </div>
+                              <p className="text-xs text-foreground/80">
+                                {duel.challengerId === user?.uid ? "Sizning duelingiz davom etmoqda." : `${duel.challengerName} sizni duelga chorladi!`}
+                              </p>
+                            </div>
+                          ))}
+                          {messagesData.length === 0 && duelsData.filter(d => (d.opponentId === user?.uid && d.opponentScore === null) || (d.challengerId === user?.uid && d.challengerScore === null)).length === 0 ? (
                             <div className="text-center py-8">
                               <MessageCircle className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-50" />
                               <p className="text-sm text-muted-foreground">Hozircha xabarlar yo'q</p>
@@ -1018,9 +1111,9 @@ export default function App() {
                     className="p-2 rounded-xl bg-secondary text-foreground relative"
                   >
                     <MessageCircle className="w-5 h-5" />
-                    {messagesData.length > 0 && (
+                    {(messagesData.length > 0 || duelsData.filter(d => (d.opponentId === user?.uid && d.opponentScore === null) || (d.challengerId === user?.uid && d.challengerScore === null)).length > 0) && (
                       <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full shadow-sm border-2 border-background">
-                        {messagesData.length}
+                        {messagesData.length + duelsData.filter(d => (d.opponentId === user?.uid && d.opponentScore === null) || (d.challengerId === user?.uid && d.challengerScore === null)).length}
                       </span>
                     )}
                   </button>
@@ -1036,10 +1129,25 @@ export default function App() {
                       >
                         <div className="p-4 border-b border-border/50 bg-secondary/30 flex justify-between items-center">
                           <h3 className="font-semibold text-foreground">Xabarlar</h3>
-                          <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium">{messagesData.length} ta</span>
+                          <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium">{messagesData.length + duelsData.filter(d => (d.opponentId === user?.uid && d.opponentScore === null) || (d.challengerId === user?.uid && d.challengerScore === null)).length} ta</span>
                         </div>
                         <div className="max-h-[300px] overflow-y-auto p-2 space-y-2">
-                          {messagesData.length === 0 ? (
+                          {duelsData.filter(d => (d.opponentId === user?.uid && d.opponentScore === null) || (d.challengerId === user?.uid && d.challengerScore === null)).map(duel => (
+                            <div key={duel.id} className="p-3 rounded-xl border bg-red-500/10 border-red-500/20 cursor-pointer hover:bg-red-500/20 transition-colors" onClick={() => {
+                              setActiveDuelId(duel.id);
+                              setCurrentPage('duel');
+                              setIsMessagesMenuOpen(false);
+                            }}>
+                              <div className="flex items-center gap-2 mb-1">
+                                <Icons.Swords className="w-4 h-4 text-red-500" />
+                                <h4 className="text-sm font-bold text-red-600">Duelga chorlov!</h4>
+                              </div>
+                              <p className="text-xs text-foreground/80">
+                                {duel.challengerId === user?.uid ? "Sizning duelingiz davom etmoqda." : `${duel.challengerName} sizni duelga chorladi!`}
+                              </p>
+                            </div>
+                          ))}
+                          {messagesData.length === 0 && duelsData.filter(d => (d.opponentId === user?.uid && d.opponentScore === null) || (d.challengerId === user?.uid && d.challengerScore === null)).length === 0 ? (
                             <div className="text-center py-8">
                               <MessageCircle className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-50" />
                               <p className="text-sm text-muted-foreground">Hozircha xabarlar yo'q</p>
@@ -1231,7 +1339,25 @@ export default function App() {
           {currentPage === 'journals' && <JournalsPage journals={journalsData} />}
           {currentPage === 'laboratory' && <LaboratoryPage />}
           {currentPage === 'profile' && <ProfilePage user={user} />}
-          {currentPage === 'leaderboard' && <Leaderboard onBack={() => setCurrentPage('home')} />}
+          {currentPage === 'leaderboard' && (
+            <Leaderboard 
+              onBack={() => setCurrentPage('home')} 
+              currentUser={user} 
+              onStartDuel={(duelId) => {
+                setActiveDuelId(duelId);
+                setCurrentPage('duel');
+              }} 
+              questions={questionsData}
+              fanlar={fanlarData}
+            />
+          )}
+          {currentPage === 'duel' && activeDuelId && user && (
+            <DuelArena 
+              duelId={activeDuelId} 
+              currentUser={user} 
+              onBack={() => setCurrentPage('leaderboard')} 
+            />
+          )}
         </AnimatePresence>
       </main>
 
@@ -4755,7 +4881,7 @@ function QuizRequestsTab({ requests, onApprove, onReject }: { requests: any[], o
 
 function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCancelEditSubject, onCancelEditTopic }: { fanlar: Subject[], setFanlar: (data: Subject[]) => void, editSubjectData?: Subject | null, editTopicData?: { subjectId: string, topic: Topic } | null, onCancelEditSubject?: () => void, onCancelEditTopic?: () => void }) {
   const [newSubject, setNewSubject] = useState({ title: '', description: '', icon: 'BookOpen', isLocked: false });
-  const [newTopic, setNewTopic] = useState({ subjectId: '', title: '', description: '' });
+  const [newTopic, setNewTopic] = useState({ subjectId: '', title: '', description: '', isDuelEnabled: false });
   const [newVideo, setNewVideo] = useState({ subjectId: '', topicId: '', title: '', description: '', videoUrl: '' });
   const [newGuide, setNewGuide] = useState({ subjectId: '', topicId: '', title: '', description: '', driveLink: '' });
 
@@ -4769,9 +4895,9 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
 
   useEffect(() => {
     if (editTopicData) {
-      setNewTopic({ subjectId: editTopicData.subjectId, title: editTopicData.topic.title, description: editTopicData.topic.description || '' });
+      setNewTopic({ subjectId: editTopicData.subjectId, title: editTopicData.topic.title, description: editTopicData.topic.description || '', isDuelEnabled: editTopicData.topic.isDuelEnabled || false });
     } else {
-      setNewTopic({ subjectId: '', title: '', description: '' });
+      setNewTopic({ subjectId: '', title: '', description: '', isDuelEnabled: false });
     }
   }, [editTopicData]);
 
@@ -4815,7 +4941,7 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
             ...sub,
             topics: sub.topics.map(top => {
               if (top.id === editTopicData.topic.id) {
-                return { ...top, title: newTopic.title, description: newTopic.description };
+                return { ...top, title: newTopic.title, description: newTopic.description, isDuelEnabled: newTopic.isDuelEnabled };
               }
               return top;
             })
@@ -4837,6 +4963,7 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
                 id: Date.now().toString(),
                 title: newTopic.title,
                 description: newTopic.description,
+                isDuelEnabled: newTopic.isDuelEnabled,
                 videos: [],
                 guides: []
               }
@@ -4846,7 +4973,7 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
         return sub;
       });
       setFanlar(updatedFanlar);
-      setNewTopic({ subjectId: '', title: '', description: '' });
+      setNewTopic({ subjectId: '', title: '', description: '', isDuelEnabled: false });
       alert('Mavzu qo\'shildi!');
     }
   };
@@ -5004,6 +5131,15 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
             onChange={e => setNewTopic({...newTopic, description: e.target.value})}
             required
           />
+          <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+            <input 
+              type="checkbox" 
+              className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+              checked={newTopic.isDuelEnabled}
+              onChange={e => setNewTopic({...newTopic, isDuelEnabled: e.target.checked})}
+            />
+            Duel uchun ruxsat berish
+          </label>
           <div className="flex gap-2">
             <button type="submit" className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors">
               {editTopicData ? 'Mavzuni Saqlash' : 'Mavzuni Qo\'shish'}
@@ -5358,10 +5494,10 @@ function MnemonicForm({ onAdd }: { onAdd: (data: any) => Promise<boolean> }) {
   );
 }
 
-function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar }: { onAdd: (data: any) => Promise<boolean>, onEdit?: (id: string, data: any) => Promise<boolean>, onCancelEdit?: () => void, editData?: Question | null, fanlar: Subject[] }) {
+function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar, initialSubject, initialTopic }: { onAdd: (data: any) => Promise<boolean>, onEdit?: (id: string, data: any) => Promise<boolean>, onCancelEdit?: () => void, editData?: Question | null, fanlar: Subject[], initialSubject?: string, initialTopic?: string }) {
   const [formData, setFormData] = useState({ 
-    subject: fanlar[0]?.title || '', 
-    topic: fanlar[0]?.topics[0]?.title || '', 
+    subject: initialSubject || fanlar[0]?.title || '', 
+    topic: initialTopic || fanlar[0]?.topics[0]?.title || '', 
     difficulty: 'medium', 
     type: 'test' as 'test' | 'case',
     scenario: '',
@@ -5392,14 +5528,13 @@ function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar }: { onAdd
       });
     } else {
       setFormData(prev => {
-        const newSubject = prev.subject || fanlar[0]?.title || '';
+        const newSubject = initialSubject || prev.subject || fanlar[0]?.title || '';
         const currentSubjectObj = fanlar.find(f => f.title === newSubject);
-        const newTopic = prev.topic || currentSubjectObj?.topics[0]?.title || '';
+        const newTopic = initialTopic || prev.topic || currentSubjectObj?.topics[0]?.title || '';
 
         if (prev.subject === newSubject && prev.topic === newTopic) {
           return prev;
         }
-
         return {
           ...prev,
           subject: newSubject,
@@ -5407,7 +5542,7 @@ function QuestionForm({ onAdd, onEdit, onCancelEdit, editData, fanlar }: { onAdd
         };
       });
     }
-  }, [editData, fanlar]);
+  }, [editData, fanlar, initialSubject, initialTopic]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

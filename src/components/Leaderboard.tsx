@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, limit, getDocs, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, limit, getDocs, doc, getDoc, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Trophy, Medal, Award, User, Star, ArrowLeft, Crown, Calendar } from 'lucide-react';
+import { Trophy, Medal, Award, User, Star, ArrowLeft, Crown, Calendar, Swords } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { quizData } from '../quizData';
+
+import { Question, Subject } from '../data';
 
 interface LeaderboardUser {
   id: string;
@@ -13,12 +16,17 @@ interface LeaderboardUser {
 
 interface LeaderboardProps {
   onBack: () => void;
+  currentUser?: any;
+  onStartDuel?: (duelId: string) => void;
+  questions?: Question[];
+  fanlar?: Subject[];
 }
 
-export function Leaderboard({ onBack }: LeaderboardProps) {
+export function Leaderboard({ onBack, currentUser, onStartDuel, questions = [], fanlar = [] }: LeaderboardProps) {
   const [users, setUsers] = useState<LeaderboardUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<any>(null);
+  const [challengingUser, setChallengingUser] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -60,6 +68,70 @@ export function Leaderboard({ onBack }: LeaderboardProps) {
 
     return () => unsubscribe();
   }, []);
+
+  const handleChallenge = async (opponent: LeaderboardUser) => {
+    if (!currentUser || !onStartDuel) return;
+    setChallengingUser(opponent.id);
+    
+    try {
+      // Collect all questions based on isDuelEnabled flag
+      let allQuestions: any[] = [];
+      const duelEnabledTopics = new Set<string>();
+      
+      if (fanlar && fanlar.length > 0) {
+        fanlar.forEach(subject => {
+          subject.topics.forEach(topic => {
+            if (topic.isDuelEnabled) {
+              duelEnabledTopics.add(`${subject.title}::${topic.title}`);
+            }
+          });
+        });
+      }
+
+      if (duelEnabledTopics.size > 0) {
+        allQuestions = questions.filter(q => duelEnabledTopics.has(`${q.subject}::${q.topic}`) && q.type !== 'case');
+      } else {
+        // Fallback to all test questions if none are specifically enabled
+        allQuestions = questions.filter(q => q.type !== 'case');
+      }
+
+      if (allQuestions.length === 0) {
+        alert("Duel uchun testlar topilmadi. Iltimos, admin panelidan mavzularni duel uchun ruxsat bering (yoki testlar qo'shing).");
+        setChallengingUser(null);
+        return;
+      }
+      
+      const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
+      const selectedQuestions = shuffled.slice(0, 5).map(q => ({
+        question: q.question || '',
+        options: q.options || [],
+        correctAnswer: q.correct !== undefined ? q.correct : 0
+      }));
+
+      const randomSubject = shuffled[0]?.subject || 'Aralash';
+
+      const duelData = {
+        challengerId: currentUser.uid,
+        challengerName: currentUser.displayName || 'Anonim',
+        opponentId: opponent.id,
+        opponentName: opponent.displayName || 'Anonim',
+        status: 'pending',
+        subject: randomSubject,
+        questions: selectedQuestions,
+        challengerScore: null,
+        opponentScore: null,
+        createdAt: serverTimestamp(),
+      };
+
+      const docRef = await addDoc(collection(db, 'duels'), duelData);
+      onStartDuel(docRef.id);
+    } catch (error) {
+      console.error("Error creating duel:", error);
+      alert("Duel yaratishda xatolik yuz berdi.");
+    } finally {
+      setChallengingUser(null);
+    }
+  };
 
   const top3 = users.slice(0, 3);
   const restUsers = users.slice(3);
@@ -179,7 +251,22 @@ export function Leaderboard({ onBack }: LeaderboardProps) {
                       <div className={`font-black text-lg sm:text-xl md:text-2xl ${styles.text} drop-shadow-md`}>
                         {user.score}
                       </div>
-                      <div className="text-[9px] sm:text-[10px] font-bold text-foreground/50 uppercase tracking-widest">Ball</div>
+                      <div className="text-[9px] sm:text-[10px] font-bold text-foreground/50 uppercase tracking-widest mb-2">Ball</div>
+                      
+                      {currentUser && currentUser.uid !== user.id && (
+                        <button
+                          onClick={() => handleChallenge(user)}
+                          disabled={challengingUser === user.id}
+                          className="mt-1 p-1.5 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors z-20"
+                          title="Duelga chorlash"
+                        >
+                          {challengingUser === user.id ? (
+                            <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <Swords className="w-4 h-4" />
+                          )}
+                        </button>
+                      )}
                     </div>
                   </motion.div>
                 );
@@ -226,6 +313,21 @@ export function Leaderboard({ onBack }: LeaderboardProps) {
                         <p className="text-[10px] sm:text-xs text-foreground/40 font-medium tracking-wider">ID: {user.id.substring(0, 8)}</p>
                       </div>
                       
+                      {currentUser && currentUser.uid !== user.id && (
+                        <button
+                          onClick={() => handleChallenge(user)}
+                          disabled={challengingUser === user.id}
+                          className="shrink-0 p-2 rounded-xl bg-gradient-to-r from-red-500/10 to-orange-500/10 text-red-500 hover:from-red-500/20 hover:to-orange-500/20 border border-red-500/20 transition-all mr-2"
+                          title="Duelga chorlash"
+                        >
+                          {challengingUser === user.id ? (
+                            <div className="w-5 h-5 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <Swords className="w-5 h-5" />
+                          )}
+                        </button>
+                      )}
+
                       <div className="text-right shrink-0 bg-secondary/50 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl border border-border/50 group-hover:bg-primary/10 group-hover:border-primary/30 transition-all">
                         <div className="text-base sm:text-lg font-black text-foreground group-hover:text-primary transition-colors">{user.score}</div>
                         <div className="text-[8px] sm:text-[10px] font-bold text-foreground/50 uppercase tracking-widest">Ball</div>

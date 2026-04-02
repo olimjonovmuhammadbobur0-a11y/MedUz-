@@ -88,6 +88,7 @@ export interface Topic {
   videos: VideoLecture[];
   guides: Guide[];
   timeLimit?: number;
+  isDuelEnabled?: boolean;
 }
 
 export interface Subject {
