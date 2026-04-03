@@ -61,7 +61,20 @@ import {
   Microscope,
   Mic,
   Trophy,
-  MessageCircle
+  MessageCircle,
+  Library,
+  LayoutDashboard,
+  Bell,
+  Home,
+  Building,
+  FileCheck,
+  ClipboardList,
+  PlusSquare,
+  Book,
+  User,
+  Bot,
+  Cpu,
+  ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
@@ -70,7 +83,7 @@ import { Mnemonic, Question, SymptomData, VideoData, Section, Setting, Patient, 
 import { explainMedicalTopic } from './services/aiService';
 import { LiveAudioChat } from './components/LiveAudioChat';
 import { quizData } from './quizData';
-import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { signInWithPopup, GoogleAuthProvider, signOut, browserPopupRedirectResolver } from 'firebase/auth';
 import { doc, getDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc, writeBatch, query, orderBy, onSnapshot, where, arrayUnion } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import Papa from 'papaparse';
@@ -279,7 +292,7 @@ export default function App() {
     setIsLoggingIn(true);
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      await signInWithPopup(auth, provider, browserPopupRedirectResolver);
     } catch (error: any) {
       if (error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
         // User closed the popup, ignore
@@ -3464,6 +3477,466 @@ function TopicTimeLimitEditor({ fanlar, setFanlar, subjectTitle, topicTitle, sho
   );
 }
 
+function MnemonicsAdmin({ mnemonics, onAdd, onDelete }: { mnemonics: Mnemonic[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => void }) {
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
+        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
+          <h3 className="font-medium text-foreground flex items-center gap-2">
+            <Brain className="w-5 h-5 text-primary" /> Mnemonika Ro'yxati
+          </h3>
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{mnemonics.length} ta element</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-secondary/30 border-b border-border">
+              <tr>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {mnemonics.map(m => (
+                <tr key={m.id} className="hover:bg-secondary/50 transition-colors group">
+                  <td className="px-6 py-4">
+                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{m.title}</div>
+                    <div className="text-[10px] text-primary font-medium uppercase tracking-widest mt-0.5">{m.category}</div>
+                    <div className="text-sm text-foreground/60 mt-2 font-mono bg-secondary/50 p-2 rounded-lg border border-border">{m.mnemonic}</div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button onClick={() => onDelete(m.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
+        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
+          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+          Yangi Qo'shish
+        </h3>
+        <MnemonicForm onAdd={onAdd} />
+      </div>
+    </div>
+  );
+}
+
+function SymptomsAdmin({ symptoms, onAdd, onDelete }: { symptoms: SymptomData[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => void }) {
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
+        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
+          <h3 className="font-medium text-foreground flex items-center gap-2">
+            <Stethoscope className="w-5 h-5 text-primary" /> Simptomlar Ro'yxati
+          </h3>
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{symptoms.length} ta element</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-secondary/30 border-b border-border">
+              <tr>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {symptoms.map(s => (
+                <tr key={s.id} className="hover:bg-secondary/50 transition-colors group">
+                  <td className="px-6 py-4">
+                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{s.diagnosis}</div>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {s.symptoms.map((sym, i) => (
+                        <span key={i} className="text-[10px] bg-secondary px-2 py-0.5 rounded-full text-foreground/60 border border-border">{sym}</span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button onClick={() => onDelete(s.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
+        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
+          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+          Yangi Qo'shish
+        </h3>
+        <SymptomForm onAdd={onAdd} />
+      </div>
+    </div>
+  );
+}
+
+function VideosAdmin({ videos, onAdd, onDelete }: { videos: VideoData[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => void }) {
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
+        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
+          <h3 className="font-medium text-foreground flex items-center gap-2">
+            <Video className="w-5 h-5 text-primary" /> Videolar Ro'yxati
+          </h3>
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{videos.length} ta element</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-secondary/30 border-b border-border">
+              <tr>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {videos.map(v => (
+                <tr key={v.id} className="hover:bg-secondary/50 transition-colors group">
+                  <td className="px-6 py-4">
+                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{v.title}</div>
+                    <div className="text-xs text-foreground/60 mt-1">{v.category} • {v.duration}</div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button onClick={() => onDelete(v.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
+        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
+          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+          Yangi Qo'shish
+        </h3>
+        <VideoForm onAdd={onAdd} />
+      </div>
+    </div>
+  );
+}
+
+function PatientsAdmin({ patients, onAdd, onDelete }: { patients: Patient[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => void }) {
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
+        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
+          <h3 className="font-medium text-foreground flex items-center gap-2">
+            <Heart className="w-5 h-5 text-primary" /> Bemorlar Ro'yxati
+          </h3>
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{patients.length} ta element</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-secondary/30 border-b border-border">
+              <tr>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {patients.map(p => (
+                <tr key={p.id} className="hover:bg-secondary/50 transition-colors group">
+                  <td className="px-6 py-4">
+                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{p.name} ({p.age} yosh)</div>
+                    <div className="text-xs text-foreground/60 mt-1">{p.symptoms} • {p.condition} • {p.healthScore}%</div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button onClick={() => onDelete(p.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
+        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
+          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+          Yangi Qo'shish
+        </h3>
+        <PatientForm onAdd={onAdd} />
+      </div>
+    </div>
+  );
+}
+
+function SectionsAdmin({ sections, onAdd, onDelete }: { sections: Section[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => void }) {
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
+        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
+          <h3 className="font-medium text-foreground flex items-center gap-2">
+            <Plus className="w-5 h-5 text-primary" /> Bo'limlar Ro'yxati
+          </h3>
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{sections.length} ta element</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-secondary/30 border-b border-border">
+              <tr>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {sections.map(sec => (
+                <tr key={sec.id} className="hover:bg-secondary/50 transition-colors group">
+                  <td className="px-6 py-4">
+                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{sec.title}</div>
+                    <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{sec.content}</div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button onClick={() => onDelete(sec.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
+        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
+          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+          Yangi Qo'shish
+        </h3>
+        <SectionForm onAdd={onAdd} />
+      </div>
+    </div>
+  );
+}
+
+function OsceAdmin({ osceScenarios, onAdd, onDelete }: { osceScenarios: any[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => void }) {
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
+        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
+          <h3 className="font-medium text-foreground flex items-center gap-2">
+            <Stethoscope className="w-5 h-5 text-primary" /> OSCE Ssenariylari
+          </h3>
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{osceScenarios.length} ta element</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-secondary/30 border-b border-border">
+              <tr>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {osceScenarios.map(osce => (
+                <tr key={osce.id} className="hover:bg-secondary/50 transition-colors group">
+                  <td className="px-6 py-4">
+                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{osce.title}</div>
+                    <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{osce.description}</div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button onClick={() => onDelete(osce.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
+        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
+          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+          Yangi Qo'shish
+        </h3>
+        <OSCEForm onAdd={onAdd} />
+      </div>
+    </div>
+  );
+}
+
+function NewsAdmin({ news, onAdd, onDelete }: { news: any[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => void }) {
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
+        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
+          <h3 className="font-medium text-foreground flex items-center gap-2">
+            <Globe className="w-5 h-5 text-primary" /> Yangiliklar Ro'yxati
+          </h3>
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{news.length} ta element</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-secondary/30 border-b border-border">
+              <tr>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {news.map(item => (
+                <tr key={item.id} className="hover:bg-secondary/50 transition-colors group">
+                  <td className="px-6 py-4">
+                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{item.title}</div>
+                    <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{item.category} • {item.date}</div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button onClick={() => onDelete(item.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
+        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
+          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+          Yangi Qo'shish
+        </h3>
+        <NewsForm onAdd={onAdd} />
+      </div>
+    </div>
+  );
+}
+
+function JournalsAdmin({ journals, onAdd, onDelete }: { journals: any[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => void }) {
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
+        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
+          <h3 className="font-medium text-foreground flex items-center gap-2">
+            <BookOpen className="w-5 h-5 text-primary" /> Jurnallar Ro'yxati
+          </h3>
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{journals.length} ta element</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-secondary/30 border-b border-border">
+              <tr>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {journals.map(item => (
+                <tr key={item.id} className="hover:bg-secondary/50 transition-colors group">
+                  <td className="px-6 py-4">
+                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{item.title}</div>
+                    <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{item.category} • {item.date}</div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button onClick={() => onDelete(item.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
+        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
+          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+          Yangi Qo'shish
+        </h3>
+        <JournalForm onAdd={onAdd} />
+      </div>
+    </div>
+  );
+}
+
+function QuestionsAdmin({ questions, fanlar, onAdd, onEdit, onCancelEdit, editData, onDelete }: { questions: Question[], fanlar: Subject[], onAdd: (data: any) => Promise<boolean>, onEdit: (id: string, data: any) => Promise<boolean>, onCancelEdit: () => void, editData: Question | null, onDelete: (id: string) => void }) {
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
+        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
+          <h3 className="font-medium text-foreground flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-primary" /> Testlar Ro'yxati
+          </h3>
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{questions.length} ta element</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-secondary/30 border-b border-border">
+              <tr>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
+                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {questions.map(q => (
+                <tr key={q.id} className="hover:bg-secondary/50 transition-colors group">
+                  <td className="px-6 py-4">
+                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{q.question}</div>
+                    <div className="text-[10px] text-primary font-medium uppercase tracking-widest mt-0.5">{q.subject} • {q.topic}</div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button onClick={() => onDelete(q.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
+        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
+          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+          Yangi Qo'shish
+        </h3>
+        <QuestionForm onAdd={onAdd} onEdit={onEdit} onCancelEdit={onCancelEdit} editData={editData} fanlar={fanlar} />
+      </div>
+    </div>
+  );
+}
+
+function LibraryAdmin({ library, onUpdate }: { library: any, onUpdate: (data: any) => void }) {
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
+        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
+          <h3 className="font-medium text-foreground flex items-center gap-2">
+            <BookOpen className="w-5 h-5 text-primary" /> Kutubxona Strukturasi
+          </h3>
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{library.subjects?.length || 0} ta element</span>
+        </div>
+        <div className="p-6 text-foreground/60">
+          Kutubxona formasi orqali boshqaring.
+        </div>
+      </div>
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
+        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
+          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+          Yangi Qo'shish
+        </h3>
+        <LibraryForm library={library} onUpdate={onUpdate} />
+      </div>
+    </div>
+  );
+}
+
+function FanlarAdmin({ fanlar, setFanlar, editSubjectData, editTopicData, onCancelEditSubject, onCancelEditTopic }: { fanlar: Subject[], setFanlar: (f: Subject[]) => void, editSubjectData: Subject | null, editTopicData: { subjectId: string, topic: Topic } | null, onCancelEditSubject: () => void, onCancelEditTopic: () => void }) {
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
+        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
+          <h3 className="font-medium text-foreground flex items-center gap-2">
+            <BookOpen className="w-5 h-5 text-primary" /> Fanlar Ro'yxati
+          </h3>
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{fanlar.length} ta element</span>
+        </div>
+        <div className="p-6 text-foreground/60">
+          Fanlar formasi orqali boshqaring.
+        </div>
+      </div>
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
+        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
+          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+          Yangi Qo'shish
+        </h3>
+        <FanlarForm fanlar={fanlar} setFanlar={setFanlar} editSubjectData={editSubjectData} editTopicData={editTopicData} onCancelEditSubject={onCancelEditSubject} onCancelEditTopic={onCancelEditTopic} />
+      </div>
+    </div>
+  );
+}
+
 function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections, settings, library, osceScenarios, fanlar, setFanlar, appSettings, setAppSettings, news, setNews, journals, setJournals, messagesData, onUpdate, onUpdateLibrary, themeColor, setThemeColor, showAlert, showConfirm }: { 
   mnemonics: Mnemonic[], 
   questions: Question[], 
@@ -3471,31 +3944,51 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   videos: VideoData[],
   patients: Patient[],
   sections: Section[],
-  settings: Setting[],
+  settings: any,
   library: any,
-  osceScenarios: OSCEScenario[],
+  osceScenarios: any[],
   fanlar: Subject[],
-  setFanlar: (data: Subject[]) => Promise<void> | void,
+  setFanlar: (f: Subject[]) => void,
   appSettings: any,
-  setAppSettings: (data: any) => void,
-  news: NewsItem[],
-  setNews: (data: NewsItem[]) => void,
-  journals: JournalItem[],
-  setJournals: (data: JournalItem[]) => void,
+  setAppSettings: (s: any) => void,
+  news: any[],
+  setNews: (n: any[]) => void,
+  journals: any[],
+  setJournals: (j: any[]) => void,
   messagesData: any[],
   onUpdate: () => void,
   onUpdateLibrary: (data: any) => void,
   themeColor: string,
-  setThemeColor: (color: string) => void,
-  showAlert: (title: string, content: string) => void,
-  showConfirm: (title: string, content: string, onConfirm: () => void) => void
+  setThemeColor: (c: string) => void,
+  showAlert: (t: string, c: string) => void,
+  showConfirm: (t: string, c: string, onConfirm: () => void) => void
 }) {
-  const [activeTab, setActiveTab] = useState<'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'settings' | 'library' | 'osce' | 'fanlar' | 'appSettings' | 'news' | 'journals' | 'quizRequests' | 'laboratory' | 'pharma' | 'tutor' | 'ai' | 'leaderboard' | 'messages'>('videos');
+  const [activeTab, setActiveTab] = useState<'main' | 'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'library' | 'osce' | 'fanlar' | 'news' | 'journals' | 'laboratory' | 'pharma' | 'tutor' | 'ai' | 'leaderboard' | 'appSettings' | 'settings' | 'messages'>('main');
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
   const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({});
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [editingTopic, setEditingTopic] = useState<{ subjectId: string, topic: Topic } | null>(null);
+
+  const adminCards = [
+    { id: 'messages', title: 'Xabarlar', icon: MessageCircle, count: messagesData.length, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+    { id: 'mnemonics', title: 'Mnemonika', icon: Brain, count: mnemonics.length, color: 'text-purple-500', bg: 'bg-purple-500/10' },
+    { id: 'questions', title: 'Testlar', icon: CheckCircle2, count: questions.length, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+    { id: 'symptoms', title: 'Simptomlar', icon: Stethoscope, count: symptoms.length, color: 'text-green-500', bg: 'bg-green-500/10' },
+    { id: 'videos', title: 'Videolar', icon: Video, count: videos.length, color: 'text-red-500', bg: 'bg-red-500/10' },
+    { id: 'patients', title: 'Bemorlar', icon: Heart, count: patients.length, color: 'text-rose-500', bg: 'bg-rose-500/10' },
+    { id: 'library', title: 'Kutubxona', icon: BookOpen, count: library.subjects?.length || 0, color: 'text-amber-500', bg: 'bg-amber-500/10' },
+    { id: 'osce', title: 'OSCE', icon: Stethoscope, count: osceScenarios.length, color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
+    { id: 'sections', title: 'Bo\'limlar', icon: Plus, count: sections.length, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
+    { id: 'fanlar', title: 'Fanlar', icon: BookOpen, count: fanlar.length, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+    { id: 'news', title: 'Yangiliklar', icon: Globe, count: news.length, color: 'text-sky-500', bg: 'bg-sky-500/10' },
+    { id: 'journals', title: 'Jurnallar', icon: BookOpen, count: journals.length, color: 'text-teal-500', bg: 'bg-teal-500/10' },
+    { id: 'laboratory', title: 'Laboratoriya', icon: Icons.FlaskConical, count: 0, color: 'text-pink-500', bg: 'bg-pink-500/10' },
+    { id: 'pharma', title: 'Farmakologiya', icon: Icons.Pill, count: 0, color: 'text-orange-500', bg: 'bg-orange-500/10' },
+    { id: 'tutor', title: 'AI Tutor', icon: Icons.Bot, count: 0, color: 'text-violet-500', bg: 'bg-violet-500/10' },
+    { id: 'ai', title: 'AI Markazi', icon: Sparkles, count: 0, color: 'text-fuchsia-500', bg: 'bg-fuchsia-500/10' },
+    { id: 'leaderboard', title: 'Reyting', icon: Trophy, count: 0, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
+  ];
 
   const toggleSubject = (subject: string) => setExpandedSubjects(prev => ({ ...prev, [subject]: !prev[subject] }));
   const toggleTopic = (topic: string) => setExpandedTopics(prev => ({ ...prev, [topic]: !prev[topic] }));
@@ -3523,7 +4016,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
     setError('');
     try {
       const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider, browserPopupRedirectResolver);
       const user = result.user;
       
       console.log("Logged in user UID:", user.uid);
@@ -3553,6 +4046,31 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
       setLoading(false);
     }
   };
+
+  if (!isAdmin) {
+    return (
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="max-w-md mx-auto mt-20 p-8 bg-card rounded-2xl shadow-sm border border-border"
+      >
+        <div className="flex justify-center mb-6">
+          <div className="bg-primary/10 p-4 rounded-full">
+            <Lock className="w-8 h-8 text-primary" />
+          </div>
+        </div>
+        <h2 className="text-2xl font-medium text-center mb-6 text-foreground">Admin Kirish</h2>
+        {error && <p className="text-red-500 text-sm font-medium text-center mb-4">{error}</p>}
+        <button 
+          onClick={handleLogin}
+          disabled={loading}
+          className="w-full bg-primary text-primary-foreground py-3 rounded-xl font-medium hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+        >
+          {loading ? 'Tekshirilmoqda...' : 'Google orqali kirish'}
+        </button>
+      </motion.div>
+    );
+  }
 
   const deleteItem = async (type: string, id: string) => {
     showConfirm('O\'chirish', 'Haqiqatan ham o\'chirmoqchimisiz?', async () => {
@@ -3816,85 +4334,6 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
     }
   };
 
-  const [isRestoring, setIsRestoring] = useState(false);
-  const handleRestoreOldTests = async () => {
-    if (isRestoring) return;
-    setIsRestoring(true);
-    try {
-      let updatedFanlar = [...fanlar];
-      let batch = writeBatch(db);
-      let operationCount = 0;
-      
-      // Get existing questions to avoid duplicates
-      const existingQuestionsSnap = await getDocs(collection(db, 'questions'));
-      const existingQuestionTexts = new Set(existingQuestionsSnap.docs.map(doc => doc.data().question));
-
-      for (const subject of quizData.subjects) {
-        let existingSubject = updatedFanlar.find(f => f.title === subject.name);
-        if (!existingSubject) {
-          existingSubject = {
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-            title: subject.name,
-            description: subject.name + ' fanidan testlar',
-            icon: subject.icon || 'BookOpen',
-            topics: []
-          };
-          updatedFanlar.push(existingSubject);
-        }
-        
-        for (const topic of subject.topics) {
-          let existingTopic = existingSubject.topics.find(t => t.title === topic.name);
-          if (!existingTopic) {
-            existingTopic = {
-              id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-              title: topic.name,
-              videos: [],
-              guides: []
-            };
-            existingSubject.topics.push(existingTopic);
-          }
-          
-          for (const q of topic.questions) {
-            if (existingQuestionTexts.has(q.text)) continue;
-
-            const questionData = {
-              subject: subject.name,
-              topic: topic.name,
-              difficulty: 'medium',
-              question: q.text,
-              options: q.options,
-              correct: q.correct,
-              explanation: (q as any).explanation || ''
-            };
-            const docId = btoa(encodeURIComponent(q.text.substring(0, 50))).replace(/[/+=]/g, '_').substring(0, 50);
-            batch.set(doc(db, 'questions', docId), questionData);
-            existingQuestionTexts.add(q.text);
-            operationCount++;
-
-            if (operationCount >= 450) {
-              await batch.commit();
-              batch = writeBatch(db);
-              operationCount = 0;
-            }
-          }
-        }
-      }
-      
-      if (operationCount > 0) {
-        await batch.commit();
-      }
-
-      await setFanlar(updatedFanlar);
-      onUpdate();
-      showAlert('Muvaffaqiyatli', 'Eski testlar muvaffaqiyatli tiklandi!');
-    } catch (error) {
-      console.error('Error restoring tests:', error);
-      showAlert('Xatolik', 'Testlarni tiklashda xatolik yuz berdi. Internet aloqasini tekshiring.');
-    } finally {
-      setIsRestoring(false);
-    }
-  };
-
   if (!isAdmin) {
     return (
       <motion.div 
@@ -3924,8 +4363,38 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="space-y-8"
+      className="space-y-8 max-w-7xl mx-auto p-6"
     >
+      <div className="flex justify-between items-center mb-8 bg-card p-4 rounded-2xl border border-border shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="bg-primary p-2 rounded-xl">
+            <LayoutDashboard className="w-6 h-6 text-primary-foreground" />
+          </div>
+          <h1 className="text-2xl font-bold text-primary">MedUz</h1>
+        </div>
+        <div className="flex items-center gap-4">
+          <button className="flex items-center gap-2 px-4 py-2 bg-secondary rounded-xl text-sm font-medium hover:bg-secondary/80 transition-colors">
+            <Settings className="w-4 h-4" />
+            Customize
+          </button>
+          <button className="p-2 bg-secondary rounded-xl hover:bg-secondary/80 transition-colors relative">
+            <Bell className="w-5 h-5" />
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-orange-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full">1</span>
+          </button>
+          <button className="p-2 bg-secondary rounded-xl hover:bg-secondary/80 transition-colors">
+            <Home className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-3 pl-4 border-l border-border">
+            <img src={auth.currentUser?.photoURL || ''} alt="Admin" className="w-10 h-10 rounded-full border-2 border-green-500" />
+            <div>
+              <p className="text-sm font-semibold">{auth.currentUser?.displayName || 'Admin'}</p>
+              <p className="text-[10px] text-foreground/50 uppercase tracking-wider">SHIFOKOR</p>
+            </div>
+            <ChevronDown className="w-4 h-4 text-foreground/50" />
+          </div>
+        </div>
+      </div>
+
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Sidebar Navigation */}
         <aside className="lg:w-72 flex-shrink-0">
@@ -3937,26 +4406,9 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
             
             <div className="space-y-1">
               {[
-                { id: 'fanlar', label: 'Fanlar', icon: BookOpen },
-                { id: 'library', label: 'Kutubxona', icon: BookOpen },
-                { id: 'videos', label: 'Videolar', icon: Video },
-                { id: 'mnemonics', label: 'Mnemonika', icon: Brain },
-                { id: 'symptoms', label: 'Simptomlar', icon: Stethoscope },
-                { id: 'questions', label: 'Testlar', icon: CheckCircle2 },
-                { id: 'osce', label: 'OSCE', icon: Stethoscope },
-                { id: 'patients', label: 'Bemorlar', icon: Heart },
-                { id: 'laboratory', label: 'Laboratoriya', icon: Icons.FlaskConical },
-                { id: 'pharma', label: 'Farmakologiya', icon: Icons.Pill },
-                { id: 'journals', label: 'Jurnallar', icon: BookOpen },
-                { id: 'news', label: 'Global Health News', icon: Globe },
-                { id: 'tutor', label: 'AI Tutor', icon: Icons.Bot },
-                { id: 'ai', label: 'AI Markazi', icon: Sparkles },
-                { id: 'sections', label: 'Bo\'limlar', icon: Plus },
-                { id: 'quizRequests', label: 'Test So\'rovlari', icon: AlertTriangle },
-                { id: 'leaderboard', label: 'Reyting Sozlamalari', icon: Trophy },
-                { id: 'messages', label: 'Dashboard (Xabarlar)', icon: MessageCircle },
+                { id: 'main', label: 'Dashboard', icon: LayoutDashboard },
                 { id: 'appSettings', label: 'Ilova Sozlamalari', icon: Settings },
-                { id: 'settings', label: 'Sozlamalar', icon: Settings },
+                { id: 'settings', label: 'Tizim Sozlamalari', icon: Settings },
               ].map(tab => {
                 const Icon = tab.icon;
                 const label = tab.label;
@@ -4039,409 +4491,50 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
 
         {/* Main Content Area */}
         <div className="flex-1 space-y-8">
-          {activeTab === 'quizRequests' ? (
-            <QuizRequestsTab 
-              requests={quizRequests} 
-              onApprove={async (req) => {
-                try {
-                  // Update request status
-                  await updateDoc(doc(db, 'quizRequests', req.id), { status: 'approved' });
-                  // Reset attempts for user
-                  const userRef = doc(db, 'users', req.userId);
-                  await updateDoc(userRef, {
-                    [`quizAttempts.${req.topic}`]: 0
-                  });
-                  showAlert("Muvaffaqiyatli", "Ruxsat berildi va limit nolga tushirildi.");
-                } catch (e) {
-                  console.error(e);
-                  showAlert("Xatolik", "Xatolik yuz berdi.");
-                }
-              }}
-              onReject={async (req) => {
-                try {
-                  await updateDoc(doc(db, 'quizRequests', req.id), { status: 'rejected' });
-                  showAlert("Muvaffaqiyatli", "So'rov rad etildi.");
-                } catch (e) {
-                  console.error(e);
-                  showAlert("Xatolik", "Xatolik yuz berdi.");
-                }
-              }}
-            />
-          ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-            <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
-              <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
-                <h3 className="font-medium text-foreground flex items-center gap-2">
-                  {activeTab === 'mnemonics' ? <Brain className="w-5 h-5 text-primary" /> : activeTab === 'questions' ? <CheckCircle2 className="w-5 h-5 text-primary" /> : activeTab === 'symptoms' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'videos' ? <Video className="w-5 h-5 text-primary" /> : activeTab === 'patients' ? <Heart className="w-5 h-5 text-primary" /> : activeTab === 'library' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'osce' ? <Stethoscope className="w-5 h-5 text-primary" /> : activeTab === 'sections' ? <Plus className="w-5 h-5 text-primary" /> : activeTab === 'fanlar' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'news' ? <Globe className="w-5 h-5 text-primary" /> : activeTab === 'journals' ? <BookOpen className="w-5 h-5 text-primary" /> : activeTab === 'laboratory' ? <Icons.FlaskConical className="w-5 h-5 text-primary" /> : activeTab === 'pharma' ? <Icons.Pill className="w-5 h-5 text-primary" /> : activeTab === 'tutor' ? <Icons.Bot className="w-5 h-5 text-primary" /> : activeTab === 'ai' ? <Sparkles className="w-5 h-5 text-primary" /> : activeTab === 'leaderboard' ? <Trophy className="w-5 h-5 text-primary" /> : activeTab === 'messages' ? <MessageCircle className="w-5 h-5 text-primary" /> : <Settings className="w-5 h-5 text-primary" />}
-                  {activeTab === 'mnemonics' ? 'Mnemonika Ro\'yxati' : activeTab === 'questions' ? 'Testlar Ro\'yxati' : activeTab === 'symptoms' ? 'Simptomlar Ro\'yxati' : activeTab === 'videos' ? 'Videolar Ro\'yxati' : activeTab === 'patients' ? 'Bemorlar Ro\'yxati' : activeTab === 'library' ? 'Kutubxona Strukturasi' : activeTab === 'osce' ? 'OSCE Ssenariylari' : activeTab === 'sections' ? 'Bo\'limlar Ro\'yxati' : activeTab === 'fanlar' ? 'Fanlar Ro\'yxati' : activeTab === 'news' ? 'Yangiliklar Ro\'yxati' : activeTab === 'journals' ? 'Jurnallar Ro\'yxati' : activeTab === 'appSettings' ? 'Ilova Sozlamalari' : activeTab === 'leaderboard' ? 'Reyting Sozlamalari' : activeTab === 'messages' ? 'Xabarlar Ro\'yxati' : activeTab === 'laboratory' ? 'Laboratoriya' : activeTab === 'pharma' ? 'Farmakologiya' : activeTab === 'tutor' ? 'AI Tutor' : activeTab === 'ai' ? 'AI Markazi' : 'Tizim Sozlamalari'}
-                </h3>
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">
-                    {(activeTab === 'mnemonics' ? mnemonics : activeTab === 'questions' ? questions : activeTab === 'symptoms' ? symptoms : activeTab === 'videos' ? videos : activeTab === 'patients' ? patients : activeTab === 'library' ? library.subjects : activeTab === 'osce' ? osceScenarios : activeTab === 'fanlar' ? fanlar : activeTab === 'news' ? news : activeTab === 'journals' ? journals : activeTab === 'messages' ? messagesData : activeTab === 'appSettings' || activeTab === 'leaderboard' || activeTab === 'laboratory' || activeTab === 'pharma' || activeTab === 'tutor' || activeTab === 'ai' ? [] : sections).length} ta element
-                  </span>
-                  <button 
-                    onClick={handleRestoreOldTests} 
-                    disabled={isRestoring}
-                    className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+          {activeTab === 'main' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {adminCards.map(card => {
+                const Icon = card.icon;
+                return (
+                  <button
+                    key={card.id}
+                    onClick={() => setActiveTab(card.id as any)}
+                    className="bg-card border border-border rounded-2xl p-6 text-left hover:shadow-md transition-all group"
                   >
-                    {isRestoring ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                    {isRestoring ? 'Tiklanmoqda...' : 'Eski testlarni tiklash'}
+                    <div className={`w-12 h-12 rounded-xl ${card.bg} ${card.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                      <Icon className="w-6 h-6" />
+                    </div>
+                    <h3 className="font-medium text-foreground mb-1">{card.title}</h3>
+                    <p className="text-sm text-foreground/60">{card.count} ta yozuv</p>
                   </button>
-                </div>
-              </div>
-              
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead className="bg-secondary/30 border-b border-border">
-                    <tr>
-                      <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
-                      <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {activeTab === 'mnemonics' && mnemonics.map(m => (
-                      <tr key={m.id} className="hover:bg-secondary/50 transition-colors group">
-                        <td className="px-6 py-4">
-                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{m.title}</div>
-                          <div className="text-[10px] text-primary font-medium uppercase tracking-widest mt-0.5">{m.category}</div>
-                          <div className="text-sm text-foreground/60 mt-2 font-mono bg-secondary/50 p-2 rounded-lg border border-border">{m.mnemonic}</div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button onClick={() => deleteItem('mnemonics', m.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                        </td>
-                      </tr>
-                    ))}
-                    {activeTab === 'questions' && (() => {
-                      const renderedQuestionIds = new Set<string>();
-                      return (
-                        <>
-                          {fanlar.map(subject => {
-                            const subjectQuestions = questions.filter(q => q.subject === subject.title);
-                            return (
-                              <React.Fragment key={subject.id}>
-                                <tr className="hover:bg-secondary/50 transition-colors group bg-secondary/10 cursor-pointer" onClick={() => toggleSubject(subject.title)}>
-                                  <td className="px-6 py-4">
-                                    <div className="font-bold text-foreground group-hover:text-primary transition-colors flex items-center gap-2">
-                                      <ChevronRight className={`w-4 h-4 transition-transform ${expandedSubjects[subject.title] ? 'rotate-90' : ''}`} />
-                                      <BookOpen className="w-4 h-4" /> {subject.title}
-                                      <span className="text-xs font-normal text-foreground/50 ml-2">({subjectQuestions.length} ta savol)</span>
-                                    </div>
-                                  </td>
-                                  <td className="px-6 py-4 text-right flex justify-end gap-1" onClick={e => e.stopPropagation()}>
-                                    <button onClick={() => editQuestionSubject(subject.title)} className="p-2.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-4.5 h-4.5" /></button>
-                                    <button onClick={() => deleteQuestionSubject(subject.title)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                                  </td>
-                                </tr>
-                                {expandedSubjects[subject.title] && subject.topics.map(topic => {
-                                  const topicQuestions = subjectQuestions.filter(q => q.topic === topic.title);
-                                  topicQuestions.forEach(q => renderedQuestionIds.add(q.id!));
-                                  return (
-                                    <React.Fragment key={topic.id}>
-                                      <tr className="hover:bg-secondary/50 transition-colors group cursor-pointer" onClick={() => toggleTopic(topic.title)}>
-                                        <td className="px-6 py-3 pl-12 border-l-2 border-primary/20">
-                                          <div className="font-medium text-foreground/90 group-hover:text-primary transition-colors flex items-center gap-2">
-                                            <ChevronRight className={`w-3 h-3 transition-transform ${expandedTopics[topic.title] ? 'rotate-90' : ''}`} />
-                                            {topic.title}
-                                            {topic.timeLimit && (
-                                              <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full ml-2">
-                                                {topic.timeLimit} min
-                                              </span>
-                                            )}
-                                            <span className="text-xs font-normal text-foreground/50 ml-2">({topicQuestions.length} ta savol)</span>
-                                          </div>
-                                        </td>
-                                        <td className="px-6 py-3 text-right flex justify-end gap-1" onClick={e => e.stopPropagation()}>
-                                          <button onClick={() => editQuestionTopic(subject.title, topic.title)} className="p-2 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-4 h-4" /></button>
-                                          <button onClick={() => deleteQuestionTopic(subject.title, topic.title)} className="p-2 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4 h-4" /></button>
-                                        </td>
-                                      </tr>
-                                      {expandedTopics[topic.title] && (
-                                        <>
-                                          <tr>
-                                            <td colSpan={2} className="p-0">
-                                              <TopicTimeLimitEditor fanlar={fanlar} setFanlar={setFanlar} subjectTitle={subject.title} topicTitle={topic.title} showAlert={showAlert} />
-                                            </td>
-                                          </tr>
-                                          {topicQuestions.map(q => (
-                                            <tr key={q.id} className="hover:bg-secondary/50 transition-colors group">
-                                              <td className="px-6 py-2 pl-20 border-l-2 border-primary/20">
-                                                <div className="text-sm text-foreground/80 group-hover:text-primary transition-colors flex items-center gap-2">
-                                                  {q.type === 'case' ? <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[10px] uppercase">Vaziyatli</span> : <CheckCircle2 className="w-3 h-3" />}
-                                                  {q.question}
-                                                </div>
-                                                <div className="text-[10px] text-foreground/50 mt-1 ml-5">{q.difficulty}</div>
-                                              </td>
-                                              <td className="px-6 py-2 text-right flex justify-end gap-1">
-                                                <button onClick={(e) => { e.stopPropagation(); setEditingQuestion(q); }} className="p-1.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-3.5 h-3.5" /></button>
-                                                <button onClick={(e) => { e.stopPropagation(); deleteItem('questions', q.id!); }} className="p-1.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
-                                              </td>
-                                            </tr>
-                                          ))}
-                                        </>
-                                      )}
-                                    </React.Fragment>
-                                  );
-                                })}
-                              </React.Fragment>
-                            );
-                          })}
-                          {(() => {
-                            const orphanedQuestions = questions.filter(q => !renderedQuestionIds.has(q.id!));
-                            if (orphanedQuestions.length === 0) return null;
-                            return (
-                              <React.Fragment>
-                                <tr className="hover:bg-secondary/50 transition-colors group bg-red-50/50 cursor-pointer" onClick={() => toggleSubject('orphaned')}>
-                                  <td className="px-6 py-4">
-                                    <div className="font-bold text-red-600 flex items-center gap-2">
-                                      <ChevronRight className={`w-4 h-4 transition-transform ${expandedSubjects['orphaned'] ? 'rotate-90' : ''}`} />
-                                      <BookOpen className="w-4 h-4" /> Boshqa savollar (Fanga biriktirilmagan)
-                                      <span className="text-xs font-normal ml-2">({orphanedQuestions.length} ta savol)</span>
-                                    </div>
-                                  </td>
-                                  <td className="px-6 py-4 text-right"></td>
-                                </tr>
-                                {expandedSubjects['orphaned'] && orphanedQuestions.map(q => (
-                                  <tr key={q.id} className="hover:bg-secondary/50 transition-colors group">
-                                    <td className="px-6 py-2 pl-12 border-l-2 border-red-500/20">
-                                      <div className="text-sm text-foreground/80 group-hover:text-primary transition-colors flex items-center gap-2">
-                                        <span className="bg-red-100 text-red-600 px-1.5 py-0.5 rounded text-[10px] uppercase">{q.subject} - {q.topic}</span>
-                                        {q.type === 'case' ? <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[10px] uppercase">Vaziyatli</span> : <CheckCircle2 className="w-3 h-3" />}
-                                        {q.question}
-                                      </div>
-                                      <div className="text-[10px] text-foreground/50 mt-1 ml-5">{q.difficulty}</div>
-                                    </td>
-                                    <td className="px-6 py-2 text-right flex justify-end gap-1">
-                                      <button onClick={(e) => { e.stopPropagation(); setEditingQuestion(q); }} className="p-1.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-3.5 h-3.5" /></button>
-                                      <button onClick={(e) => { e.stopPropagation(); deleteItem('questions', q.id!); }} className="p-1.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </React.Fragment>
-                            );
-                          })()}
-                        </>
-                      );
-                    })()}
-                    {activeTab === 'symptoms' && symptoms.map(s => (
-                      <tr key={s.id} className="hover:bg-secondary/50 transition-colors group">
-                        <td className="px-6 py-4">
-                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{s.diagnosis}</div>
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {s.symptoms.map((sym, i) => (
-                              <span key={i} className="text-[10px] bg-secondary px-2 py-0.5 rounded-full text-foreground/60 border border-border">{sym}</span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button onClick={() => deleteItem('symptoms', s.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                        </td>
-                      </tr>
-                    ))}
-                    {activeTab === 'videos' && videos.map(v => (
-                      <tr key={v.id} className="hover:bg-secondary/50 transition-colors group">
-                        <td className="px-6 py-4">
-                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{v.title}</div>
-                          <div className="text-xs text-foreground/60 mt-1">{v.category} • {v.duration}</div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button onClick={() => deleteItem('videos', v.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                        </td>
-                      </tr>
-                    ))}
-                    {activeTab === 'patients' && patients.map(p => (
-                      <tr key={p.id} className="hover:bg-secondary/50 transition-colors group">
-                        <td className="px-6 py-4">
-                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{p.name} ({p.age} yosh)</div>
-                          <div className="text-xs text-foreground/60 mt-1">{p.symptoms} • {p.condition} • {p.healthScore}%</div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button onClick={() => deleteItem('patients', p.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                        </td>
-                      </tr>
-                    ))}
-                    {activeTab === 'library' && library.subjects.map((sub: any) => (
-                      <tr key={sub.id} className="hover:bg-secondary/50 transition-colors group">
-                        <td className="px-6 py-4">
-                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{sub.name}</div>
-                          <div className="text-xs text-foreground/60 mt-1">{sub.topics.length} ta mavzu</div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button 
-                            onClick={() => {
-                              showConfirm('O\'chirish', 'Ushbu fanni va uning barcha mavzularini o\'chirmoqchimisiz?', () => {
-                                const newSubjects = library.subjects.filter((s: any) => s.id !== sub.id);
-                                onUpdateLibrary({ ...library, subjects: newSubjects });
-                              });
-                            }} 
-                            className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                          >
-                            <Trash2 className="w-4.5 h-4.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {activeTab === 'sections' && sections.map(sec => (
-                      <tr key={sec.id} className="hover:bg-secondary/50 transition-colors group">
-                        <td className="px-6 py-4">
-                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{sec.title}</div>
-                          <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{sec.content}</div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button onClick={() => deleteItem('sections', sec.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                        </td>
-                      </tr>
-                    ))}
-                    {activeTab === 'osce' && osceScenarios.map(osce => (
-                      <tr key={osce.id} className="hover:bg-secondary/50 transition-colors group">
-                        <td className="px-6 py-4">
-                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{osce.title}</div>
-                          <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{osce.description}</div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button onClick={() => deleteItem('osce_scenarios', osce.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                        </td>
-                      </tr>
-                    ))}
-                    {activeTab === 'fanlar' && fanlar.map(fan => (
-                      <React.Fragment key={fan.id}>
-                        <tr className="hover:bg-secondary/50 transition-colors group bg-secondary/10">
-                          <td className="px-6 py-4">
-                            <div className="font-bold text-foreground group-hover:text-primary transition-colors flex items-center gap-2">
-                              <BookOpen className="w-4 h-4" /> {fan.title}
-                            </div>
-                            <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{fan.description}</div>
-                          </td>
-                          <td className="px-6 py-4 text-right flex justify-end gap-1">
-                            <button onClick={() => setEditingSubject(fan)} className="p-2.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-4.5 h-4.5" /></button>
-                            <button onClick={() => {
-                              showConfirm('O\'chirish', 'Ushbu fanni o\'chirmoqchimisiz?', () => {
-                                setFanlar(fanlar.filter(f => f.id !== fan.id));
-                              });
-                            }} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                          </td>
-                        </tr>
-                        {fan.topics.map(topic => (
-                          <React.Fragment key={topic.id}>
-                            <tr className="hover:bg-secondary/50 transition-colors group">
-                              <td className="px-6 py-3 pl-12 border-l-2 border-primary/20">
-                                <div className="font-medium text-foreground/90 group-hover:text-primary transition-colors flex items-center gap-2">
-                                  <ChevronRight className="w-3 h-3" /> {topic.title}
-                                </div>
-                              </td>
-                              <td className="px-6 py-3 text-right flex justify-end gap-1">
-                                <button onClick={() => setEditingTopic({ subjectId: fan.id!, topic })} className="p-2 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-4 h-4" /></button>
-                                <button onClick={() => {
-                                  showConfirm('O\'chirish', 'Ushbu mavzuni o\'chirmoqchimisiz?', () => {
-                                    setFanlar(fanlar.map(f => f.id === fan.id ? { ...f, topics: f.topics.filter(t => t.id !== topic.id) } : f));
-                                  });
-                                }} className="p-2 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4 h-4" /></button>
-                              </td>
-                            </tr>
-                            {topic.videos.map(video => (
-                              <tr key={video.id} className="hover:bg-secondary/50 transition-colors group">
-                                <td className="px-6 py-2 pl-20 border-l-2 border-primary/20">
-                                  <div className="text-sm text-foreground/80 group-hover:text-primary transition-colors flex items-center gap-2">
-                                    <Video className="w-3 h-3" /> {video.title}
-                                  </div>
-                                </td>
-                                <td className="px-6 py-2 text-right">
-                                  <button onClick={() => {
-                                    showConfirm('O\'chirish', 'Ushbu videoni o\'chirmoqchimisiz?', () => {
-                                      setFanlar(fanlar.map(f => f.id === fan.id ? { ...f, topics: f.topics.map(t => t.id === topic.id ? { ...t, videos: t.videos.filter(v => v.id !== video.id) } : t) } : f));
-                                    });
-                                  }} className="p-1.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
-                                </td>
-                              </tr>
-                            ))}
-                            {topic.guides.map(guide => (
-                              <tr key={guide.id} className="hover:bg-secondary/50 transition-colors group">
-                                <td className="px-6 py-2 pl-20 border-l-2 border-primary/20">
-                                  <div className="text-sm text-foreground/80 group-hover:text-primary transition-colors flex items-center gap-2">
-                                    <FileText className="w-3 h-3" /> {guide.title}
-                                  </div>
-                                </td>
-                                <td className="px-6 py-2 text-right">
-                                  <button onClick={() => {
-                                    showConfirm('O\'chirish', 'Ushbu qo\'llanmani o\'chirmoqchimisiz?', () => {
-                                      setFanlar(fanlar.map(f => f.id === fan.id ? { ...f, topics: f.topics.map(t => t.id === topic.id ? { ...t, guides: t.guides.filter(g => g.id !== guide.id) } : t) } : f));
-                                    });
-                                  }} className="p-1.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
-                                </td>
-                              </tr>
-                            ))}
-                          </React.Fragment>
-                        ))}
-                      </React.Fragment>
-                    ))}
-                    {activeTab === 'news' && news.map(item => (
-                      <tr key={item.id} className="hover:bg-secondary/50 transition-colors group border-b border-border/50 last:border-0">
-                        <td className="px-6 py-4">
-                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{item.title}</div>
-                          <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{item.category} • {item.date}</div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button onClick={() => showConfirm('O\'chirish', 'Rostdan ham bu yangilikni o\'chirmoqchimisiz?', () => setNews(news.filter(n => n.id !== item.id)))} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {activeTab === 'journals' && journals.map(item => (
-                      <tr key={item.id} className="hover:bg-secondary/50 transition-colors group border-b border-border/50 last:border-0">
-                        <td className="px-6 py-4">
-                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">{item.title}</div>
-                          <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{item.category} • {item.date}</div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button onClick={() => showConfirm('O\'chirish', 'Rostdan ham bu jurnalni o\'chirmoqchimisiz?', () => setJournals(journals.filter(n => n.id !== item.id)))} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {activeTab === 'appSettings' && (
-                      <tr className="hover:bg-secondary/50 transition-colors group">
-                        <td className="px-6 py-4">
-                          <div className="font-medium text-foreground group-hover:text-primary transition-colors">Ilova Yaratuvchisi</div>
-                          <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{appSettings.creatorName}</div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                        </td>
-                      </tr>
-                    )}
-                    {(activeTab === 'laboratory' || activeTab === 'pharma' || activeTab === 'tutor' || activeTab === 'ai') && (
-                      <tr>
-                        <td colSpan={2} className="px-6 py-8 text-center text-foreground/60">
-                          <p>Bu bo'lim hozircha admin paneldan boshqarilmaydi yoki tez orada qo'shiladi.</p>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                );
+              })}
             </div>
-
-            <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
-              <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
-                <div className="bg-primary p-2 rounded-xl">
-                  <Plus className="w-5 h-5 text-primary-foreground" />
-                </div>
-                {activeTab === 'settings' ? 'Tizimni Sozlash' : 'Yangi Qo\'shish'}
-              </h3>
+          ) : (
+            <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit">
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="font-medium text-foreground flex items-center gap-3 text-xl">
+                  <div className="bg-primary p-2 rounded-xl">
+                    {activeTab === 'messages' ? <MessageCircle className="w-5 h-5 text-primary-foreground" /> :
+                     activeTab === 'appSettings' || activeTab === 'settings' ? <Settings className="w-5 h-5 text-primary-foreground" /> :
+                     <LayoutDashboard className="w-5 h-5 text-primary-foreground" />}
+                  </div>
+                  {activeTab === 'messages' ? 'Xabarlar Boshqaruvi' :
+                   activeTab === 'appSettings' ? 'Ilova Sozlamalari' :
+                   activeTab === 'settings' ? 'Tizim Sozlamalari' :
+                   adminCards.find(c => c.id === activeTab)?.title || 'Boshqaruv'}
+                </h3>
+                {activeTab !== 'appSettings' && activeTab !== 'settings' && (
+                  <button
+                    onClick={() => setActiveTab('main')}
+                    className="px-4 py-2 text-sm font-medium text-foreground/60 hover:text-primary hover:bg-primary/10 rounded-xl transition-colors"
+                  >
+                    Orqaga
+                  </button>
+                )}
+              </div>
               
               <div className="space-y-6">
-                {activeTab === 'mnemonics' && <MnemonicForm onAdd={(data) => addItem('mnemonics', data)} />}
-                {activeTab === 'questions' && <QuestionForm onAdd={handleAddQuestion} onEdit={handleEditQuestion} onCancelEdit={() => setEditingQuestion(null)} editData={editingQuestion} fanlar={fanlar} />}
-                {activeTab === 'symptoms' && <SymptomForm onAdd={(data) => addItem('symptoms', data)} />}
-                {activeTab === 'videos' && <VideoForm onAdd={(data) => addItem('videos', data)} />}
-                {activeTab === 'patients' && <PatientForm onAdd={(data) => addItem('patients', data)} />}
-                {activeTab === 'sections' && <SectionForm onAdd={(data) => addItem('sections', data)} />}
-                {activeTab === 'osce' && <OSCEForm onAdd={(data) => addItem('osce_scenarios', data)} />}
-                {activeTab === 'library' && <LibraryForm library={library} onUpdate={onUpdateLibrary} />}
-                {activeTab === 'fanlar' && <FanlarForm fanlar={fanlar} setFanlar={setFanlar} editSubjectData={editingSubject} editTopicData={editingTopic} onCancelEditSubject={() => setEditingSubject(null)} onCancelEditTopic={() => setEditingTopic(null)} />}
-                {activeTab === 'news' && <NewsForm onAdd={async (data) => { setNews([...news, { ...data, id: Date.now().toString() }]); return true; }} />}
-                {activeTab === 'journals' && <JournalForm onAdd={async (data) => { setJournals([...journals, { ...data, id: Date.now().toString() }]); return true; }} />}
-                {activeTab === 'leaderboard' && <LeaderboardAdminForm showAlert={showAlert} />}
                 {activeTab === 'messages' && <MessagesAdminForm messages={messagesData} onAdd={async (data) => {
                   try {
                     await addDoc(collection(db, 'messages'), data);
@@ -4465,14 +4558,24 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                 }} />}
                 {activeTab === 'appSettings' && <AppSettingsForm appSettings={appSettings} setAppSettings={setAppSettings} />}
                 {activeTab === 'settings' && <SettingsForm settings={settings} onUpdate={onUpdate} themeColor={themeColor} setThemeColor={setThemeColor} showAlert={showAlert} />}
-                {(activeTab === 'laboratory' || activeTab === 'pharma' || activeTab === 'tutor' || activeTab === 'ai') && (
-                  <div className="text-center py-8 text-foreground/60">
-                    <p>Ushbu bo'lim uchun sozlamalar mavjud emas.</p>
-                  </div>
-                )}
+                {activeTab === 'mnemonics' && <MnemonicsAdmin mnemonics={mnemonics} onAdd={(data) => addItem('mnemonics', data)} onDelete={(id) => deleteItem('mnemonics', id)} />}
+                {activeTab === 'questions' && <QuestionsAdmin questions={questions} fanlar={fanlar} onAdd={handleAddQuestion} onEdit={handleEditQuestion} onCancelEdit={() => setEditingQuestion(null)} editData={editingQuestion} onDelete={(id) => deleteItem('questions', id)} />}
+                {activeTab === 'symptoms' && <SymptomsAdmin symptoms={symptoms} onAdd={(data) => addItem('symptoms', data)} onDelete={(id) => deleteItem('symptoms', id)} />}
+                {activeTab === 'videos' && <VideosAdmin videos={videos} onAdd={(data) => addItem('videos', data)} onDelete={(id) => deleteItem('videos', id)} />}
+                {activeTab === 'patients' && <PatientsAdmin patients={patients} onAdd={(data) => addItem('patients', data)} onDelete={(id) => deleteItem('patients', id)} />}
+                {activeTab === 'sections' && <SectionsAdmin sections={sections} onAdd={(data) => addItem('sections', data)} onDelete={(id) => deleteItem('sections', id)} />}
+                {activeTab === 'library' && <LibraryAdmin library={library} onUpdate={onUpdateLibrary} />}
+                {activeTab === 'osce' && <OsceAdmin osceScenarios={osceScenarios} onAdd={(data) => addItem('osce_scenarios', data)} onDelete={(id) => deleteItem('osce_scenarios', id)} />}
+                {activeTab === 'fanlar' && <FanlarAdmin fanlar={fanlar} setFanlar={setFanlar} editSubjectData={editingSubject} editTopicData={editingTopic} onCancelEditSubject={() => setEditingSubject(null)} onCancelEditTopic={() => setEditingTopic(null)} />}
+                {activeTab === 'news' && <NewsAdmin news={news} onAdd={async (data) => { setNews([...news, { ...data, id: Date.now().toString() }]); return true; }} onDelete={(id) => setNews(news.filter(n => n.id !== id))} />}
+                {activeTab === 'journals' && <JournalsAdmin journals={journals} onAdd={async (data) => { setJournals([...journals, { ...data, id: Date.now().toString() }]); return true; }} onDelete={(id) => setJournals(journals.filter(j => j.id !== id))} />}
+                {activeTab === 'laboratory' && <div className="text-center py-12 text-foreground/60">Tez orada...</div>}
+                {activeTab === 'pharma' && <div className="text-center py-12 text-foreground/60">Tez orada...</div>}
+                {activeTab === 'tutor' && <div className="text-center py-12 text-foreground/60">Tez orada...</div>}
+                {activeTab === 'ai' && <div className="text-center py-12 text-foreground/60">Tez orada...</div>}
+                {activeTab === 'leaderboard' && <LeaderboardAdminForm showAlert={showAlert} />}
               </div>
             </div>
-          </div>
           )}
         </div>
       </div>

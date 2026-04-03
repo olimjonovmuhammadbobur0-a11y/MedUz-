@@ -59,7 +59,7 @@ export function LiveAudioChat({ systemInstruction, initialMessage, onEnd }: Live
             speechConfig: {
               voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } },
             },
-            systemInstruction: { parts: [{ text: systemInstruction }] },
+            systemInstruction: systemInstruction,
             outputAudioTranscription: {},
             inputAudioTranscription: {},
           } as any, // Cast to any to bypass strict type checking for transcription fields if not in types yet
