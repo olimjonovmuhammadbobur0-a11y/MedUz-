@@ -2160,13 +2160,13 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
         id: f.id,
         name: f.title,
         icon: f.icon || "📚",
-        isLocked: f.isLocked || false,
         topics: f.topics.map(t => {
           const topicQuestions = questions.filter(q => q.subject === f.title && q.topic === t.title);
           return {
             id: t.id,
             name: t.title,
             timeLimit: t.timeLimit,
+            isLocked: t.isLocked || false,
             questions: topicQuestions.map(q => ({
               id: q.id,
               type: q.type || 'test',
@@ -2684,8 +2684,6 @@ Return ONLY a JSON object in this format:
               'from-cyan-600 to-blue-700'
             ];
             const gradientClass = gradients[idx % gradients.length];
-
-            const isSubjectLocked = subject.isLocked && user?.role !== 'admin';
             
             return (
               <motion.div
@@ -2693,34 +2691,25 @@ Return ONLY a JSON object in this format:
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.1 }}
-                whileHover={!isSubjectLocked ? { y: -10, scale: 1.02 } : {}}
+                whileHover={{ y: -10, scale: 1.02 }}
                 onClick={() => {
-                  if (isSubjectLocked) {
-                    showAlert('Yopiq fan', 'Ushbu fan testlari hozircha yopiq. Admin ruxsat berganidan so\'ng ishlashingiz mumkin.');
-                  } else {
-                    handleSubjectSelect(subject);
-                  }
+                  handleSubjectSelect(subject);
                 }}
-                className={`relative group ${isSubjectLocked ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'} overflow-hidden rounded-[2.5rem] p-1 shadow-xl hover:shadow-2xl transition-all duration-500`}
+                className={`relative group cursor-pointer overflow-hidden rounded-[2.5rem] p-1 shadow-xl hover:shadow-2xl transition-all duration-500`}
               >
                 {/* Background Gradient Layer */}
-                <div className={`absolute inset-0 bg-gradient-to-br ${gradientClass} opacity-90 ${!isSubjectLocked && 'group-hover:opacity-100'} transition-opacity duration-500 ${isSubjectLocked && 'grayscale'}`} />
+                <div className={`absolute inset-0 bg-gradient-to-br ${gradientClass} opacity-90 group-hover:opacity-100 transition-opacity duration-500`} />
                 
                 {/* Glass Overlay */}
                 <div className="absolute inset-0 backdrop-blur-[1px] bg-white/5 border border-white/20 rounded-[2.5rem]" />
                 
                 {/* Content Container */}
                 <div className="relative p-10 flex flex-col items-center text-center text-white min-h-[320px] justify-center z-10">
-                  {isSubjectLocked && (
-                    <div className="absolute top-6 right-6 bg-black/30 p-3 rounded-full backdrop-blur-md">
-                      <Icons.Lock className="w-6 h-6 text-white" />
-                    </div>
-                  )}
                   {/* Icon with floating effect */}
                   <motion.div 
-                    animate={!isSubjectLocked ? { y: [0, -5, 0] } : {}}
+                    animate={{ y: [0, -5, 0] }}
                     transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                    className={`mb-8 p-6 rounded-3xl bg-white/20 backdrop-blur-md shadow-2xl border border-white/30 ${!isSubjectLocked && 'group-hover:scale-110'} transition-transform duration-500`}
+                    className={`mb-8 p-6 rounded-3xl bg-white/20 backdrop-blur-md shadow-2xl border border-white/30 group-hover:scale-110 transition-transform duration-500`}
                   >
                     <IconComponent className="w-12 h-12 text-white drop-shadow-lg" />
                   </motion.div>
@@ -2737,18 +2726,18 @@ Return ONLY a JSON object in this format:
                   {/* Action Button */}
                   <div className="mt-10">
                     <motion.div
-                      whileHover={!isSubjectLocked ? { scale: 1.05 } : {}}
-                      whileTap={!isSubjectLocked ? { scale: 0.95 } : {}}
-                      className={`bg-white ${isSubjectLocked ? 'text-gray-500' : 'text-blue-700'} px-10 py-4 rounded-2xl font-black text-lg shadow-2xl opacity-0 group-hover:opacity-100 translate-y-6 group-hover:translate-y-0 transition-all duration-500`}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      className={`bg-white text-blue-700 px-10 py-4 rounded-2xl font-black text-lg shadow-2xl opacity-0 group-hover:opacity-100 translate-y-6 group-hover:translate-y-0 transition-all duration-500`}
                     >
-                      {isSubjectLocked ? 'Yopiq' : 'Testni boshlash'}
+                      Testni boshlash
                     </motion.div>
                   </div>
                 </div>
 
                 {/* Decorative Blobs */}
-                <div className={`absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-3xl ${!isSubjectLocked && 'group-hover:bg-white/20'} transition-all duration-700`} />
-                <div className={`absolute -left-10 -bottom-10 w-48 h-48 bg-black/10 rounded-full blur-3xl ${!isSubjectLocked && 'group-hover:bg-black/20'} transition-all duration-700`} />
+                <div className={`absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-3xl group-hover:bg-white/20 transition-all duration-700`} />
+                <div className={`absolute -left-10 -bottom-10 w-48 h-48 bg-black/10 rounded-full blur-3xl group-hover:bg-black/20 transition-all duration-700`} />
               </motion.div>
             );
           }) : (
@@ -3842,15 +3831,243 @@ function JournalsAdmin({ journals, onAdd, onDelete }: { journals: any[], onAdd: 
   );
 }
 
-function QuestionsAdmin({ questions, fanlar, onAdd, onEdit, onCancelEdit, editData, onDelete }: { questions: Question[], fanlar: Subject[], onAdd: (data: any) => Promise<boolean>, onEdit: (id: string, data: any) => Promise<boolean>, onCancelEdit: () => void, editData: Question | null, onDelete: (id: string) => void }) {
+function QuestionsAdmin({ questions, fanlar, setFanlar, onAdd, onEdit, onCancelEdit, editData, onDelete, onEditClick, onUpdateTopicName, onDeleteTopic }: { questions: Question[], fanlar: Subject[], setFanlar: (f: Subject[]) => void, onAdd: (data: any) => Promise<boolean>, onEdit: (id: string, data: any) => Promise<boolean>, onCancelEdit: () => void, editData: Question | null, onDelete: (id: string) => void, onEditClick: (q: Question) => void, onUpdateTopicName?: (subjectId: string, oldTopicName: string, newTopicName: string) => Promise<boolean>, onDeleteTopic?: (subjectId: string, topicId: string) => void }) {
+  const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [editingTopic, setEditingTopic] = useState<{ subjectId: string, topicId: string, oldName: string, currentName: string, timeLimit: number } | null>(null);
+
+  const downloadSampleFile = () => {
+    const csvContent = "subject,topic,difficulty,question,optionA,optionB,optionC,optionD,correct,explanation\n" +
+                       "Anatomiya,Yurak,medium,Yurakning qaysi qismi kislorodga boy qonni butun tanaga haydaydi?,O'ng bo'lmacha,O'ng qorincha,Chap bo'lmacha,Chap qorincha,D,Chap qorincha qisqarganda qon aortaga otilib chiqadi va butun tana bo'ylab tarqaladi.";
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'test_namuna.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const toggleTopicLock = (subjectId: string, topicId: string) => {
+    const updatedFanlar = fanlar.map(f => {
+      if (f.id === subjectId) {
+        return {
+          ...f,
+          topics: f.topics.map(t => t.id === topicId ? { ...t, isLocked: !t.isLocked } : t)
+        };
+      }
+      return f;
+    });
+    setFanlar(updatedFanlar);
+  };
+
+  const handleDeleteTopic = (subjectId: string, topicId: string) => {
+    if (onDeleteTopic) {
+      onDeleteTopic(subjectId, topicId);
+      return;
+    }
+
+    if (!window.confirm('Haqiqatan ham ushbu mavzuni va unga tegishli barcha testlarni o\'chirib tashlamoqchimisiz?')) return;
+    
+    const updatedFanlar = fanlar.map(f => {
+      if (f.id === subjectId) {
+        return {
+          ...f,
+          topics: f.topics.filter(t => t.id !== topicId)
+        };
+      }
+      return f;
+    });
+    setFanlar(updatedFanlar);
+  };
+
+  const saveTopic = async (subjectId: string, topicId: string, oldName: string, newName: string, timeLimit: number) => {
+    if (!newName.trim()) {
+      setEditingTopic(null);
+      return;
+    }
+    
+    let nameChanged = oldName !== newName;
+    
+    if (nameChanged && onUpdateTopicName) {
+      const success = await onUpdateTopicName(subjectId, oldName, newName);
+      if (!success) return;
+    }
+
+    const updatedFanlar = fanlar.map(f => {
+      if (f.id === subjectId) {
+        return {
+          ...f,
+          topics: f.topics.map(t => t.id === topicId ? { ...t, title: newName, timeLimit } : t)
+        };
+      }
+      return f;
+    });
+    setFanlar(updatedFanlar);
+    setEditingTopic(null);
+  };
+
+  if (!selectedSubject) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h3 className="font-medium text-foreground flex items-center gap-2 text-xl">
+            <BookOpen className="w-6 h-6 text-primary" /> Fanlar bo'yicha testlar
+          </h3>
+          <button onClick={downloadSampleFile} className="px-4 py-2 bg-secondary text-foreground/80 hover:bg-secondary/80 rounded-xl text-sm font-medium transition-colors flex items-center gap-2">
+            <Icons.FlaskConical className="w-4 h-4" /> Namuna yuklab olish
+          </button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {fanlar.map(f => {
+            const subjectQuestionsCount = questions.filter(q => q.subject === f.title).length;
+            return (
+              <button
+                key={f.id}
+                onClick={() => setSelectedSubject(f.title)}
+                className="bg-card border border-border rounded-2xl p-6 text-left hover:shadow-md transition-all group"
+              >
+                <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <BookOpen className="w-6 h-6" />
+                </div>
+                <h3 className="font-medium text-foreground mb-1">{f.title}</h3>
+                <p className="text-sm text-foreground/60">{subjectQuestionsCount} ta test</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (selectedSubject && !selectedTopic) {
+    const subject = fanlar.find(f => f.title === selectedSubject);
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setSelectedSubject(null)} className="p-2 hover:bg-secondary rounded-xl transition-colors">
+              <ChevronDown className="w-5 h-5 rotate-90" />
+            </button>
+            <h3 className="font-medium text-foreground flex items-center gap-2 text-xl">
+              {selectedSubject} - Mavzular
+            </h3>
+          </div>
+          <button onClick={downloadSampleFile} className="px-4 py-2 bg-secondary text-foreground/80 hover:bg-secondary/80 rounded-xl text-sm font-medium transition-colors flex items-center gap-2">
+            <Icons.FlaskConical className="w-4 h-4" /> Namuna yuklab olish
+          </button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {subject?.topics?.map(t => {
+            const topicQuestionsCount = questions.filter(q => q.subject === selectedSubject && q.topic === t.title).length;
+            const isEditing = editingTopic?.topicId === t.id;
+            
+            return (
+              <div key={t.id} className="bg-card border border-border rounded-2xl p-6 relative group hover:shadow-md transition-all">
+                <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); toggleTopicLock(subject.id, t.id); }}
+                    className={`p-1.5 rounded-lg transition-colors ${t.isLocked ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' : 'bg-green-500/10 text-green-500 hover:bg-green-500/20'}`}
+                    title={t.isLocked ? "Qulfdan chiqarish" : "Qulflash"}
+                  >
+                    {t.isLocked ? <Lock className="w-4 h-4" /> : <Icons.Unlock className="w-4 h-4" />}
+                  </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setEditingTopic({ subjectId: subject.id, topicId: t.id, oldName: t.title, currentName: t.title, timeLimit: t.timeLimit || 20 }); }}
+                    className="p-1.5 bg-secondary text-foreground/60 hover:text-primary rounded-lg transition-colors"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleDeleteTopic(subject.id, t.id); }}
+                    className="p-1.5 bg-secondary text-foreground/60 hover:text-red-500 rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+                
+                <div 
+                  className="cursor-pointer"
+                  onClick={() => { if (!isEditing) setSelectedTopic(t.title); }}
+                >
+                  <div className="w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <LayoutDashboard className="w-6 h-6" />
+                  </div>
+                  
+                  {isEditing ? (
+                    <div className="mt-2 space-y-3" onClick={e => e.stopPropagation()}>
+                      <div className="space-y-1">
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-foreground/40">Mavzu nomi</label>
+                        <input 
+                          type="text" 
+                          value={editingTopic.currentName}
+                          onChange={(e) => setEditingTopic({ ...editingTopic, currentName: e.target.value })}
+                          className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm outline-none focus:border-primary"
+                          autoFocus
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-foreground/40">Vaqt (daq)</label>
+                        <input 
+                          type="number" 
+                          value={editingTopic.timeLimit}
+                          onChange={(e) => setEditingTopic({ ...editingTopic, timeLimit: parseInt(e.target.value) || 0 })}
+                          className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm outline-none focus:border-primary"
+                        />
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <button onClick={() => saveTopic(subject.id, t.id, editingTopic.oldName, editingTopic.currentName, editingTopic.timeLimit)} className="flex-1 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium">
+                          Saqlash
+                        </button>
+                        <button onClick={() => setEditingTopic(null)} className="flex-1 py-1.5 bg-secondary text-foreground rounded-lg text-xs font-medium">
+                          Bekor qilish
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <h3 className="font-medium text-foreground mb-1 flex items-center gap-2">
+                        {t.title}
+                        {t.isLocked && <Lock className="w-3 h-3 text-red-500" />}
+                      </h3>
+                      <div className="flex items-center gap-3 text-xs text-foreground/60">
+                        <span className="flex items-center gap-1"><Icons.FileQuestion className="w-3 h-3" /> {topicQuestionsCount} ta test</span>
+                        <span className="flex items-center gap-1"><Icons.Clock className="w-3 h-3" /> {t.timeLimit || 20} daq</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  const filteredQuestions = questions.filter(q => q.subject === selectedSubject && q.topic === selectedTopic);
+
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
       <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
         <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
-          <h3 className="font-medium text-foreground flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-primary" /> Testlar Ro'yxati
-          </h3>
-          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{questions.length} ta element</span>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSelectedTopic(null)} className="p-1.5 hover:bg-secondary rounded-lg transition-colors">
+              <ChevronDown className="w-4 h-4 rotate-90" />
+            </button>
+            <h3 className="font-medium text-foreground flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-primary" /> {selectedTopic} (Testlar)
+            </h3>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{filteredQuestions.length} ta element</span>
+            <button onClick={downloadSampleFile} className="px-3 py-1.5 bg-secondary text-foreground/80 hover:bg-secondary/80 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5">
+              Namuna
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -3861,17 +4078,27 @@ function QuestionsAdmin({ questions, fanlar, onAdd, onEdit, onCancelEdit, editDa
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {questions.map(q => (
+              {filteredQuestions.map(q => (
                 <tr key={q.id} className="hover:bg-secondary/50 transition-colors group">
                   <td className="px-6 py-4">
                     <div className="font-medium text-foreground group-hover:text-primary transition-colors">{q.question}</div>
                     <div className="text-[10px] text-primary font-medium uppercase tracking-widest mt-0.5">{q.subject} • {q.topic}</div>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button onClick={() => onDelete(q.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => onEditClick(q)} className="p-2.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-4.5 h-4.5" /></button>
+                      <button onClick={() => onDelete(q.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                    </div>
                   </td>
                 </tr>
               ))}
+              {filteredQuestions.length === 0 && (
+                <tr>
+                  <td colSpan={2} className="px-6 py-8 text-center text-foreground/50">
+                    Bu mavzuda hozircha testlar yo'q.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -3879,15 +4106,43 @@ function QuestionsAdmin({ questions, fanlar, onAdd, onEdit, onCancelEdit, editDa
       <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
         <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
           <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
-          Yangi Qo'shish
+          {editData ? 'Tahrirlash' : 'Yangi Qo\'shish'}
         </h3>
-        <QuestionForm onAdd={onAdd} onEdit={onEdit} onCancelEdit={onCancelEdit} editData={editData} fanlar={fanlar} />
+        <QuestionForm onAdd={onAdd} onEdit={onEdit} onCancelEdit={onCancelEdit} editData={editData} fanlar={fanlar} initialSubject={selectedSubject} initialTopic={selectedTopic} />
       </div>
     </div>
   );
 }
 
 function LibraryAdmin({ library, onUpdate }: { library: any, onUpdate: (data: any) => void }) {
+  const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
+
+  const toggleSubject = (id: string) => {
+    setExpandedSubjects(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleDeleteSubject = (id: number) => {
+    onUpdate({
+      ...library,
+      subjects: library.subjects.filter((s: any) => s.id !== id)
+    });
+  };
+
+  const handleDeleteTopic = (subjectId: number, topicId: number) => {
+    onUpdate({
+      ...library,
+      subjects: library.subjects.map((s: any) => {
+        if (s.id === subjectId) {
+          return {
+            ...s,
+            topics: s.topics.filter((t: any) => t.id !== topicId)
+          };
+        }
+        return s;
+      })
+    });
+  };
+
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
       <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
@@ -3897,8 +4152,65 @@ function LibraryAdmin({ library, onUpdate }: { library: any, onUpdate: (data: an
           </h3>
           <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{library.subjects?.length || 0} ta element</span>
         </div>
-        <div className="p-6 text-foreground/60">
-          Kutubxona formasi orqali boshqaring.
+        <div className="p-0">
+          {library.subjects?.map((subject: any) => (
+            <div key={subject.id} className="border-b border-border last:border-0">
+              <div className="px-6 py-4 flex items-center justify-between hover:bg-secondary/30 transition-colors cursor-pointer" onClick={() => toggleSubject(subject.id.toString())}>
+                <div className="flex items-center gap-3">
+                  <ChevronRight className={`w-5 h-5 text-foreground/40 transition-transform ${expandedSubjects[subject.id.toString()] ? 'rotate-90' : ''}`} />
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                    <BookOpen className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-foreground">{subject.name}</h4>
+                    <p className="text-xs text-foreground/60">{subject.topics?.length || 0} ta mavzu</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                  <button onClick={() => handleDeleteSubject(subject.id)} className="p-2 text-foreground/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              
+              <AnimatePresence>
+                {expandedSubjects[subject.id.toString()] && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden bg-secondary/10"
+                  >
+                    <div className="px-6 py-3 pl-16 space-y-2">
+                      {subject.topics?.map((topic: any) => (
+                        <div key={topic.id} className="flex items-center justify-between p-3 bg-background border border-border rounded-xl">
+                          <div>
+                            <h5 className="font-medium text-sm text-foreground">{topic.name}</h5>
+                            <p className="text-xs text-foreground/50">
+                              {topic.resources?.manuals?.length || 0} qo'llanma, {topic.resources?.presentations?.length || 0} taqdimot
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => handleDeleteTopic(subject.id, topic.id)} className="p-1.5 text-foreground/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {(!subject.topics || subject.topics.length === 0) && (
+                        <div className="text-sm text-foreground/50 py-2">Mavzular yo'q</div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          ))}
+          {(!library.subjects || library.subjects.length === 0) && (
+            <div className="p-8 text-center text-foreground/50">
+              Hozircha kutubxonada fanlar yo'q.
+            </div>
+          )}
         </div>
       </div>
       <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
@@ -3912,7 +4224,13 @@ function LibraryAdmin({ library, onUpdate }: { library: any, onUpdate: (data: an
   );
 }
 
-function FanlarAdmin({ fanlar, setFanlar, editSubjectData, editTopicData, onCancelEditSubject, onCancelEditTopic }: { fanlar: Subject[], setFanlar: (f: Subject[]) => void, editSubjectData: Subject | null, editTopicData: { subjectId: string, topic: Topic } | null, onCancelEditSubject: () => void, onCancelEditTopic: () => void }) {
+function FanlarAdmin({ fanlar, setFanlar, editSubjectData, editTopicData, onCancelEditSubject, onCancelEditTopic, onEditSubject, onEditTopic, onDeleteSubject, onDeleteTopic }: { fanlar: Subject[], setFanlar: (f: Subject[]) => void, editSubjectData: Subject | null, editTopicData: { subjectId: string, topic: Topic } | null, onCancelEditSubject: () => void, onCancelEditTopic: () => void, onEditSubject: (s: Subject) => void, onEditTopic: (subjectId: string, t: Topic) => void, onDeleteSubject: (id: string) => void, onDeleteTopic: (subjectId: string, topicId: string) => void }) {
+  const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
+
+  const toggleSubject = (id: string) => {
+    setExpandedSubjects(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
       <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
@@ -3922,14 +4240,76 @@ function FanlarAdmin({ fanlar, setFanlar, editSubjectData, editTopicData, onCanc
           </h3>
           <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{fanlar.length} ta element</span>
         </div>
-        <div className="p-6 text-foreground/60">
-          Fanlar formasi orqali boshqaring.
+        <div className="p-0">
+          {fanlar.map(subject => (
+            <div key={subject.id} className="border-b border-border last:border-0">
+              <div className="px-6 py-4 flex items-center justify-between hover:bg-secondary/30 transition-colors cursor-pointer" onClick={() => toggleSubject(subject.id)}>
+                <div className="flex items-center gap-3">
+                  <ChevronRight className={`w-5 h-5 text-foreground/40 transition-transform ${expandedSubjects[subject.id] ? 'rotate-90' : ''}`} />
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                    {/* Dynamic icon rendering could go here, fallback to BookOpen */}
+                    <BookOpen className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-foreground">{subject.title}</h4>
+                    <p className="text-xs text-foreground/60">{subject.topics?.length || 0} ta mavzu</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                  <button onClick={() => onEditSubject(subject)} className="p-2 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => onDeleteSubject(subject.id)} className="p-2 text-foreground/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              
+              <AnimatePresence>
+                {expandedSubjects[subject.id] && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden bg-secondary/10"
+                  >
+                    <div className="px-6 py-3 pl-16 space-y-2">
+                      {subject.topics?.map(topic => (
+                        <div key={topic.id} className="flex items-center justify-between p-3 bg-background border border-border rounded-xl">
+                          <div>
+                            <h5 className="font-medium text-sm text-foreground">{topic.title}</h5>
+                            <p className="text-xs text-foreground/50">{topic.videos?.length || 0} video, {topic.guides?.length || 0} qo'llanma</p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => onEditTopic(subject.id, topic)} className="p-1.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => onDeleteTopic(subject.id, topic.id)} className="p-1.5 text-foreground/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {(!subject.topics || subject.topics.length === 0) && (
+                        <div className="text-sm text-foreground/50 py-2">Mavzular yo'q</div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          ))}
+          {fanlar.length === 0 && (
+            <div className="p-8 text-center text-foreground/50">
+              Hozircha fanlar qo'shilmagan.
+            </div>
+          )}
         </div>
       </div>
       <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
         <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
           <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
-          Yangi Qo'shish
+          {editSubjectData ? 'Fanni Tahrirlash' : editTopicData ? 'Mavzuni Tahrirlash' : 'Yangi Qo\'shish'}
         </h3>
         <FanlarForm fanlar={fanlar} setFanlar={setFanlar} editSubjectData={editSubjectData} editTopicData={editTopicData} onCancelEditSubject={onCancelEditSubject} onCancelEditTopic={onCancelEditTopic} />
       </div>
@@ -4278,6 +4658,78 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
     }
   };
 
+  const handleDeleteTopic = async (subjectId: string, topicId: string) => {
+    const subject = fanlar.find(f => f.id === subjectId);
+    const topic = subject?.topics.find(t => t.id === topicId);
+    
+    if (!subject || !topic) return;
+
+    showConfirm('Mavzuni o\'chirish', `Haqiqatan ham "${topic.title}" mavzusini va unga tegishli barcha testlarni o'chirib tashlamoqchimisiz?`, async () => {
+      try {
+        setLoading(true);
+        
+        // 1. Delete questions from Firestore
+        const q = query(collection(db, 'questions'), where('subject', '==', subject.title), where('topic', '==', topic.title));
+        const snapshot = await getDocs(q);
+        const batch = writeBatch(db);
+        snapshot.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+
+        // 2. Update fanlar state (and Firestore via setFanlar)
+        const updatedFanlar = fanlar.map(f => {
+          if (f.id === subjectId) {
+            return {
+              ...f,
+              topics: f.topics.filter(t => t.id !== topicId)
+            };
+          }
+          return f;
+        });
+        await setFanlar(updatedFanlar);
+
+        onUpdate();
+        showAlert('Muvaffaqiyatli', 'Mavzu va unga tegishli testlar o\'chirildi.');
+      } catch (error) {
+        console.error('Error deleting topic:', error);
+        showAlert('Xatolik', 'Mavzuni o\'chirishda xatolik yuz berdi.');
+      } finally {
+        setLoading(false);
+      }
+    });
+  };
+
+  const handleUpdateTopicName = async (subjectId: string, oldTopicName: string, newTopicName: string) => {
+    try {
+      // Update questions
+      const questionsToUpdate = questions.filter(q => q.subject === fanlar.find(f => f.id === subjectId)?.title && q.topic === oldTopicName);
+      if (questionsToUpdate.length > 0) {
+        const batch = writeBatch(db);
+        questionsToUpdate.forEach(q => {
+          batch.update(doc(db, 'questions', q.id!), { topic: newTopicName });
+        });
+        await batch.commit();
+      }
+
+      // Update fanlar
+      const updatedFanlar = fanlar.map(f => {
+        if (f.id === subjectId) {
+          return {
+            ...f,
+            topics: f.topics.map(t => t.title === oldTopicName ? { ...t, title: newTopicName } : t)
+          };
+        }
+        return f;
+      });
+      await setFanlar(updatedFanlar);
+      onUpdate();
+      return true;
+    } catch (error) {
+      console.error("Error updating topic name:", error);
+      showAlert('Xatolik', 'Mavzu nomini o\'zgartirishda xatolik yuz berdi.');
+      return false;
+    }
+  };
+
   const handleAddQuestion = async (data: any) => {
     try {
       let updatedFanlar = [...fanlar];
@@ -4559,14 +5011,14 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                 {activeTab === 'appSettings' && <AppSettingsForm appSettings={appSettings} setAppSettings={setAppSettings} />}
                 {activeTab === 'settings' && <SettingsForm settings={settings} onUpdate={onUpdate} themeColor={themeColor} setThemeColor={setThemeColor} showAlert={showAlert} />}
                 {activeTab === 'mnemonics' && <MnemonicsAdmin mnemonics={mnemonics} onAdd={(data) => addItem('mnemonics', data)} onDelete={(id) => deleteItem('mnemonics', id)} />}
-                {activeTab === 'questions' && <QuestionsAdmin questions={questions} fanlar={fanlar} onAdd={handleAddQuestion} onEdit={handleEditQuestion} onCancelEdit={() => setEditingQuestion(null)} editData={editingQuestion} onDelete={(id) => deleteItem('questions', id)} />}
+                {activeTab === 'questions' && <QuestionsAdmin questions={questions} fanlar={fanlar} setFanlar={setFanlar} onAdd={handleAddQuestion} onEdit={handleEditQuestion} onCancelEdit={() => setEditingQuestion(null)} editData={editingQuestion} onDelete={(id) => deleteItem('questions', id)} onEditClick={(q) => setEditingQuestion(q)} onUpdateTopicName={handleUpdateTopicName} onDeleteTopic={handleDeleteTopic} />}
                 {activeTab === 'symptoms' && <SymptomsAdmin symptoms={symptoms} onAdd={(data) => addItem('symptoms', data)} onDelete={(id) => deleteItem('symptoms', id)} />}
                 {activeTab === 'videos' && <VideosAdmin videos={videos} onAdd={(data) => addItem('videos', data)} onDelete={(id) => deleteItem('videos', id)} />}
                 {activeTab === 'patients' && <PatientsAdmin patients={patients} onAdd={(data) => addItem('patients', data)} onDelete={(id) => deleteItem('patients', id)} />}
                 {activeTab === 'sections' && <SectionsAdmin sections={sections} onAdd={(data) => addItem('sections', data)} onDelete={(id) => deleteItem('sections', id)} />}
                 {activeTab === 'library' && <LibraryAdmin library={library} onUpdate={onUpdateLibrary} />}
                 {activeTab === 'osce' && <OsceAdmin osceScenarios={osceScenarios} onAdd={(data) => addItem('osce_scenarios', data)} onDelete={(id) => deleteItem('osce_scenarios', id)} />}
-                {activeTab === 'fanlar' && <FanlarAdmin fanlar={fanlar} setFanlar={setFanlar} editSubjectData={editingSubject} editTopicData={editingTopic} onCancelEditSubject={() => setEditingSubject(null)} onCancelEditTopic={() => setEditingTopic(null)} />}
+                {activeTab === 'fanlar' && <FanlarAdmin fanlar={fanlar} setFanlar={setFanlar} editSubjectData={editingSubject} editTopicData={editingTopic} onCancelEditSubject={() => setEditingSubject(null)} onCancelEditTopic={() => setEditingTopic(null)} onEditSubject={(s) => setEditingSubject(s)} onEditTopic={(subjectId, topic) => setEditingTopic({ subjectId, topic })} onDeleteSubject={(id) => setFanlar(fanlar.filter(f => f.id !== id))} onDeleteTopic={handleDeleteTopic} />}
                 {activeTab === 'news' && <NewsAdmin news={news} onAdd={async (data) => { setNews([...news, { ...data, id: Date.now().toString() }]); return true; }} onDelete={(id) => setNews(news.filter(n => n.id !== id))} />}
                 {activeTab === 'journals' && <JournalsAdmin journals={journals} onAdd={async (data) => { setJournals([...journals, { ...data, id: Date.now().toString() }]); return true; }} onDelete={(id) => setJournals(journals.filter(j => j.id !== id))} />}
                 {activeTab === 'laboratory' && <div className="text-center py-12 text-foreground/60">Tez orada...</div>}
@@ -4983,24 +5435,30 @@ function QuizRequestsTab({ requests, onApprove, onReject }: { requests: any[], o
 }
 
 function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCancelEditSubject, onCancelEditTopic }: { fanlar: Subject[], setFanlar: (data: Subject[]) => void, editSubjectData?: Subject | null, editTopicData?: { subjectId: string, topic: Topic } | null, onCancelEditSubject?: () => void, onCancelEditTopic?: () => void }) {
-  const [newSubject, setNewSubject] = useState({ title: '', description: '', icon: 'BookOpen', isLocked: false });
-  const [newTopic, setNewTopic] = useState({ subjectId: '', title: '', description: '', isDuelEnabled: false });
+  const [newSubject, setNewSubject] = useState({ title: '', description: '', icon: 'BookOpen' });
+  const [newTopic, setNewTopic] = useState({ subjectId: '', title: '', description: '', isDuelEnabled: false, timeLimit: 20 });
   const [newVideo, setNewVideo] = useState({ subjectId: '', topicId: '', title: '', description: '', videoUrl: '' });
   const [newGuide, setNewGuide] = useState({ subjectId: '', topicId: '', title: '', description: '', driveLink: '' });
 
   useEffect(() => {
     if (editSubjectData) {
-      setNewSubject({ title: editSubjectData.title, description: editSubjectData.description, icon: editSubjectData.icon, isLocked: editSubjectData.isLocked || false });
+      setNewSubject({ title: editSubjectData.title, description: editSubjectData.description, icon: editSubjectData.icon });
     } else {
-      setNewSubject({ title: '', description: '', icon: 'BookOpen', isLocked: false });
+      setNewSubject({ title: '', description: '', icon: 'BookOpen' });
     }
   }, [editSubjectData]);
 
   useEffect(() => {
     if (editTopicData) {
-      setNewTopic({ subjectId: editTopicData.subjectId, title: editTopicData.topic.title, description: editTopicData.topic.description || '', isDuelEnabled: editTopicData.topic.isDuelEnabled || false });
+      setNewTopic({ 
+        subjectId: editTopicData.subjectId, 
+        title: editTopicData.topic.title, 
+        description: editTopicData.topic.description || '', 
+        isDuelEnabled: editTopicData.topic.isDuelEnabled || false,
+        timeLimit: editTopicData.topic.timeLimit || 20
+      });
     } else {
-      setNewTopic({ subjectId: '', title: '', description: '', isDuelEnabled: false });
+      setNewTopic({ subjectId: '', title: '', description: '', isDuelEnabled: false, timeLimit: 20 });
     }
   }, [editTopicData]);
 
@@ -5011,7 +5469,7 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
     if (editSubjectData) {
       const updatedFanlar = fanlar.map(sub => {
         if (sub.id === editSubjectData.id) {
-          return { ...sub, title: newSubject.title, description: newSubject.description, icon: newSubject.icon, isLocked: newSubject.isLocked };
+          return { ...sub, title: newSubject.title, description: newSubject.description, icon: newSubject.icon };
         }
         return sub;
       });
@@ -5024,11 +5482,10 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
         title: newSubject.title,
         description: newSubject.description,
         icon: newSubject.icon,
-        isLocked: newSubject.isLocked,
         topics: []
       };
       setFanlar([...fanlar, subject]);
-      setNewSubject({ title: '', description: '', icon: 'BookOpen', isLocked: false });
+      setNewSubject({ title: '', description: '', icon: 'BookOpen' });
       alert('Fan qo\'shildi!');
     }
   };
@@ -5044,7 +5501,13 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
             ...sub,
             topics: sub.topics.map(top => {
               if (top.id === editTopicData.topic.id) {
-                return { ...top, title: newTopic.title, description: newTopic.description, isDuelEnabled: newTopic.isDuelEnabled };
+                return { 
+                  ...top, 
+                  title: newTopic.title, 
+                  description: newTopic.description, 
+                  isDuelEnabled: newTopic.isDuelEnabled,
+                  timeLimit: newTopic.timeLimit
+                };
               }
               return top;
             })
@@ -5067,6 +5530,7 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
                 title: newTopic.title,
                 description: newTopic.description,
                 isDuelEnabled: newTopic.isDuelEnabled,
+                timeLimit: newTopic.timeLimit,
                 videos: [],
                 guides: []
               }
@@ -5076,7 +5540,7 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
         return sub;
       });
       setFanlar(updatedFanlar);
-      setNewTopic({ subjectId: '', title: '', description: '', isDuelEnabled: false });
+      setNewTopic({ subjectId: '', title: '', description: '', isDuelEnabled: false, timeLimit: 20 });
       alert('Mavzu qo\'shildi!');
     }
   };
@@ -5182,15 +5646,6 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
             onChange={e => setNewSubject({...newSubject, icon: e.target.value})}
             required
           />
-          <label className="flex items-center gap-2 text-sm text-foreground">
-            <input 
-              type="checkbox" 
-              checked={newSubject.isLocked}
-              onChange={e => setNewSubject({...newSubject, isLocked: e.target.checked})}
-              className="rounded border-border text-primary focus:ring-primary"
-            />
-            Fan qulflanganmi? (Faqat ruxsat berilganlar ko'ra oladi)
-          </label>
           <div className="flex gap-2">
             <button type="submit" className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors">
               {editSubjectData ? 'Fanni Saqlash' : 'Fanni Qo\'shish'}
@@ -5243,6 +5698,18 @@ function FanlarForm({ fanlar, setFanlar, editSubjectData, editTopicData, onCance
             />
             Duel uchun ruxsat berish
           </label>
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-foreground/60">Vaqt limiti (daqiqada)</label>
+            <input 
+              type="number" 
+              placeholder="Vaqt limiti (daqiqada)" 
+              className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm outline-none focus:ring-2 focus:ring-primary"
+              value={newTopic.timeLimit}
+              onChange={e => setNewTopic({...newTopic, timeLimit: parseInt(e.target.value) || 0})}
+              min="1"
+              required
+            />
+          </div>
           <div className="flex gap-2">
             <button type="submit" className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors">
               {editTopicData ? 'Mavzuni Saqlash' : 'Mavzuni Qo\'shish'}

@@ -89,6 +89,7 @@ export interface Topic {
   guides: Guide[];
   timeLimit?: number;
   isDuelEnabled?: boolean;
+  isLocked?: boolean;
 }
 
 export interface Subject {
@@ -97,7 +98,6 @@ export interface Subject {
   description: string;
   icon: string;
   topics: Topic[];
-  isLocked?: boolean;
 }
 
 export interface MessageItem {
