@@ -2767,16 +2767,23 @@ Return ONLY a JSON object in this format:
           {selectedSubject.topics.map((topic: any) => (
             <motion.button
               key={topic.id}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => handleTopicSelect(topic)}
-              className="bg-card p-8 rounded-2xl border border-border/40 shadow-sm hover:shadow-sm transition-all text-left flex justify-between items-center group"
+              whileHover={!topic.isLocked ? { scale: 1.02 } : {}}
+              whileTap={!topic.isLocked ? { scale: 0.98 } : {}}
+              onClick={() => !topic.isLocked && handleTopicSelect(topic)}
+              className={`bg-card p-8 rounded-2xl border border-border/40 shadow-sm transition-all text-left flex justify-between items-center group ${topic.isLocked ? 'opacity-60 cursor-not-allowed' : 'hover:shadow-sm'}`}
             >
               <div>
-                <h3 className="text-xl font-medium text-foreground group-hover:text-primary transition-colors tracking-tight">{topic.name}</h3>
+                <h3 className={`text-xl font-medium transition-colors tracking-tight flex items-center gap-2 ${topic.isLocked ? 'text-foreground/60' : 'text-foreground group-hover:text-primary'}`}>
+                  {topic.name}
+                  {topic.isLocked && <Lock className="w-4 h-4 text-red-500" />}
+                </h3>
                 <p className="text-sm text-foreground/50 mt-2 font-medium bg-secondary w-fit px-3 py-1 rounded-lg">{topic.questions.length} {t('quizQuestion').toLowerCase()}</p>
               </div>
-              <ChevronRight className="w-6 h-6 text-foreground/30 group-hover:text-primary transition-colors group-hover:translate-x-1" />
+              {!topic.isLocked ? (
+                <ChevronRight className="w-6 h-6 text-foreground/30 group-hover:text-primary transition-colors group-hover:translate-x-1" />
+              ) : (
+                <Lock className="w-6 h-6 text-red-500/50" />
+              )}
             </motion.button>
           ))}
         </div>
@@ -3467,365 +3474,511 @@ function TopicTimeLimitEditor({ fanlar, setFanlar, subjectTitle, topicTitle, sho
 }
 
 function MnemonicsAdmin({ mnemonics, onAdd, onDelete }: { mnemonics: Mnemonic[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => void }) {
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
-        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
-          <h3 className="font-medium text-foreground flex items-center gap-2">
-            <Brain className="w-5 h-5 text-primary" /> Mnemonika Ro'yxati
+  const [isAdding, setIsAdding] = useState(false);
+
+  if (isAdding) {
+    return (
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
+        <div className="flex justify-between items-center mb-8">
+          <h3 className="font-medium text-foreground flex items-center gap-3 text-xl">
+            <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+            Yangi Qo'shish
           </h3>
-          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{mnemonics.length} ta element</span>
+          <button onClick={() => setIsAdding(false)} className="px-4 py-2 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 font-medium transition-colors">
+            Orqaga
+          </button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-secondary/30 border-b border-border">
-              <tr>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {mnemonics.map(m => (
-                <tr key={m.id} className="hover:bg-secondary/50 transition-colors group">
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{m.title}</div>
-                    <div className="text-[10px] text-primary font-medium uppercase tracking-widest mt-0.5">{m.category}</div>
-                    <div className="text-sm text-foreground/60 mt-2 font-mono bg-secondary/50 p-2 rounded-lg border border-border">{m.mnemonic}</div>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button onClick={() => onDelete(m.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <MnemonicForm onAdd={async (data) => {
+          const success = await onAdd(data);
+          if (success) setIsAdding(false);
+          return success;
+        }} />
       </div>
-      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
-        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
-          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
-          Yangi Qo'shish
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-card p-4 rounded-2xl border border-border shadow-sm">
+        <h3 className="font-medium text-foreground flex items-center gap-2 text-lg">
+          <Brain className="w-5 h-5 text-primary" /> Mnemonika Ro'yxati
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider ml-2">{mnemonics.length}</span>
         </h3>
-        <MnemonicForm onAdd={onAdd} />
+        <button onClick={() => setIsAdding(true)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
+          <Plus className="w-4 h-4" /> Qo'shish
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {mnemonics.map(m => (
+          <div key={m.id} className="bg-card border border-border rounded-2xl p-6 relative group hover:shadow-md transition-all flex flex-col">
+            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => onDelete(m.id!)} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="font-medium text-foreground mb-1 pr-10 text-lg">{m.title}</div>
+            <div className="text-[10px] text-primary font-bold uppercase tracking-widest mb-4 bg-primary/5 w-fit px-2 py-1 rounded-md">{m.category}</div>
+            <div className="text-sm text-foreground/70 font-mono bg-secondary/50 p-4 rounded-xl border border-border mt-auto leading-relaxed">{m.mnemonic}</div>
+          </div>
+        ))}
+        {mnemonics.length === 0 && (
+          <div className="col-span-full text-center py-12 text-foreground/50 bg-card rounded-2xl border border-border border-dashed">
+            Hozircha mnemonikalar yo'q.
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function SymptomsAdmin({ symptoms, onAdd, onDelete }: { symptoms: SymptomData[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => void }) {
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
-        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
-          <h3 className="font-medium text-foreground flex items-center gap-2">
-            <Stethoscope className="w-5 h-5 text-primary" /> Simptomlar Ro'yxati
+  const [isAdding, setIsAdding] = useState(false);
+
+  if (isAdding) {
+    return (
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
+        <div className="flex justify-between items-center mb-8">
+          <h3 className="font-medium text-foreground flex items-center gap-3 text-xl">
+            <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+            Yangi Qo'shish
           </h3>
-          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{symptoms.length} ta element</span>
+          <button onClick={() => setIsAdding(false)} className="px-4 py-2 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 font-medium transition-colors">
+            Orqaga
+          </button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-secondary/30 border-b border-border">
-              <tr>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {symptoms.map(s => (
-                <tr key={s.id} className="hover:bg-secondary/50 transition-colors group">
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{s.diagnosis}</div>
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {s.symptoms.map((sym, i) => (
-                        <span key={i} className="text-[10px] bg-secondary px-2 py-0.5 rounded-full text-foreground/60 border border-border">{sym}</span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button onClick={() => onDelete(s.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <SymptomForm onAdd={async (data) => {
+          const success = await onAdd(data);
+          if (success) setIsAdding(false);
+          return success;
+        }} />
       </div>
-      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
-        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
-          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
-          Yangi Qo'shish
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-card p-4 rounded-2xl border border-border shadow-sm">
+        <h3 className="font-medium text-foreground flex items-center gap-2 text-lg">
+          <Stethoscope className="w-5 h-5 text-primary" /> Simptomlar Ro'yxati
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider ml-2">{symptoms.length}</span>
         </h3>
-        <SymptomForm onAdd={onAdd} />
+        <button onClick={() => setIsAdding(true)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
+          <Plus className="w-4 h-4" /> Qo'shish
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {symptoms.map(s => (
+          <div key={s.id} className="bg-card border border-border rounded-2xl p-6 relative group hover:shadow-md transition-all flex flex-col">
+            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => onDelete(s.id!)} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="font-medium text-foreground mb-4 pr-10 text-lg">{s.diagnosis}</div>
+            <div className="flex flex-wrap gap-2 mt-auto">
+              {s.symptoms.map((sym, i) => (
+                <span key={i} className="text-xs bg-secondary/50 px-2.5 py-1 rounded-lg text-foreground/70 border border-border">{sym}</span>
+              ))}
+            </div>
+          </div>
+        ))}
+        {symptoms.length === 0 && (
+          <div className="col-span-full text-center py-12 text-foreground/50 bg-card rounded-2xl border border-border border-dashed">
+            Hozircha simptomlar yo'q.
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function VideosAdmin({ videos, onAdd, onDelete }: { videos: VideoData[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => void }) {
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
-        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
-          <h3 className="font-medium text-foreground flex items-center gap-2">
-            <Video className="w-5 h-5 text-primary" /> Videolar Ro'yxati
+  const [isAdding, setIsAdding] = useState(false);
+
+  if (isAdding) {
+    return (
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
+        <div className="flex justify-between items-center mb-8">
+          <h3 className="font-medium text-foreground flex items-center gap-3 text-xl">
+            <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+            Yangi Qo'shish
           </h3>
-          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{videos.length} ta element</span>
+          <button onClick={() => setIsAdding(false)} className="px-4 py-2 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 font-medium transition-colors">
+            Orqaga
+          </button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-secondary/30 border-b border-border">
-              <tr>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {videos.map(v => (
-                <tr key={v.id} className="hover:bg-secondary/50 transition-colors group">
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{v.title}</div>
-                    <div className="text-xs text-foreground/60 mt-1">{v.category} • {v.duration}</div>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button onClick={() => onDelete(v.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <VideoForm onAdd={async (data) => {
+          const success = await onAdd(data);
+          if (success) setIsAdding(false);
+          return success;
+        }} />
       </div>
-      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
-        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
-          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
-          Yangi Qo'shish
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-card p-4 rounded-2xl border border-border shadow-sm">
+        <h3 className="font-medium text-foreground flex items-center gap-2 text-lg">
+          <Video className="w-5 h-5 text-primary" /> Videolar Ro'yxati
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider ml-2">{videos.length}</span>
         </h3>
-        <VideoForm onAdd={onAdd} />
+        <button onClick={() => setIsAdding(true)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
+          <Plus className="w-4 h-4" /> Qo'shish
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {videos.map(v => (
+          <div key={v.id} className="bg-card border border-border rounded-2xl p-6 relative group hover:shadow-md transition-all flex flex-col">
+            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => onDelete(v.id!)} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="w-full aspect-video bg-secondary/50 rounded-xl mb-4 flex items-center justify-center overflow-hidden relative">
+              <img src={`https://img.youtube.com/vi/${v.videoUrl}/maxresdefault.jpg`} alt={v.title} className="w-full h-full object-cover opacity-80" onError={(e) => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80&w=500'; }} />
+              <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                <div className="w-10 h-10 bg-white/90 rounded-full flex items-center justify-center pl-1">
+                  <Play className="w-4 h-4 text-primary" />
+                </div>
+              </div>
+              <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] font-medium px-2 py-0.5 rounded-md">
+                {v.duration}
+              </div>
+            </div>
+            <div className="font-medium text-foreground mb-1 text-lg line-clamp-2">{v.title}</div>
+            <div className="text-[10px] text-primary font-bold uppercase tracking-widest mt-auto bg-primary/5 w-fit px-2 py-1 rounded-md">{v.category}</div>
+          </div>
+        ))}
+        {videos.length === 0 && (
+          <div className="col-span-full text-center py-12 text-foreground/50 bg-card rounded-2xl border border-border border-dashed">
+            Hozircha videolar yo'q.
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function PatientsAdmin({ patients, onAdd, onDelete }: { patients: Patient[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => void }) {
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
-        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
-          <h3 className="font-medium text-foreground flex items-center gap-2">
-            <Heart className="w-5 h-5 text-primary" /> Bemorlar Ro'yxati
+  const [isAdding, setIsAdding] = useState(false);
+
+  if (isAdding) {
+    return (
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
+        <div className="flex justify-between items-center mb-8">
+          <h3 className="font-medium text-foreground flex items-center gap-3 text-xl">
+            <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+            Yangi Qo'shish
           </h3>
-          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{patients.length} ta element</span>
+          <button onClick={() => setIsAdding(false)} className="px-4 py-2 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 font-medium transition-colors">
+            Orqaga
+          </button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-secondary/30 border-b border-border">
-              <tr>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {patients.map(p => (
-                <tr key={p.id} className="hover:bg-secondary/50 transition-colors group">
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{p.name} ({p.age} yosh)</div>
-                    <div className="text-xs text-foreground/60 mt-1">{p.symptoms} • {p.condition} • {p.healthScore}%</div>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button onClick={() => onDelete(p.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PatientForm onAdd={async (data) => {
+          const success = await onAdd(data);
+          if (success) setIsAdding(false);
+          return success;
+        }} />
       </div>
-      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
-        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
-          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
-          Yangi Qo'shish
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-card p-4 rounded-2xl border border-border shadow-sm">
+        <h3 className="font-medium text-foreground flex items-center gap-2 text-lg">
+          <Heart className="w-5 h-5 text-primary" /> Bemorlar Ro'yxati
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider ml-2">{patients.length}</span>
         </h3>
-        <PatientForm onAdd={onAdd} />
+        <button onClick={() => setIsAdding(true)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
+          <Plus className="w-4 h-4" /> Qo'shish
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {patients.map(p => (
+          <div key={p.id} className="bg-card border border-border rounded-2xl p-6 relative group hover:shadow-md transition-all flex flex-col">
+            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => onDelete(p.id!)} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+                <Heart className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="font-medium text-foreground text-lg">{p.name}</div>
+                <div className="text-xs text-foreground/60">{p.age} yosh</div>
+              </div>
+            </div>
+            <div className="space-y-2 mt-auto">
+              <div className="flex justify-between text-sm">
+                <span className="text-foreground/60">Holati:</span>
+                <span className="font-medium text-foreground">{p.condition}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-foreground/60">Salomatlik:</span>
+                <span className={`font-medium ${p.healthScore > 70 ? 'text-green-500' : p.healthScore > 40 ? 'text-yellow-500' : 'text-red-500'}`}>{p.healthScore}%</span>
+              </div>
+              <div className="text-sm text-foreground/70 bg-secondary/50 p-3 rounded-lg border border-border mt-2">
+                <span className="font-medium text-foreground/60 block mb-1 text-xs uppercase tracking-wider">Simptomlar:</span>
+                {p.symptoms}
+              </div>
+            </div>
+          </div>
+        ))}
+        {patients.length === 0 && (
+          <div className="col-span-full text-center py-12 text-foreground/50 bg-card rounded-2xl border border-border border-dashed">
+            Hozircha bemorlar yo'q.
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function SectionsAdmin({ sections, onAdd, onDelete }: { sections: Section[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => void }) {
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
-        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
-          <h3 className="font-medium text-foreground flex items-center gap-2">
-            <Plus className="w-5 h-5 text-primary" /> Bo'limlar Ro'yxati
+  const [isAdding, setIsAdding] = useState(false);
+
+  if (isAdding) {
+    return (
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
+        <div className="flex justify-between items-center mb-8">
+          <h3 className="font-medium text-foreground flex items-center gap-3 text-xl">
+            <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+            Yangi Qo'shish
           </h3>
-          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{sections.length} ta element</span>
+          <button onClick={() => setIsAdding(false)} className="px-4 py-2 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 font-medium transition-colors">
+            Orqaga
+          </button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-secondary/30 border-b border-border">
-              <tr>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {sections.map(sec => (
-                <tr key={sec.id} className="hover:bg-secondary/50 transition-colors group">
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{sec.title}</div>
-                    <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{sec.content}</div>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button onClick={() => onDelete(sec.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <SectionForm onAdd={async (data) => {
+          const success = await onAdd(data);
+          if (success) setIsAdding(false);
+          return success;
+        }} />
       </div>
-      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
-        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
-          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
-          Yangi Qo'shish
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-card p-4 rounded-2xl border border-border shadow-sm">
+        <h3 className="font-medium text-foreground flex items-center gap-2 text-lg">
+          <Plus className="w-5 h-5 text-primary" /> Bo'limlar Ro'yxati
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider ml-2">{sections.length}</span>
         </h3>
-        <SectionForm onAdd={onAdd} />
+        <button onClick={() => setIsAdding(true)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
+          <Plus className="w-4 h-4" /> Qo'shish
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {sections.map(sec => (
+          <div key={sec.id} className="bg-card border border-border rounded-2xl p-6 relative group hover:shadow-md transition-all flex flex-col">
+            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => onDelete(sec.id!)} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="font-medium text-foreground mb-2 pr-10 text-lg">{sec.title}</div>
+            <div className="text-sm text-foreground/70 bg-secondary/50 p-4 rounded-xl border border-border mt-auto line-clamp-3 leading-relaxed">{sec.content}</div>
+          </div>
+        ))}
+        {sections.length === 0 && (
+          <div className="col-span-full text-center py-12 text-foreground/50 bg-card rounded-2xl border border-border border-dashed">
+            Hozircha bo'limlar yo'q.
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function OsceAdmin({ osceScenarios, onAdd, onDelete }: { osceScenarios: any[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => void }) {
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
-        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
-          <h3 className="font-medium text-foreground flex items-center gap-2">
-            <Stethoscope className="w-5 h-5 text-primary" /> OSCE Ssenariylari
+  const [isAdding, setIsAdding] = useState(false);
+
+  if (isAdding) {
+    return (
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
+        <div className="flex justify-between items-center mb-8">
+          <h3 className="font-medium text-foreground flex items-center gap-3 text-xl">
+            <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+            Yangi Qo'shish
           </h3>
-          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{osceScenarios.length} ta element</span>
+          <button onClick={() => setIsAdding(false)} className="px-4 py-2 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 font-medium transition-colors">
+            Orqaga
+          </button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-secondary/30 border-b border-border">
-              <tr>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {osceScenarios.map(osce => (
-                <tr key={osce.id} className="hover:bg-secondary/50 transition-colors group">
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{osce.title}</div>
-                    <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{osce.description}</div>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button onClick={() => onDelete(osce.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <OSCEForm onAdd={async (data) => {
+          const success = await onAdd(data);
+          if (success) setIsAdding(false);
+          return success;
+        }} />
       </div>
-      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
-        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
-          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
-          Yangi Qo'shish
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-card p-4 rounded-2xl border border-border shadow-sm">
+        <h3 className="font-medium text-foreground flex items-center gap-2 text-lg">
+          <Stethoscope className="w-5 h-5 text-primary" /> OSCE Ssenariylari
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider ml-2">{osceScenarios.length}</span>
         </h3>
-        <OSCEForm onAdd={onAdd} />
+        <button onClick={() => setIsAdding(true)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
+          <Plus className="w-4 h-4" /> Qo'shish
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {osceScenarios.map(osce => (
+          <div key={osce.id} className="bg-card border border-border rounded-2xl p-6 relative group hover:shadow-md transition-all flex flex-col">
+            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => onDelete(osce.id!)} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="font-medium text-foreground mb-2 pr-10 text-lg">{osce.title}</div>
+            <div className="text-sm text-foreground/70 bg-secondary/50 p-4 rounded-xl border border-border mt-auto line-clamp-3 leading-relaxed">{osce.description}</div>
+          </div>
+        ))}
+        {osceScenarios.length === 0 && (
+          <div className="col-span-full text-center py-12 text-foreground/50 bg-card rounded-2xl border border-border border-dashed">
+            Hozircha OSCE ssenariylari yo'q.
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function NewsAdmin({ news, onAdd, onDelete }: { news: any[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => void }) {
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
-        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
-          <h3 className="font-medium text-foreground flex items-center gap-2">
-            <Globe className="w-5 h-5 text-primary" /> Yangiliklar Ro'yxati
+  const [isAdding, setIsAdding] = useState(false);
+
+  if (isAdding) {
+    return (
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
+        <div className="flex justify-between items-center mb-8">
+          <h3 className="font-medium text-foreground flex items-center gap-3 text-xl">
+            <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+            Yangi Qo'shish
           </h3>
-          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{news.length} ta element</span>
+          <button onClick={() => setIsAdding(false)} className="px-4 py-2 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 font-medium transition-colors">
+            Orqaga
+          </button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-secondary/30 border-b border-border">
-              <tr>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {news.map(item => (
-                <tr key={item.id} className="hover:bg-secondary/50 transition-colors group">
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{item.title}</div>
-                    <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{item.category} • {item.date}</div>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button onClick={() => onDelete(item.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <NewsForm onAdd={async (data) => {
+          const success = await onAdd(data);
+          if (success) setIsAdding(false);
+          return success;
+        }} />
       </div>
-      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
-        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
-          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
-          Yangi Qo'shish
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-card p-4 rounded-2xl border border-border shadow-sm">
+        <h3 className="font-medium text-foreground flex items-center gap-2 text-lg">
+          <Globe className="w-5 h-5 text-primary" /> Yangiliklar Ro'yxati
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider ml-2">{news.length}</span>
         </h3>
-        <NewsForm onAdd={onAdd} />
+        <button onClick={() => setIsAdding(true)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
+          <Plus className="w-4 h-4" /> Qo'shish
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {news.map(item => (
+          <div key={item.id} className="bg-card border border-border rounded-2xl p-6 relative group hover:shadow-md transition-all flex flex-col">
+            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => onDelete(item.id!)} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="w-full aspect-video bg-secondary/50 rounded-xl mb-4 overflow-hidden">
+              <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80&w=500'; }} />
+            </div>
+            <div className="font-medium text-foreground mb-1 text-lg line-clamp-2">{item.title}</div>
+            <div className="text-[10px] text-primary font-bold uppercase tracking-widest mt-auto bg-primary/5 w-fit px-2 py-1 rounded-md mb-2">{item.category}</div>
+            <div className="text-xs text-foreground/50">{item.date}</div>
+          </div>
+        ))}
+        {news.length === 0 && (
+          <div className="col-span-full text-center py-12 text-foreground/50 bg-card rounded-2xl border border-border border-dashed">
+            Hozircha yangiliklar yo'q.
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function JournalsAdmin({ journals, onAdd, onDelete }: { journals: any[], onAdd: (data: any) => Promise<boolean>, onDelete: (id: string) => void }) {
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
-        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
-          <h3 className="font-medium text-foreground flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-primary" /> Jurnallar Ro'yxati
+  const [isAdding, setIsAdding] = useState(false);
+
+  if (isAdding) {
+    return (
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
+        <div className="flex justify-between items-center mb-8">
+          <h3 className="font-medium text-foreground flex items-center gap-3 text-xl">
+            <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+            Yangi Qo'shish
           </h3>
-          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{journals.length} ta element</span>
+          <button onClick={() => setIsAdding(false)} className="px-4 py-2 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 font-medium transition-colors">
+            Orqaga
+          </button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-secondary/30 border-b border-border">
-              <tr>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {journals.map(item => (
-                <tr key={item.id} className="hover:bg-secondary/50 transition-colors group">
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{item.title}</div>
-                    <div className="text-xs text-foreground/60 mt-1 line-clamp-1">{item.category} • {item.date}</div>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button onClick={() => onDelete(item.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <JournalForm onAdd={async (data) => {
+          const success = await onAdd(data);
+          if (success) setIsAdding(false);
+          return success;
+        }} />
       </div>
-      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
-        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
-          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
-          Yangi Qo'shish
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-card p-4 rounded-2xl border border-border shadow-sm">
+        <h3 className="font-medium text-foreground flex items-center gap-2 text-lg">
+          <BookOpen className="w-5 h-5 text-primary" /> Jurnallar Ro'yxati
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider ml-2">{journals.length}</span>
         </h3>
-        <JournalForm onAdd={onAdd} />
+        <button onClick={() => setIsAdding(true)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
+          <Plus className="w-4 h-4" /> Qo'shish
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {journals.map(item => (
+          <div key={item.id} className="bg-card border border-border rounded-2xl p-6 relative group hover:shadow-md transition-all flex flex-col">
+            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => onDelete(item.id!)} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="w-full aspect-[3/4] bg-secondary/50 rounded-xl mb-4 overflow-hidden relative">
+              <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1532012197267-da84d127e765?auto=format&fit=crop&q=80&w=500'; }} />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
+                <span className="text-white text-xs font-medium bg-primary/80 px-2 py-1 rounded-md">{item.category}</span>
+              </div>
+            </div>
+            <div className="font-medium text-foreground mb-1 text-lg line-clamp-2">{item.title}</div>
+            <div className="text-xs text-foreground/50 mt-auto">{item.date}</div>
+          </div>
+        ))}
+        {journals.length === 0 && (
+          <div className="col-span-full text-center py-12 text-foreground/50 bg-card rounded-2xl border border-border border-dashed">
+            Hozircha jurnallar yo'q.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3835,6 +3988,7 @@ function QuestionsAdmin({ questions, fanlar, setFanlar, onAdd, onEdit, onCancelE
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [editingTopic, setEditingTopic] = useState<{ subjectId: string, topicId: string, oldName: string, currentName: string, timeLimit: number } | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
 
   const downloadSampleFile = () => {
     const csvContent = "subject,topic,difficulty,question,optionA,optionB,optionC,optionD,correct,explanation\n" +
@@ -3909,6 +4063,42 @@ function QuestionsAdmin({ questions, fanlar, setFanlar, onAdd, onEdit, onCancelE
     setFanlar(updatedFanlar);
     setEditingTopic(null);
   };
+
+  if (isAdding || editData) {
+    return (
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
+        <div className="flex justify-between items-center mb-8">
+          <h3 className="font-medium text-foreground flex items-center gap-3 text-xl">
+            <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+            {editData ? 'Tahrirlash' : 'Yangi Qo\'shish'}
+          </h3>
+          <button onClick={() => { setIsAdding(false); onCancelEdit(); }} className="px-4 py-2 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 font-medium transition-colors">
+            Orqaga
+          </button>
+        </div>
+        <QuestionForm 
+          onAdd={async (data) => {
+            const success = await onAdd(data);
+            if (success) setIsAdding(false);
+            return success;
+          }} 
+          onEdit={async (id, data) => {
+            const success = await onEdit(id, data);
+            if (success) {
+              setIsAdding(false);
+              onCancelEdit();
+            }
+            return success;
+          }} 
+          onCancelEdit={() => { setIsAdding(false); onCancelEdit(); }} 
+          editData={editData} 
+          fanlar={fanlar} 
+          initialSubject={selectedSubject} 
+          initialTopic={selectedTopic} 
+        />
+      </div>
+    );
+  }
 
   if (!selectedSubject) {
     return (
@@ -4051,64 +4241,56 @@ function QuestionsAdmin({ questions, fanlar, setFanlar, onAdd, onEdit, onCancelE
   const filteredQuestions = questions.filter(q => q.subject === selectedSubject && q.topic === selectedTopic);
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
-        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setSelectedTopic(null)} className="p-1.5 hover:bg-secondary rounded-lg transition-colors">
-              <ChevronDown className="w-4 h-4 rotate-90" />
-            </button>
-            <h3 className="font-medium text-foreground flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-primary" /> {selectedTopic} (Testlar)
-            </h3>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{filteredQuestions.length} ta element</span>
-            <button onClick={downloadSampleFile} className="px-3 py-1.5 bg-secondary text-foreground/80 hover:bg-secondary/80 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5">
-              Namuna
-            </button>
-          </div>
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-card p-4 rounded-2xl border border-border shadow-sm">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setSelectedTopic(null)} className="p-2 hover:bg-secondary rounded-xl transition-colors">
+            <ChevronDown className="w-5 h-5 rotate-90" />
+          </button>
+          <h3 className="font-medium text-foreground flex items-center gap-2 text-lg">
+            <CheckCircle2 className="w-5 h-5 text-primary" /> {selectedTopic} (Testlar)
+            <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider ml-2">{filteredQuestions.length}</span>
+          </h3>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-secondary/30 border-b border-border">
-              <tr>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider">Ma'lumot</th>
-                <th className="px-6 py-4 text-xs font-medium text-foreground/50 uppercase tracking-wider w-24 text-right">Amallar</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {filteredQuestions.map(q => (
-                <tr key={q.id} className="hover:bg-secondary/50 transition-colors group">
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-foreground group-hover:text-primary transition-colors">{q.question}</div>
-                    <div className="text-[10px] text-primary font-medium uppercase tracking-widest mt-0.5">{q.subject} • {q.topic}</div>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => onEditClick(q)} className="p-2.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"><Edit2 className="w-4.5 h-4.5" /></button>
-                      <button onClick={() => onDelete(q.id!)} className="p-2.5 text-foreground/40 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filteredQuestions.length === 0 && (
-                <tr>
-                  <td colSpan={2} className="px-6 py-8 text-center text-foreground/50">
-                    Bu mavzuda hozircha testlar yo'q.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="flex items-center gap-3">
+          <button onClick={downloadSampleFile} className="px-4 py-2 bg-secondary text-foreground/80 hover:bg-secondary/80 rounded-xl text-sm font-medium transition-colors flex items-center gap-2">
+            Namuna
+          </button>
+          <button onClick={() => setIsAdding(true)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
+            <Plus className="w-4 h-4" /> Qo'shish
+          </button>
         </div>
       </div>
-      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
-        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
-          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
-          {editData ? 'Tahrirlash' : 'Yangi Qo\'shish'}
-        </h3>
-        <QuestionForm onAdd={onAdd} onEdit={onEdit} onCancelEdit={onCancelEdit} editData={editData} fanlar={fanlar} initialSubject={selectedSubject} initialTopic={selectedTopic} />
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredQuestions.map(q => (
+          <div key={q.id} className="bg-card border border-border rounded-2xl p-6 relative group hover:shadow-md transition-all flex flex-col">
+            <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => onEditClick(q)} className="p-2 bg-secondary text-foreground/60 hover:text-primary rounded-xl transition-colors">
+                <Edit2 className="w-4 h-4" />
+              </button>
+              <button onClick={() => onDelete(q.id!)} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="font-medium text-foreground mb-4 pr-16 text-base leading-relaxed">{q.question}</div>
+            <div className="space-y-2 mt-auto">
+              {q.options?.map((opt, i) => (
+                <div key={i} className={`text-sm p-2 rounded-lg border ${q.correct === i ? 'bg-green-500/10 border-green-500/20 text-green-700' : 'bg-secondary/30 border-border text-foreground/70'}`}>
+                  {opt}
+                </div>
+              ))}
+            </div>
+            <div className="text-[10px] text-primary font-bold uppercase tracking-widest mt-4 bg-primary/5 w-fit px-2 py-1 rounded-md">
+              {q.subject} • {q.topic}
+            </div>
+          </div>
+        ))}
+        {filteredQuestions.length === 0 && (
+          <div className="col-span-full text-center py-12 text-foreground/50 bg-card rounded-2xl border border-border border-dashed">
+            Bu mavzuda hozircha testlar yo'q.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -4116,6 +4298,7 @@ function QuestionsAdmin({ questions, fanlar, setFanlar, onAdd, onEdit, onCancelE
 
 function LibraryAdmin({ library, onUpdate }: { library: any, onUpdate: (data: any) => void }) {
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
+  const [isAdding, setIsAdding] = useState(false);
 
   const toggleSubject = (id: string) => {
     setExpandedSubjects(prev => ({ ...prev, [id]: !prev[id] }));
@@ -4143,82 +4326,78 @@ function LibraryAdmin({ library, onUpdate }: { library: any, onUpdate: (data: an
     });
   };
 
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
-        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
-          <h3 className="font-medium text-foreground flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-primary" /> Kutubxona Strukturasi
+  if (isAdding) {
+    return (
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
+        <div className="flex justify-between items-center mb-8">
+          <h3 className="font-medium text-foreground flex items-center gap-3 text-xl">
+            <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+            Yangi Qo'shish
           </h3>
-          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{library.subjects?.length || 0} ta element</span>
+          <button onClick={() => setIsAdding(false)} className="px-4 py-2 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 font-medium transition-colors">
+            Orqaga
+          </button>
         </div>
-        <div className="p-0">
-          {library.subjects?.map((subject: any) => (
-            <div key={subject.id} className="border-b border-border last:border-0">
-              <div className="px-6 py-4 flex items-center justify-between hover:bg-secondary/30 transition-colors cursor-pointer" onClick={() => toggleSubject(subject.id.toString())}>
-                <div className="flex items-center gap-3">
-                  <ChevronRight className={`w-5 h-5 text-foreground/40 transition-transform ${expandedSubjects[subject.id.toString()] ? 'rotate-90' : ''}`} />
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                    <BookOpen className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-foreground">{subject.name}</h4>
-                    <p className="text-xs text-foreground/60">{subject.topics?.length || 0} ta mavzu</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => handleDeleteSubject(subject.id)} className="p-2 text-foreground/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              
-              <AnimatePresence>
-                {expandedSubjects[subject.id.toString()] && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden bg-secondary/10"
-                  >
-                    <div className="px-6 py-3 pl-16 space-y-2">
-                      {subject.topics?.map((topic: any) => (
-                        <div key={topic.id} className="flex items-center justify-between p-3 bg-background border border-border rounded-xl">
-                          <div>
-                            <h5 className="font-medium text-sm text-foreground">{topic.name}</h5>
-                            <p className="text-xs text-foreground/50">
-                              {topic.resources?.manuals?.length || 0} qo'llanma, {topic.resources?.presentations?.length || 0} taqdimot
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => handleDeleteTopic(subject.id, topic.id)} className="p-1.5 text-foreground/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                      {(!subject.topics || subject.topics.length === 0) && (
-                        <div className="text-sm text-foreground/50 py-2">Mavzular yo'q</div>
-                      )}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          ))}
-          {(!library.subjects || library.subjects.length === 0) && (
-            <div className="p-8 text-center text-foreground/50">
-              Hozircha kutubxonada fanlar yo'q.
-            </div>
-          )}
-        </div>
+        <LibraryForm library={library} onUpdate={(data) => { onUpdate(data); setIsAdding(false); }} />
       </div>
-      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
-        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
-          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
-          Yangi Qo'shish
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-card p-4 rounded-2xl border border-border shadow-sm">
+        <h3 className="font-medium text-foreground flex items-center gap-2 text-lg">
+          <BookOpen className="w-5 h-5 text-primary" /> Kutubxona Strukturasi
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider ml-2">{library.subjects?.length || 0}</span>
         </h3>
-        <LibraryForm library={library} onUpdate={onUpdate} />
+        <button onClick={() => setIsAdding(true)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
+          <Plus className="w-4 h-4" /> Qo'shish
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {library.subjects?.map((subject: any) => (
+          <div key={subject.id} className="bg-card border border-border rounded-2xl p-6 relative group hover:shadow-md transition-all flex flex-col">
+            <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => handleDeleteSubject(subject.id)} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                <BookOpen className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="font-medium text-foreground text-lg">{subject.name}</h4>
+                <p className="text-xs text-foreground/60">{subject.topics?.length || 0} ta mavzu</p>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2 flex-grow">
+              {subject.topics?.map((topic: any) => (
+                <div key={topic.id} className="flex items-center justify-between p-2.5 bg-secondary/30 rounded-lg text-sm group/topic">
+                  <span className="text-foreground/80 truncate pr-2">{topic.name}</span>
+                  <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover/topic:opacity-100 transition-opacity">
+                    <button onClick={() => handleDeleteTopic(subject.id, topic.id)} className="p-1.5 text-foreground/40 hover:text-red-500 rounded-md transition-colors">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {(!subject.topics || subject.topics.length === 0) && (
+                <div className="text-sm text-center text-foreground/50 py-2 bg-secondary/20 rounded-lg border border-border border-dashed">
+                  Mavzular yo'q
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {(!library.subjects || library.subjects.length === 0) && (
+          <div className="col-span-full text-center py-12 text-foreground/50 bg-card rounded-2xl border border-border border-dashed">
+            Hozircha kutubxonada fanlar yo'q.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -4226,92 +4405,97 @@ function LibraryAdmin({ library, onUpdate }: { library: any, onUpdate: (data: an
 
 function FanlarAdmin({ fanlar, setFanlar, editSubjectData, editTopicData, onCancelEditSubject, onCancelEditTopic, onEditSubject, onEditTopic, onDeleteSubject, onDeleteTopic }: { fanlar: Subject[], setFanlar: (f: Subject[]) => void, editSubjectData: Subject | null, editTopicData: { subjectId: string, topic: Topic } | null, onCancelEditSubject: () => void, onCancelEditTopic: () => void, onEditSubject: (s: Subject) => void, onEditTopic: (subjectId: string, t: Topic) => void, onDeleteSubject: (id: string) => void, onDeleteTopic: (subjectId: string, topicId: string) => void }) {
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
+  const [isAdding, setIsAdding] = useState(false);
 
   const toggleSubject = (id: string) => {
     setExpandedSubjects(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-      <div className="xl:col-span-2 bg-card border border-border rounded-2xl overflow-hidden shadow-sm h-fit">
-        <div className="px-6 py-5 border-b border-border bg-secondary/50 flex justify-between items-center">
-          <h3 className="font-medium text-foreground flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-primary" /> Fanlar Ro'yxati
+  if (isAdding || editSubjectData || editTopicData) {
+    return (
+      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
+        <div className="flex justify-between items-center mb-8">
+          <h3 className="font-medium text-foreground flex items-center gap-3 text-xl">
+            <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
+            {editSubjectData ? 'Fanni Tahrirlash' : editTopicData ? 'Mavzuni Tahrirlash' : 'Yangi Qo\'shish'}
           </h3>
-          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider">{fanlar.length} ta element</span>
+          <button onClick={() => { setIsAdding(false); onCancelEditSubject(); onCancelEditTopic(); }} className="px-4 py-2 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 font-medium transition-colors">
+            Orqaga
+          </button>
         </div>
-        <div className="p-0">
-          {fanlar.map(subject => (
-            <div key={subject.id} className="border-b border-border last:border-0">
-              <div className="px-6 py-4 flex items-center justify-between hover:bg-secondary/30 transition-colors cursor-pointer" onClick={() => toggleSubject(subject.id)}>
-                <div className="flex items-center gap-3">
-                  <ChevronRight className={`w-5 h-5 text-foreground/40 transition-transform ${expandedSubjects[subject.id] ? 'rotate-90' : ''}`} />
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                    {/* Dynamic icon rendering could go here, fallback to BookOpen */}
-                    <BookOpen className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-foreground">{subject.title}</h4>
-                    <p className="text-xs text-foreground/60">{subject.topics?.length || 0} ta mavzu</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => onEditSubject(subject)} className="p-2 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => onDeleteSubject(subject.id)} className="p-2 text-foreground/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              
-              <AnimatePresence>
-                {expandedSubjects[subject.id] && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden bg-secondary/10"
-                  >
-                    <div className="px-6 py-3 pl-16 space-y-2">
-                      {subject.topics?.map(topic => (
-                        <div key={topic.id} className="flex items-center justify-between p-3 bg-background border border-border rounded-xl">
-                          <div>
-                            <h5 className="font-medium text-sm text-foreground">{topic.title}</h5>
-                            <p className="text-xs text-foreground/50">{topic.videos?.length || 0} video, {topic.guides?.length || 0} qo'llanma</p>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => onEditTopic(subject.id, topic)} className="p-1.5 text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button onClick={() => onDeleteTopic(subject.id, topic.id)} className="p-1.5 text-foreground/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                      {(!subject.topics || subject.topics.length === 0) && (
-                        <div className="text-sm text-foreground/50 py-2">Mavzular yo'q</div>
-                      )}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          ))}
-          {fanlar.length === 0 && (
-            <div className="p-8 text-center text-foreground/50">
-              Hozircha fanlar qo'shilmagan.
-            </div>
-          )}
-        </div>
+        <FanlarForm 
+          fanlar={fanlar} 
+          setFanlar={(f) => { setFanlar(f); setIsAdding(false); }} 
+          editSubjectData={editSubjectData} 
+          editTopicData={editTopicData} 
+          onCancelEditSubject={() => { setIsAdding(false); onCancelEditSubject(); }} 
+          onCancelEditTopic={() => { setIsAdding(false); onCancelEditTopic(); }} 
+        />
       </div>
-      <div className="bg-card border border-border rounded-2xl p-8 shadow-sm h-fit sticky top-24">
-        <h3 className="font-medium text-foreground mb-8 flex items-center gap-3 text-xl">
-          <div className="bg-primary p-2 rounded-xl"><Plus className="w-5 h-5 text-primary-foreground" /></div>
-          {editSubjectData ? 'Fanni Tahrirlash' : editTopicData ? 'Mavzuni Tahrirlash' : 'Yangi Qo\'shish'}
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-card p-4 rounded-2xl border border-border shadow-sm">
+        <h3 className="font-medium text-foreground flex items-center gap-2 text-lg">
+          <BookOpen className="w-5 h-5 text-primary" /> Fanlar Ro'yxati
+          <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-1 rounded-full uppercase tracking-wider ml-2">{fanlar.length}</span>
         </h3>
-        <FanlarForm fanlar={fanlar} setFanlar={setFanlar} editSubjectData={editSubjectData} editTopicData={editTopicData} onCancelEditSubject={onCancelEditSubject} onCancelEditTopic={onCancelEditTopic} />
+        <button onClick={() => setIsAdding(true)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
+          <Plus className="w-4 h-4" /> Qo'shish
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {fanlar.map(subject => (
+          <div key={subject.id} className="bg-card border border-border rounded-2xl p-6 relative group hover:shadow-md transition-all flex flex-col">
+            <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => onEditSubject(subject)} className="p-2 bg-secondary text-foreground/60 hover:text-primary rounded-xl transition-colors">
+                <Edit2 className="w-4 h-4" />
+              </button>
+              <button onClick={() => onDeleteSubject(subject.id)} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                <BookOpen className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="font-medium text-foreground text-lg">{subject.title}</h4>
+                <p className="text-xs text-foreground/60">{subject.topics?.length || 0} ta mavzu</p>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2 flex-grow">
+              {subject.topics?.map(topic => (
+                <div key={topic.id} className="flex items-center justify-between p-2.5 bg-secondary/30 rounded-lg text-sm group/topic">
+                  <span className="text-foreground/80 truncate pr-2">{topic.title}</span>
+                  <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover/topic:opacity-100 transition-opacity">
+                    <button onClick={() => onEditTopic(subject.id, topic)} className="p-1.5 text-foreground/40 hover:text-primary rounded-md transition-colors">
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => onDeleteTopic(subject.id, topic.id)} className="p-1.5 text-foreground/40 hover:text-red-500 rounded-md transition-colors">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {(!subject.topics || subject.topics.length === 0) && (
+                <div className="text-sm text-center text-foreground/50 py-2 bg-secondary/20 rounded-lg border border-border border-dashed">
+                  Mavzular yo'q
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {fanlar.length === 0 && (
+          <div className="col-span-full text-center py-12 text-foreground/50 bg-card rounded-2xl border border-border border-dashed">
+            Hozircha fanlar qo'shilmagan.
+          </div>
+        )}
       </div>
     </div>
   );
