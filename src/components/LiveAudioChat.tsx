@@ -157,6 +157,22 @@ export function LiveAudioChat({ systemInstruction, initialMessage, onEnd }: Live
                 }
               }
               
+              // Check if the model has decided to end the consultation
+              const lastModelMsg = transcriptRef.current.filter(m => m.role === 'model').pop();
+              if (lastModelMsg && lastModelMsg.text.includes('[END_CONSULTATION]')) {
+                // Clean up the tag from the transcript
+                lastModelMsg.text = lastModelMsg.text.replace('[END_CONSULTATION]', '').trim();
+                
+                // Close session and trigger end
+                if (sessionRef.current) {
+                  sessionRef.current.then((s: any) => {
+                    try { s.close(); } catch (e) {}
+                  });
+                }
+                handleEnd();
+                return;
+              }
+              
               const audioPart = message.serverContent?.modelTurn?.parts?.find((p: any) => p.inlineData?.data);
               const base64Audio = audioPart?.inlineData?.data;
               if (base64Audio && audioContextRef.current) {

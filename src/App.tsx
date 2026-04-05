@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import ReactGA from 'react-ga4';
 import { PatientForm } from './components/PatientForm';
 import * as Icons from 'lucide-react';
 import { 
@@ -74,11 +75,29 @@ import {
   User,
   Bot,
   Cpu,
-  ChevronDown
+  ChevronDown,
+  ShieldCheck,
+  Scale
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { GoogleGenAI, ThinkingLevel, GenerateContentResponse } from "@google/genai";
+
+// Helper function to retry AI calls automatically if they fail
+const generateContentWithRetry = async (ai: GoogleGenAI, params: any, maxRetries = 3) => {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await ai.models.generateContent(params);
+    } catch (error) {
+      console.error(`AI call failed (attempt ${i + 1}/${maxRetries}):`, error);
+      if (i === maxRetries - 1) throw error;
+      // Wait for 1s, 2s, 4s before retrying
+      await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+    }
+  }
+  throw new Error("Failed to generate content after retries");
+};
+
 import { Mnemonic, Question, SymptomData, VideoData, Section, Setting, Patient, OSCEScenario, Subject, Topic, NewsItem, JournalItem, initialFanlar, initialSettings, initialNews, initialJournals } from './data';
 import { explainMedicalTopic } from './services/aiService';
 import { LiveAudioChat } from './components/LiveAudioChat';
@@ -149,9 +168,83 @@ function getPatientAvatar(patientInfo?: { age: number, gender: 'male' | 'female'
   return <span className="leading-none" style={{ fontSize }}>{emoji}</span>;
 }
 
+const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID || 'G-8FXSFF09C5';
+
+function PolicySplash({ onAgree }: { onAgree: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="bg-card w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden border border-border/50 flex flex-col max-h-[90vh]"
+      >
+        <div className="p-6 border-b border-border/50 bg-primary/5 flex items-center gap-4">
+          <div className="w-12 h-12 bg-primary/20 rounded-2xl flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-6 h-6 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-foreground">Xush kelibsiz!</h2>
+            <p className="text-sm text-foreground/60">Ilovadan foydalanishdan oldin qoidalar bilan tanishing</p>
+          </div>
+        </div>
+        
+        <div className="p-6 overflow-y-auto custom-scrollbar space-y-6 flex-1">
+          <div className="space-y-4">
+            <h3 className="font-semibold text-lg flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              Maxfiylik siyosati (Privacy Policy)
+            </h3>
+            <p className="text-sm text-foreground/70 leading-relaxed">
+              Biz sizning shaxsiy ma'lumotlaringiz xavfsizligini ta'minlashga jiddiy e'tibor qaratamiz. Ma'lumotlaringiz qanday yig'ilishi, foydalanilishi va himoya qilinishi haqida batafsil ma'lumot olish uchun Maxfiylik siyosatimiz bilan tanishib chiqing.
+            </p>
+            <a 
+              href="https://starlit-macaron-692851.netlify.app/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline bg-primary/10 px-4 py-2 rounded-xl transition-colors"
+            >
+              Maxfiylik siyosatini o'qish <ExternalLink className="w-4 h-4" />
+            </a>
+          </div>
+
+          <div className="h-px w-full bg-border/50"></div>
+
+          <div className="space-y-4">
+            <h3 className="font-semibold text-lg flex items-center gap-2">
+              <Scale className="w-5 h-5 text-primary" />
+              Foydalanish shartlari (Terms of Use)
+            </h3>
+            <p className="text-sm text-foreground/70 leading-relaxed">
+              Ilovamizdan foydalanish orqali siz belgilangan shartlar va qoidalarga rozilik bildirasiz. Platformadan to'g'ri va xavfsiz foydalanish bo'yicha yo'riqnomalar bilan tanishib chiqishingizni so'raymiz.
+            </p>
+            <a 
+              href="https://ubiquitous-pasca-ac11fc.netlify.app/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline bg-primary/10 px-4 py-2 rounded-xl transition-colors"
+            >
+              Foydalanish shartlarini o'qish <ExternalLink className="w-4 h-4" />
+            </a>
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-border/50 bg-secondary/30 flex justify-end">
+          <button
+            onClick={onAgree}
+            className="bg-primary text-primary-foreground px-8 py-3 rounded-xl font-medium hover:bg-primary/90 transition-all shadow-md shadow-primary/20 flex items-center gap-2"
+          >
+            Tanishib chiqdim va tasdiqlayman <CheckCircle2 className="w-5 h-5" />
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
   const [activeDuelId, setActiveDuelId] = useState<string | null>(null);
+  const [hasAgreedToPolicies, setHasAgreedToPolicies] = useState(() => localStorage.getItem('meduz_policies_agreed') === 'true');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isMessagesMenuOpen, setIsMessagesMenuOpen] = useState(false);
@@ -164,6 +257,18 @@ export default function App() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   
   const { t, language, setLanguage } = useTranslation();
+
+  useEffect(() => {
+    if (GA_MEASUREMENT_ID) {
+      ReactGA.initialize(GA_MEASUREMENT_ID);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (GA_MEASUREMENT_ID) {
+      ReactGA.send({ hitType: "pageview", page: `/${currentPage}`, title: currentPage });
+    }
+  }, [currentPage]);
 
   useEffect(() => {
     const hasCleared = localStorage.getItem('meduz_force_cleared_v3');
@@ -292,7 +397,14 @@ export default function App() {
     setIsLoggingIn(true);
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider, browserPopupRedirectResolver);
+      const result = await signInWithPopup(auth, provider, browserPopupRedirectResolver);
+      if (GA_MEASUREMENT_ID) {
+        ReactGA.event({
+          category: "User",
+          action: "Logged In",
+          label: result.user.email || "Unknown"
+        });
+      }
     } catch (error: any) {
       if (error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
         // User closed the popup, ignore
@@ -606,7 +718,7 @@ export default function App() {
         config.tools = [{ googleSearch: {} }];
       }
 
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry(ai, {
         model,
         contents: [...chatMessages, { role: 'user', text: userMessage }].map(m => ({
           role: m.role,
@@ -736,7 +848,7 @@ export default function App() {
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry(ai, {
         model: 'gemini-3-flash-preview',
         contents: `Bemor: ${patient.name}, Yosh: ${patient.age}, Simptomlar: ${patient.symptoms}, Ahvoli: ${patient.condition}, Sog'liq: ${patient.healthScore}%. 
         Talaba yuborgan dori: ${medication}. 
@@ -1489,11 +1601,24 @@ export default function App() {
               </div>
             </div>
           </div>
-          <div className="border-t border-border/40 mt-12 pt-8 text-center text-foreground/40 text-xs">
-            © {new Date().getFullYear()} MedUz. Barcha huquqlar himoyalangan.
+          <div className="border-t border-border/40 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-foreground/40 text-xs">
+            <div>
+              © {new Date().getFullYear()} MedUz. Barcha huquqlar himoyalangan.
+            </div>
+            <div className="flex gap-4">
+              <a href="https://starlit-macaron-692851.netlify.app/" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Maxfiylik siyosati</a>
+              <a href="https://ubiquitous-pasca-ac11fc.netlify.app/" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Foydalanish shartlari</a>
+            </div>
           </div>
         </div>
       </footer>
+
+      {!hasAgreedToPolicies && (
+        <PolicySplash onAgree={() => {
+          localStorage.setItem('meduz_policies_agreed', 'true');
+          setHasAgreedToPolicies(true);
+        }} />
+      )}
     </div>
   );
 }
@@ -1888,6 +2013,13 @@ function VideosPage({ data, handleAIExplain, updateProgress, saveActivity }: { d
           category: v.category
         });
       }
+      if (GA_MEASUREMENT_ID) {
+        ReactGA.event({
+          category: "Content",
+          action: "Watched Video",
+          label: v.title
+        });
+      }
     }
   };
 
@@ -2204,6 +2336,15 @@ function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivi
       setStep('retry_request');
       return;
     }
+    
+    if (GA_MEASUREMENT_ID) {
+      ReactGA.event({
+        category: "Quiz",
+        action: "Started Quiz",
+        label: topic.name
+      });
+    }
+    
     setStep('quiz');
     setCurrentQuestionIdx(0);
     setScore(0);
@@ -2348,13 +2489,15 @@ Return ONLY a JSON object in this format:
   "feedback": "string"
 }`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
+      const response = await generateContentWithRetry(ai, {
+        model: 'gemini-3.1-flash-lite-preview',
+        contents: prompt
       });
       
-      const result = JSON.parse(response.text || '{}');
+      const resultText = response.text || '{}';
+      // Clean up potential markdown formatting from the response
+      const cleanJsonStr = resultText.replace(/```json\n?|\n?```/g, '').trim();
+      const result = JSON.parse(cleanJsonStr);
       
       setCaseScores(prev => ({
         ...prev,
@@ -2460,6 +2603,16 @@ Return ONLY a JSON object in this format:
     
     // Update score state to final score so result screen shows correct score
     setScore(finalScore);
+    
+    if (GA_MEASUREMENT_ID) {
+      ReactGA.event({
+        category: "Quiz",
+        action: "Completed Quiz",
+        label: selectedTopic?.name || "Unknown",
+        value: Math.round(finalPercentage)
+      });
+    }
+    
     setStep('result');
   };
 
@@ -6773,6 +6926,15 @@ function PharmaPage() {
     if (!drugName.trim()) return;
     setLoading(true);
     setResult(null);
+    
+    if (GA_MEASUREMENT_ID) {
+      ReactGA.event({
+        category: "AI Tools",
+        action: "Used Pharma Search",
+        label: drugName
+      });
+    }
+    
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const prompt = `You are a virtual pharmacology assistant that provides complete and accurate information about medications searched by a medical student.
@@ -6805,7 +6967,7 @@ Ogohlantirishlar: Suv bilan qabul qilish, bolalarda shifokor nazorati talab qili
 QIDIRILAYOTGAN DORI:
 ${drugName}`;
 
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry(ai, {
         model: 'gemini-3.1-pro-preview',
         contents: prompt,
         config: {
@@ -6960,6 +7122,15 @@ function TutorPage() {
     if (!caseText.trim() || !answerText.trim()) return;
     setLoading(true);
     setResult(null);
+    
+    if (GA_MEASUREMENT_ID) {
+      ReactGA.event({
+        category: "AI Tools",
+        action: "Used Clinical Tutor",
+        label: "Tutor Evaluation"
+      });
+    }
+    
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const prompt = `You are an advanced AI tutor designed to help medical students improve their clinical reasoning and medical knowledge.
@@ -7016,14 +7187,13 @@ ${caseText}
 TALABA JAVOBI:
 ${answerText}`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
+      const response = await generateContentWithRetry(ai, {
+        model: 'gemini-3.1-flash-lite-preview',
         contents: prompt,
         config: {
           systemInstruction: "Siz qattiqqo'l va tajribali klinik ustozsiz (Clinical Tutor). Talabaning javobini xalqaro klinik protokollar (EBM) asosida baholang va unga xatolarini tushuntiring.",
           temperature: 0.2,
-          topP: 0.8,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
+          topP: 0.8
         }
       });
       setResult(response.text || t('tutorError'));
@@ -7128,7 +7298,7 @@ function AIPage() {
       reader.readAsDataURL(file);
       reader.onload = async () => {
         const base64Data = (reader.result as string).split(',')[1];
-        const response = await ai.models.generateContent({
+        const response = await generateContentWithRetry(ai, {
           model: 'gemini-3.1-flash-lite-preview',
           contents: [
             {
@@ -7154,9 +7324,18 @@ function AIPage() {
     setLoading(true);
     setResult(null);
     setSources([]);
+    
+    if (GA_MEASUREMENT_ID) {
+      ReactGA.event({
+        category: "AI Tools",
+        action: "Used Image Search",
+        label: prompt
+      });
+    }
+    
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry(ai, {
         model: 'gemini-3-flash-preview',
         contents: `Qidiruv so'rovi: "${prompt}". Iltimos, ushbu tibbiy mavzuga oid 6 ta eng yaxshi, yuqori sifatli va aniq rasmlarni toping. Natijani faqat Markdown formatida qaytaring. Har bir rasm uchun faqat quyidagi formatdan foydalaning:
 ![Rasm nomi](rasm_url)
@@ -7187,9 +7366,18 @@ Hech qanday raqamlash, ro'yxat (bullet points) yoki qo'shimcha matn yozmang. Faq
     setLoading(true);
     setResult(null);
     setSources([]);
+    
+    if (GA_MEASUREMENT_ID) {
+      ReactGA.event({
+        category: "AI Tools",
+        action: "Used Medical Search",
+        label: prompt
+      });
+    }
+    
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry(ai, {
         model: 'gemini-3-flash-preview',
         contents: `Qidiruv so'rovi: "${prompt}". Iltimos, ushbu tibbiy mavzu yoki atama haqida batafsil, ishonchli va tushunarli ma'lumot bering. Ma'lumotni quyidagi tuzilmada taqdim eting:
 1. Qisqacha ta'rif
@@ -7758,6 +7946,24 @@ function OSCEPage({ scenarios, updateProgress }: { scenarios: OSCEScenario[], up
     setTimer(0);
   };
 
+  const getOSCESystemInstruction = () => {
+    if (!selectedScenario) return '';
+    return selectedScenario.systemInstruction + `
+      
+BEHAVIORAL INSTRUCTIONS:
+1. Act exactly like a real human patient. Express emotions (pain, worry, relief, confusion) naturally.
+2. Keep your responses concise and conversational, like a real dialogue. Do not give long, robotic explanations unless specifically asked.
+3. If the doctor (student) is rude, dismissive, insulting, or unprofessional, you MUST get offended, refuse to continue the consultation, and immediately end the conversation by including the exact string "[END_CONSULTATION]" at the very end of your response.
+
+IMPORTANT INSTRUCTION FOR ENDING CONSULTATION:
+If the student clearly explains the diagnosis and proposed treatment plan, you MUST end the consultation by praising the student in ${language === 'uz' ? 'Uzbek' : language === 'ru' ? 'Russian' : 'English'} (e.g., "Rahmat doktor, juda tushunarli qilib tushuntirdingiz. Ajoyib ishladingiz!") AND you MUST include the exact string "[END_CONSULTATION]" at the very end of your response.
+If the student is rude or unprofessional, express your dissatisfaction and also include "[END_CONSULTATION]" at the end.
+
+IMPORTANT LANGUAGE RULE:
+All responses must be written ONLY in ${language === 'uz' ? 'Uzbek' : language === 'ru' ? 'Russian' : 'English'} language.
+Never respond in any other language.`;
+  };
+
   const handleSend = async () => {
     if (!input.trim() || loading || evaluating || evaluation) return;
     
@@ -7769,14 +7975,7 @@ function OSCEPage({ scenarios, updateProgress }: { scenarios: OSCEScenario[], up
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       
-      const systemInstruction = selectedScenario!.systemInstruction + `
-      
-IMPORTANT INSTRUCTION FOR ENDING CONSULTATION:
-If the student clearly explains the diagnosis and proposed treatment plan, you MUST end the consultation by praising the student in ${language === 'uz' ? 'Uzbek' : language === 'ru' ? 'Russian' : 'English'} (e.g., "Rahmat doktor, juda tushunarli qilib tushuntirdingiz. Ajoyib ishladingiz!") AND you MUST include the exact string "[END_CONSULTATION]" at the very end of your response.
-
-IMPORTANT LANGUAGE RULE:
-All responses must be written ONLY in ${language === 'uz' ? 'Uzbek' : language === 'ru' ? 'Russian' : 'English'} language.
-Never respond in any other language.`;
+      const systemInstruction = getOSCESystemInstruction();
 
       const contents = messages.map(msg => ({
         role: msg.role,
@@ -7784,7 +7983,7 @@ Never respond in any other language.`;
       }));
       contents.push({ role: 'user', parts: [{ text: userMessage }] });
 
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry(ai, {
         model: 'gemini-3.1-flash-lite-preview',
         contents: contents,
         config: {
@@ -7815,6 +8014,15 @@ Never respond in any other language.`;
       return;
     }
     setEvaluating(true);
+    
+    if (GA_MEASUREMENT_ID) {
+      ReactGA.event({
+        category: "AI Tools",
+        action: "Completed OSCE",
+        label: selectedScenario?.title || "Unknown"
+      });
+    }
+    
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       
@@ -7873,14 +8081,13 @@ Format the output EXACTLY as follows using Markdown:
 
 **${t('osce_overall_score')}: [X] / 100**`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
+      const response = await generateContentWithRetry(ai, {
+        model: 'gemini-3.1-flash-lite-preview',
         contents: prompt,
         config: {
           systemInstruction: "Siz OSCE (Objective Structured Clinical Examination) imtihonining qattiqqo'l va adolatli tibbiyot professorisiz. Talabaning bemor bilan muloqotini, to'plagan anamnezini va qo'ygan tashxisini xalqaro klinik standartlar (EBM) asosida baholang.",
           temperature: 0.2,
-          topP: 0.8,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
+          topP: 0.8
         }
       });
 
@@ -8106,7 +8313,7 @@ Format the output EXACTLY as follows using Markdown:
           {!evaluation ? (
             isVoiceMode ? (
               <LiveAudioChat 
-                systemInstruction={selectedScenario.systemInstruction} 
+                systemInstruction={getOSCESystemInstruction()} 
                 initialMessage={selectedScenario.initialMessage}
                 onEnd={(transcript) => {
                   setMessages(transcript);
