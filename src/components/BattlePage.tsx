@@ -343,6 +343,30 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
     setAnswers(prev => ({ ...prev, [questionId]: option }));
   };
 
+  // Real-time score update
+  useEffect(() => {
+    if (!participantId || !currentSession || view !== 'participant_active') return;
+    
+    const timeoutId = setTimeout(async () => {
+      let currentScore = 0;
+      questions.forEach(q => {
+        if (answers[q.id] === q.correctAnswer) {
+          currentScore += (q.points || 10);
+        }
+      });
+
+      try {
+        await updateDoc(doc(db, 'battle_participants', participantId), {
+          totalScore: currentScore
+        });
+      } catch (e) {
+        console.error("Error updating real-time score", e);
+      }
+    }, 1000); // 1 second debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [answers, participantId, currentSession, view, questions]);
+
   const handleFinishTest = async (autoFinish = false) => {
     const submitTest = async () => {
       if (isSubmitting) return;
@@ -692,9 +716,10 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
       )}
 
       {view === 'participant_active' && currentSession && (
-        <div className="space-y-6 relative">
-          {/* Lifelines Bar */}
-          <div className="flex flex-wrap justify-center gap-4 mb-6">
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 relative">
+          <div className="xl:col-span-3 space-y-6">
+            {/* Lifelines Bar */}
+            <div className="flex flex-wrap justify-center gap-4 mb-6">
             <button 
               onClick={handle5050}
               disabled={usedLifelines.fiftyFifty || !questions[currentQuestionIndex]?.options || questions[currentQuestionIndex]?.options.length < 4}
@@ -830,6 +855,37 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
           ) : (
             <div className="text-center py-12 text-foreground/60">Savollar yuklanmoqda...</div>
           )}
+          </div>
+
+          {/* Mini Leaderboard */}
+          <div className="xl:col-span-1">
+            <div className="bg-slate-900 rounded-[2rem] p-6 border-2 border-indigo-500/30 shadow-[0_0_30px_rgba(99,102,241,0.15)] sticky top-4">
+              <h3 className="font-bold text-indigo-100 mb-4 flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-amber-400" />
+                Jonli Natijalar
+              </h3>
+              <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                {participants.map((p, index) => (
+                  <div key={p.id} className={`flex items-center justify-between p-3 rounded-xl border ${p.id === participantId ? 'bg-indigo-500/20 border-indigo-500/50' : 'bg-indigo-950/40 border-indigo-500/20'}`}>
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${index === 0 ? 'bg-amber-400 text-amber-950' : index === 1 ? 'bg-slate-300 text-slate-800' : index === 2 ? 'bg-amber-700 text-amber-100' : 'bg-indigo-900 text-indigo-300'}`}>
+                        {index + 1}
+                      </div>
+                      <span className={`font-medium truncate text-sm ${p.id === participantId ? 'text-white' : 'text-indigo-200'}`}>
+                        {p.groupName}
+                      </span>
+                    </div>
+                    <span className="font-bold text-amber-400 ml-2 shrink-0">{p.totalScore || 0}</span>
+                  </div>
+                ))}
+                {participants.length === 0 && (
+                  <div className="text-center py-4 text-indigo-300/50 text-sm">
+                    Hozircha natijalar yo'q
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
 
           {/* Lifeline Modals */}
           <AnimatePresence>
