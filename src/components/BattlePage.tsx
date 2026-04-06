@@ -191,7 +191,7 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
         testTitle: selectedTest.title
       });
       
-      setCurrentSession({ id: sessionRef.id, roomCode: code, status: 'waiting', testTitle: selectedTest.title, duration: selectedTest.timeLimit });
+      setCurrentSession({ id: sessionRef.id, testId: selectedTestId, roomCode: code, status: 'waiting', testTitle: selectedTest.title, duration: selectedTest.timeLimit });
       setView('host_waiting');
     } catch (error: any) {
       showAlert("Xatolik", "Sessiya yaratishda xatolik: " + error.message);
@@ -201,9 +201,24 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
   const handleStartBattle = async () => {
     if (!currentSession) return;
     try {
+      const qDocs = await getDocs(query(collection(db, 'battle_questions'), where('testId', '==', currentSession.testId)));
+      const qIds = qDocs.docs.map(d => d.id);
+      
+      const shuffledQIds = qIds.sort(() => 0.5 - Math.random());
+      const blitzQId = shuffledQIds.pop() || null;
+      
+      const participantIds = participants.map(p => p.id);
+
       await updateDoc(doc(db, 'battle_sessions', currentSession.id), {
         status: 'active',
-        startTime: serverTimestamp()
+        startTime: serverTimestamp(),
+        gamePhase: 'blitz',
+        availableQuestions: shuffledQIds,
+        blitzQuestionId: blitzQId,
+        turnQueue: participantIds,
+        currentTurnIndex: 0,
+        blitzWinnerId: null,
+        currentAnswers: {}
       });
       setView('host_active');
     } catch (error: any) {
@@ -269,8 +284,8 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
 
   const handle5050 = () => {
     if (usedLifelines.fiftyFifty) return;
-    const currentQ = questions[currentQuestionIndex];
-    if (!currentQ.options || currentQ.options.length < 4) return;
+    const currentQ = questions.find(q => q.id === currentSession?.currentQuestionId);
+    if (!currentQ || !currentQ.options || currentQ.options.length < 4) return;
     
     const correct = currentQ.correctAnswer;
     const incorrects = currentQ.options.filter((opt: string) => opt !== correct);
@@ -284,7 +299,8 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
 
   const handleNasriddin = () => {
     if (usedLifelines.nasriddin) return;
-    const currentQ = questions[currentQuestionIndex];
+    const currentQ = questions.find(q => q.id === currentSession?.currentQuestionId);
+    if (!currentQ) return;
     const correct = currentQ.correctAnswer;
     
     const jokes = [
@@ -301,8 +317,8 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
 
   const handlePhoneFriend = () => {
     if (usedLifelines.phoneFriend) return;
-    const currentQ = questions[currentQuestionIndex];
-    if (!currentQ.options) return;
+    const currentQ = questions.find(q => q.id === currentSession?.currentQuestionId);
+    if (!currentQ || !currentQ.options) return;
     
     const correct = currentQ.correctAnswer;
     const stats = currentQ.options.map((opt: string) => {
@@ -321,8 +337,8 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
 
   const handleAudience = () => {
     if (usedLifelines.audience) return;
-    const currentQ = questions[currentQuestionIndex];
-    if (!currentQ.options) return;
+    const currentQ = questions.find(q => q.id === currentSession?.currentQuestionId);
+    if (!currentQ || !currentQ.options) return;
     
     const correct = currentQ.correctAnswer;
     const stats = currentQ.options.map((opt: string) => {
@@ -341,6 +357,96 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
 
   const handleSelectOption = (questionId: string, option: string) => {
     setAnswers(prev => ({ ...prev, [questionId]: option }));
+  };
+
+  const [isSpinning, setIsSpinning] = useState(false);
+  const [questionTimeLeft, setQuestionTimeLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (currentSession?.gamePhase === 'question' && currentSession?.questionEndTime) {
+      const interval = setInterval(() => {
+        const remaining = Math.max(0, Math.floor((currentSession.questionEndTime - Date.now()) / 1000));
+        setQuestionTimeLeft(remaining);
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [currentSession?.gamePhase, currentSession?.questionEndTime]);
+
+  const handleSubmitAnswer = async (answer: string) => {
+    if (!currentSession || !participantId) return;
+    const newAnswers = { ...(currentSession.currentAnswers || {}), [participantId]: answer };
+    await updateDoc(doc(db, 'battle_sessions', currentSession.id), {
+      currentAnswers: newAnswers
+    });
+  };
+
+  const handleSpinWheel = async () => {
+    if (!currentSession || isSpinning || !currentSession.availableQuestions || currentSession.availableQuestions.length === 0) return;
+    setIsSpinning(true);
+    setTimeout(async () => {
+      const questionsList = [...currentSession.availableQuestions];
+      const selectedIndex = Math.floor(Math.random() * questionsList.length);
+      const selectedQId = questionsList[selectedIndex];
+      questionsList.splice(selectedIndex, 1);
+      await updateDoc(doc(db, 'battle_sessions', currentSession.id), {
+        gamePhase: 'question',
+        currentQuestionId: selectedQId,
+        availableQuestions: questionsList,
+        questionEndTime: Date.now() + 60000, // 1 minute per question
+        currentAnswers: {}
+      });
+      setIsSpinning(false);
+    }, 3000);
+  };
+
+  const handleSetBlitzWinner = async (winnerId: string) => {
+    if (!currentSession) return;
+    const newQueue = [...(currentSession.turnQueue || [])];
+    const winnerIndex = newQueue.indexOf(winnerId);
+    if (winnerIndex > -1) {
+      newQueue.splice(winnerIndex, 1);
+      newQueue.unshift(winnerId);
+    }
+    await updateDoc(doc(db, 'battle_sessions', currentSession.id), {
+      blitzWinnerId: winnerId,
+      turnQueue: newQueue,
+      currentTurnIndex: 0,
+      gamePhase: 'spinning',
+      currentAnswers: {}
+    });
+  };
+
+  const handleEndQuestion = async () => {
+    if (!currentSession) return;
+    await updateDoc(doc(db, 'battle_sessions', currentSession.id), {
+      gamePhase: 'review'
+    });
+  };
+
+  const handleAwardPoints = async (pId: string, isCorrect: boolean) => {
+    if (!currentSession || !currentSession.currentQuestionId) return;
+    const q = questions.find(q => q.id === currentSession.currentQuestionId);
+    if (!q) return;
+    const points = isCorrect ? (q.points || 10) : 0;
+    const p = participants.find(p => p.id === pId);
+    if (!p) return;
+    await updateDoc(doc(db, 'battle_participants', pId), {
+      totalScore: (p.totalScore || 0) + points
+    });
+  };
+
+  const handleNextTurn = async () => {
+    if (!currentSession) return;
+    let nextIndex = (currentSession.currentTurnIndex || 0) + 1;
+    if (nextIndex >= (currentSession.turnQueue?.length || 1)) {
+      nextIndex = 0;
+    }
+    await updateDoc(doc(db, 'battle_sessions', currentSession.id), {
+      gamePhase: 'spinning',
+      currentTurnIndex: nextIndex,
+      currentQuestionId: null,
+      currentAnswers: {}
+    });
   };
 
   // Real-time score update
@@ -617,18 +723,104 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
               <h2 className="text-xl font-bold text-foreground">{currentSession.testTitle}</h2>
               <div className="flex items-center gap-2 text-foreground/60 mt-1">
                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                Bellashuv davom etmoqda
+                {currentSession.gamePhase === 'blitz' ? 'Blitz savol jarayoni' :
+                 currentSession.gamePhase === 'spinning' ? 'Baraban aylantirilmoqda' :
+                 currentSession.gamePhase === 'question' ? 'Savol o\'ynalmoqda' :
+                 currentSession.gamePhase === 'review' ? 'Natijalar' : 'Bellashuv davom etmoqda'}
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 bg-secondary px-4 py-2 rounded-xl font-medium text-foreground">
-                <Clock className="w-5 h-5 text-primary" />
-                {currentSession.duration} daqiqa
-              </div>
               <button onClick={handleEndBattle} className="px-4 py-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-xl font-medium transition-colors">
                 Yakunlash
               </button>
             </div>
+          </div>
+
+          {/* Host Controls based on Phase */}
+          <div className="bg-card rounded-3xl p-6 border border-border shadow-sm">
+            {currentSession.gamePhase === 'blitz' && (
+              <div>
+                <h3 className="text-lg font-bold mb-4 text-primary">Blitz Savol</h3>
+                <p className="text-xl font-medium mb-6">{questions.find(q => q.id === currentSession.blitzQuestionId)?.text}</p>
+                
+                <div className="mt-4">
+                  <h4 className="font-bold mb-4">Guruhlar javoblari:</h4>
+                  <div className="space-y-3">
+                    {participants.map(p => (
+                      <div key={p.id} className="flex justify-between items-center p-4 bg-secondary/30 rounded-xl border border-border">
+                        <span className="font-bold">{p.groupName}</span>
+                        <span className="text-foreground/80">{currentSession.currentAnswers?.[p.id] || 'Kutilmoqda...'}</span>
+                        <button onClick={() => handleSetBlitzWinner(p.id)} className="px-4 py-2 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors">To'g'ri (G'olib)</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {currentSession.gamePhase === 'spinning' && (
+              <div className="text-center py-12">
+                <h3 className="text-2xl font-bold mb-4">Navbat: <span className="text-primary">{participants.find(p => p.id === currentSession.turnQueue?.[currentSession.currentTurnIndex])?.groupName}</span></h3>
+                <p className="text-foreground/60">Ular barabanni aylantirishini kuting...</p>
+                <div className="mt-8 w-16 h-16 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto"></div>
+              </div>
+            )}
+
+            {currentSession.gamePhase === 'question' && (
+              <div>
+                <h3 className="text-lg font-bold mb-4 text-primary">Joriy Savol</h3>
+                <p className="text-xl font-medium mb-6">{questions.find(q => q.id === currentSession.currentQuestionId)?.text}</p>
+                
+                <div className="mt-4">
+                  <h4 className="font-bold mb-4">Guruhlar javoblari:</h4>
+                  <div className="space-y-3">
+                    {participants.map(p => (
+                      <div key={p.id} className="flex justify-between items-center p-4 bg-secondary/30 rounded-xl border border-border">
+                        <span className="font-bold">{p.groupName}</span>
+                        <span className="text-foreground/80">{currentSession.currentAnswers?.[p.id] || 'Kutilmoqda...'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="mt-8 flex justify-end">
+                  <button onClick={handleEndQuestion} className="px-8 py-3 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary/90 transition-colors">Vaqtni to'xtatish va tekshirish</button>
+                </div>
+              </div>
+            )}
+
+            {currentSession.gamePhase === 'review' && (
+              <div>
+                <h3 className="text-lg font-bold mb-4 text-primary">Natijalarni tekshirish</h3>
+                <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-xl mb-6">
+                  <p className="font-bold text-green-600">To'g'ri javob:</p>
+                  <p className="text-lg">{questions.find(q => q.id === currentSession.currentQuestionId)?.correctAnswer}</p>
+                </div>
+                
+                <div className="space-y-3">
+                  {participants.map(p => {
+                    const ans = currentSession.currentAnswers?.[p.id];
+                    const isCorrect = ans === questions.find(q => q.id === currentSession.currentQuestionId)?.correctAnswer;
+                    return (
+                      <div key={p.id} className="flex flex-col sm:flex-row justify-between items-center p-4 bg-secondary/30 rounded-xl border border-border gap-4">
+                        <div className="flex-1">
+                          <span className="font-bold block">{p.groupName}</span>
+                          <span className={isCorrect ? 'text-green-500 font-bold' : 'text-red-500'}>{ans || 'Javob yo\'q'}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => handleAwardPoints(p.id, true)} className="px-4 py-2 bg-green-500/20 text-green-600 hover:bg-green-500/30 rounded-lg font-medium transition-colors">To'g'ri (+Ball)</button>
+                          <button onClick={() => handleAwardPoints(p.id, false)} className="px-4 py-2 bg-red-500/20 text-red-600 hover:bg-red-500/30 rounded-lg font-medium transition-colors">Noto'g'ri</button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                
+                <div className="mt-8 flex justify-end">
+                  <button onClick={handleNextTurn} className="px-8 py-3 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary/90 transition-colors">Keyingi navbat</button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="bg-card rounded-3xl p-6 border border-border shadow-sm">
@@ -648,7 +840,7 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
                     </div>
                   </div>
                   <div className="text-xl font-black text-primary">
-                    {p.totalScore} <span className="text-sm font-medium text-foreground/40">ball</span>
+                    {p.totalScore || 0} <span className="text-sm font-medium text-foreground/40">ball</span>
                   </div>
                 </div>
               ))}
@@ -718,143 +910,186 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
       {view === 'participant_active' && currentSession && (
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 relative">
           <div className="xl:col-span-3 space-y-6">
-            {/* Lifelines Bar */}
-            <div className="flex flex-wrap justify-center gap-4 mb-6">
-            <button 
-              onClick={handle5050}
-              disabled={usedLifelines.fiftyFifty || !questions[currentQuestionIndex]?.options || questions[currentQuestionIndex]?.options.length < 4}
-              className={`relative flex items-center justify-center w-16 h-12 rounded-full border-2 font-bold transition-all ${usedLifelines.fiftyFifty ? 'border-border bg-secondary/50 text-foreground/30 cursor-not-allowed' : 'border-amber-500 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 hover:shadow-[0_0_15px_rgba(245,158,11,0.4)]'}`}
-              title="50/50"
-            >
-              <Percent className="w-5 h-5" />
-              {usedLifelines.fiftyFifty && <div className="absolute inset-0 flex items-center justify-center"><X className="w-8 h-8 text-red-500/70" /></div>}
-            </button>
-            <button 
-              onClick={handleNasriddin}
-              disabled={usedLifelines.nasriddin}
-              className={`relative flex items-center justify-center w-16 h-12 rounded-full border-2 font-bold transition-all ${usedLifelines.nasriddin ? 'border-border bg-secondary/50 text-foreground/30 cursor-not-allowed' : 'border-emerald-500 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 hover:shadow-[0_0_15px_rgba(16,185,129,0.4)]'}`}
-              title="Xo'ja Nasriddin"
-            >
-              <Smile className="w-6 h-6" />
-              {usedLifelines.nasriddin && <div className="absolute inset-0 flex items-center justify-center"><X className="w-8 h-8 text-red-500/70" /></div>}
-            </button>
-            <button 
-              onClick={handlePhoneFriend}
-              disabled={usedLifelines.phoneFriend || !questions[currentQuestionIndex]?.options}
-              className={`relative flex items-center justify-center w-16 h-12 rounded-full border-2 font-bold transition-all ${usedLifelines.phoneFriend ? 'border-border bg-secondary/50 text-foreground/30 cursor-not-allowed' : 'border-blue-500 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 hover:shadow-[0_0_15px_rgba(59,130,246,0.4)]'}`}
-              title="Do'stimga qo'ng'iroq"
-            >
-              <Phone className="w-5 h-5" />
-              {usedLifelines.phoneFriend && <div className="absolute inset-0 flex items-center justify-center"><X className="w-8 h-8 text-red-500/70" /></div>}
-            </button>
-            <button 
-              onClick={handleAudience}
-              disabled={usedLifelines.audience || !questions[currentQuestionIndex]?.options}
-              className={`relative flex items-center justify-center w-16 h-12 rounded-full border-2 font-bold transition-all ${usedLifelines.audience ? 'border-border bg-secondary/50 text-foreground/30 cursor-not-allowed' : 'border-purple-500 bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 hover:shadow-[0_0_15px_rgba(168,85,247,0.4)]'}`}
-              title="Zaldan yordam"
-            >
-              <Users className="w-5 h-5" />
-              {usedLifelines.audience && <div className="absolute inset-0 flex items-center justify-center"><X className="w-8 h-8 text-red-500/70" /></div>}
-            </button>
-          </div>
-
-          <div className="bg-slate-900 rounded-[2rem] p-4 md:p-6 border-2 border-indigo-500/30 shadow-[0_0_30px_rgba(99,102,241,0.15)] flex justify-between items-center sticky top-4 z-10">
-            <div>
-              <div className="text-sm text-indigo-200/60">Guruh: <span className="font-bold text-indigo-100">{groupName}</span></div>
-              <div className="font-bold text-indigo-400">Savol: {currentQuestionIndex + 1} / {questions.length}</div>
-            </div>
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold border ${timeLeft !== null && timeLeft < 60 ? 'bg-red-500/20 text-red-400 border-red-500/50 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'bg-indigo-950 text-indigo-200 border-indigo-500/30'}`}>
-              <Clock className="w-5 h-5" />
-              {timeLeft !== null ? formatTime(timeLeft) : '--:--'}
-            </div>
-          </div>
-
-          {questions.length > 0 && currentQuestionIndex < questions.length ? (
-            <div className="bg-slate-900 rounded-[2rem] p-6 md:p-8 border-2 border-indigo-500/30 shadow-[0_0_40px_rgba(99,102,241,0.1)] relative overflow-hidden">
-              {/* Background glow */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-indigo-500/5 blur-[100px] pointer-events-none rounded-full"></div>
-              
-              <div className="relative z-10">
-                <div className="bg-indigo-950/50 border border-indigo-500/30 rounded-3xl p-6 md:p-10 mb-8 text-center shadow-[inset_0_0_20px_rgba(99,102,241,0.1)]">
-                  <h3 className="text-xl md:text-3xl font-bold text-white leading-relaxed">
-                    {questions[currentQuestionIndex].text}
-                  </h3>
-                </div>
+            
+            {currentSession.gamePhase === 'blitz' && (
+              <div className="bg-slate-900 rounded-[2rem] p-6 md:p-8 border-2 border-amber-500/50 shadow-[0_0_40px_rgba(245,158,11,0.2)] text-center">
+                <h2 className="text-3xl font-black text-amber-400 mb-6 uppercase tracking-widest">Blitz Savol!</h2>
+                <p className="text-indigo-200 mb-8">Birinchi bo'lib to'g'ri javob bergan guruh barabanni birinchi aylantirish huquqiga ega bo'ladi.</p>
                 
-                {questions[currentQuestionIndex].imageUrl && (
-                  <div className="mb-8 flex justify-center">
-                    <img src={questions[currentQuestionIndex].imageUrl} alt="Question" className="max-h-64 md:max-h-96 rounded-2xl border-2 border-indigo-500/30 object-contain bg-black/50 shadow-[0_0_20px_rgba(0,0,0,0.5)]" />
+                {questions.find(q => q.id === currentSession.blitzQuestionId) && (
+                  <div className="bg-indigo-950/50 border border-indigo-500/30 rounded-3xl p-6 md:p-10 mb-8 shadow-[inset_0_0_20px_rgba(99,102,241,0.1)]">
+                    <h3 className="text-xl md:text-3xl font-bold text-white leading-relaxed">
+                      {questions.find(q => q.id === currentSession.blitzQuestionId)?.text}
+                    </h3>
                   </div>
                 )}
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-                  {questions[currentQuestionIndex].options?.map((opt: string, i: number) => {
-                    const isHidden = hiddenOptions.includes(opt);
-                    const isSelected = answers[questions[currentQuestionIndex].id] === opt;
-                    const letters = ['A', 'B', 'C', 'D'];
-                    
-                    if (isHidden) {
-                      return <div key={i} className="w-full p-4 rounded-2xl border-2 border-transparent opacity-0"></div>;
+                <input 
+                  type="text"
+                  placeholder="Javobingizni kiriting va Enter bosing..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSubmitAnswer(e.currentTarget.value);
+                      e.currentTarget.value = '';
                     }
-                    
-                    return (
-                      <button
-                        key={i}
-                        onClick={() => handleSelectOption(questions[currentQuestionIndex].id, opt)}
-                        className={`group w-full text-left p-4 md:p-5 rounded-2xl border-2 transition-all relative overflow-hidden ${isSelected ? 'border-amber-400 bg-amber-500/20 shadow-[0_0_20px_rgba(251,191,36,0.3)]' : 'border-indigo-500/40 hover:border-indigo-400 bg-indigo-950/40 hover:bg-indigo-900/60'}`}
+                  }}
+                  className="w-full max-w-md mx-auto block bg-indigo-950/40 border-2 border-indigo-500/40 rounded-2xl p-5 text-white focus:border-amber-400 focus:shadow-[0_0_20px_rgba(251,191,36,0.2)] outline-none transition-all font-medium text-lg text-center"
+                />
+                {currentSession.currentAnswers?.[participantId] && (
+                  <p className="text-green-400 mt-4 font-bold">Javobingiz qabul qilindi: {currentSession.currentAnswers[participantId]}</p>
+                )}
+              </div>
+            )}
+
+            {currentSession.gamePhase === 'spinning' && (
+              <div className="bg-slate-900 rounded-[2rem] p-6 md:p-12 border-2 border-indigo-500/30 shadow-[0_0_40px_rgba(99,102,241,0.1)] text-center flex flex-col items-center justify-center min-h-[400px]">
+                {currentSession.turnQueue?.[currentSession.currentTurnIndex] === participantId ? (
+                  <>
+                    <h2 className="text-3xl font-bold text-white mb-8">Sizning navbatingiz!</h2>
+                    <div className="relative w-64 h-64 mb-8">
+                      <motion.div 
+                        animate={{ rotate: isSpinning ? 360 * 5 : 0 }}
+                        transition={{ duration: 3, ease: "circOut" }}
+                        className="w-full h-full rounded-full border-8 border-indigo-500/50 border-t-amber-400 border-r-pink-500 border-b-emerald-500 border-l-blue-500 shadow-[0_0_50px_rgba(99,102,241,0.3)] flex items-center justify-center bg-indigo-950"
                       >
-                        <div className="flex items-center gap-4 relative z-10">
-                          <span className={`font-bold text-lg ${isSelected ? 'text-amber-400' : 'text-indigo-400 group-hover:text-indigo-300'}`}>{letters[i]}:</span>
-                          <span className={`font-medium text-lg ${isSelected ? 'text-white' : 'text-indigo-100'}`}>{opt}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                  
-                  {(!questions[currentQuestionIndex].options || questions[currentQuestionIndex].options.length === 0) && (
-                    <div className="col-span-1 md:col-span-2">
-                      <input 
-                        type="text"
-                        placeholder="Javobingizni kiriting..."
-                        value={answers[questions[currentQuestionIndex].id] || ''}
-                        onChange={(e) => handleSelectOption(questions[currentQuestionIndex].id, e.target.value)}
-                        className="w-full bg-indigo-950/40 border-2 border-indigo-500/40 rounded-2xl p-5 text-white focus:border-amber-400 focus:shadow-[0_0_20px_rgba(251,191,36,0.2)] outline-none transition-all font-medium text-lg text-center"
-                      />
+                        <span className="text-4xl font-black text-white/20">ZAKOVAT</span>
+                      </motion.div>
+                      <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-4 w-8 h-8 bg-amber-400 rotate-45" style={{ clipPath: 'polygon(50% 100%, 0 0, 100% 0)' }}></div>
                     </div>
-                  )}
+                    
+                    <button 
+                      onClick={handleSpinWheel}
+                      disabled={isSpinning}
+                      className="px-12 py-4 bg-amber-500 text-amber-950 text-xl font-black rounded-full hover:bg-amber-400 transition-all shadow-[0_0_30px_rgba(245,158,11,0.5)] hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
+                    >
+                      {isSpinning ? 'Aylanmoqda...' : 'BARABANNI AYLANTIRISH'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-24 h-24 rounded-full border-4 border-indigo-500/30 border-t-indigo-400 animate-spin mb-8"></div>
+                    <h2 className="text-2xl font-bold text-indigo-200">
+                      Navbat: <span className="text-amber-400">{participants.find(p => p.id === currentSession.turnQueue?.[currentSession.currentTurnIndex])?.groupName}</span>
+                    </h2>
+                    <p className="text-indigo-300/60 mt-4">Ular barabanni aylantirmoqda. Iltimos kuting...</p>
+                  </>
+                )}
+              </div>
+            )}
+
+            {currentSession.gamePhase === 'question' && (
+              <div className="bg-slate-900 rounded-[2rem] p-6 md:p-8 border-2 border-indigo-500/30 shadow-[0_0_40px_rgba(99,102,241,0.1)] relative overflow-hidden">
+                {/* Lifelines Bar */}
+                <div className="flex flex-wrap justify-center gap-4 mb-6 relative z-20">
+                  <button 
+                    onClick={handle5050}
+                    disabled={usedLifelines.fiftyFifty || !questions.find(q => q.id === currentSession.currentQuestionId)?.options || questions.find(q => q.id === currentSession.currentQuestionId)?.options.length < 4}
+                    className={`relative flex items-center justify-center w-16 h-12 rounded-full border-2 font-bold transition-all ${usedLifelines.fiftyFifty ? 'border-border bg-secondary/50 text-foreground/30 cursor-not-allowed' : 'border-amber-500 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 hover:shadow-[0_0_15px_rgba(245,158,11,0.4)]'}`}
+                    title="50/50"
+                  >
+                    <Percent className="w-5 h-5" />
+                    {usedLifelines.fiftyFifty && <div className="absolute inset-0 flex items-center justify-center"><X className="w-8 h-8 text-red-500/70" /></div>}
+                  </button>
+                  <button 
+                    onClick={handleNasriddin}
+                    disabled={usedLifelines.nasriddin}
+                    className={`relative flex items-center justify-center w-16 h-12 rounded-full border-2 font-bold transition-all ${usedLifelines.nasriddin ? 'border-border bg-secondary/50 text-foreground/30 cursor-not-allowed' : 'border-emerald-500 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 hover:shadow-[0_0_15px_rgba(16,185,129,0.4)]'}`}
+                    title="Xo'ja Nasriddin"
+                  >
+                    <Smile className="w-6 h-6" />
+                    {usedLifelines.nasriddin && <div className="absolute inset-0 flex items-center justify-center"><X className="w-8 h-8 text-red-500/70" /></div>}
+                  </button>
+                  <button 
+                    onClick={handlePhoneFriend}
+                    disabled={usedLifelines.phoneFriend || !questions.find(q => q.id === currentSession.currentQuestionId)?.options}
+                    className={`relative flex items-center justify-center w-16 h-12 rounded-full border-2 font-bold transition-all ${usedLifelines.phoneFriend ? 'border-border bg-secondary/50 text-foreground/30 cursor-not-allowed' : 'border-blue-500 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 hover:shadow-[0_0_15px_rgba(59,130,246,0.4)]'}`}
+                    title="Do'stimga qo'ng'iroq"
+                  >
+                    <Phone className="w-5 h-5" />
+                    {usedLifelines.phoneFriend && <div className="absolute inset-0 flex items-center justify-center"><X className="w-8 h-8 text-red-500/70" /></div>}
+                  </button>
+                  <button 
+                    onClick={handleAudience}
+                    disabled={usedLifelines.audience || !questions.find(q => q.id === currentSession.currentQuestionId)?.options}
+                    className={`relative flex items-center justify-center w-16 h-12 rounded-full border-2 font-bold transition-all ${usedLifelines.audience ? 'border-border bg-secondary/50 text-foreground/30 cursor-not-allowed' : 'border-purple-500 bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 hover:shadow-[0_0_15px_rgba(168,85,247,0.4)]'}`}
+                    title="Zaldan yordam"
+                  >
+                    <Users className="w-5 h-5" />
+                    {usedLifelines.audience && <div className="absolute inset-0 flex items-center justify-center"><X className="w-8 h-8 text-red-500/70" /></div>}
+                  </button>
                 </div>
 
-                <div className="flex justify-between items-center pt-6 border-t border-indigo-500/20">
-                  <button
-                    onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
-                    disabled={currentQuestionIndex === 0}
-                    className="px-6 py-3 bg-indigo-950 text-indigo-200 border border-indigo-500/30 rounded-xl font-medium hover:bg-indigo-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Oldingi
-                  </button>
+                <div className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 rounded-xl font-bold border bg-indigo-950 text-indigo-200 border-indigo-500/30 z-20">
+                  <Clock className="w-5 h-5" />
+                  {questionTimeLeft !== null ? formatTime(questionTimeLeft) : '--:--'}
+                </div>
+                
+                <div className="mt-12">
+                  <div className="bg-indigo-950/50 border border-indigo-500/30 rounded-3xl p-6 md:p-10 mb-8 text-center shadow-[inset_0_0_20px_rgba(99,102,241,0.1)]">
+                    <h3 className="text-xl md:text-3xl font-bold text-white leading-relaxed">
+                      {questions.find(q => q.id === currentSession.currentQuestionId)?.text}
+                    </h3>
+                  </div>
                   
-                  {currentQuestionIndex === questions.length - 1 ? (
-                    <button
-                      onClick={() => handleFinishTest(false)}
-                      disabled={isSubmitting}
-                      className="px-8 py-3 bg-amber-500 text-amber-950 rounded-xl font-bold hover:bg-amber-400 transition-colors disabled:opacity-50 shadow-[0_0_15px_rgba(245,158,11,0.4)] flex items-center gap-2"
-                    >
-                      {isSubmitting ? 'Saqlanmoqda...' : 'Yakunlash'}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => setCurrentQuestionIndex(prev => Math.min(questions.length - 1, prev + 1))}
-                      className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-500 transition-colors shadow-[0_0_15px_rgba(79,70,229,0.4)]"
-                    >
-                      Keyingi
-                    </button>
+                  {questions.find(q => q.id === currentSession.currentQuestionId)?.imageUrl && (
+                    <div className="mb-8 flex justify-center">
+                      <img src={questions.find(q => q.id === currentSession.currentQuestionId)?.imageUrl} alt="Question" className="max-h-64 md:max-h-96 rounded-2xl border-2 border-indigo-500/30 object-contain bg-black/50 shadow-[0_0_20px_rgba(0,0,0,0.5)]" />
+                    </div>
                   )}
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                    {questions.find(q => q.id === currentSession.currentQuestionId)?.options?.map((opt: string, i: number) => {
+                      const isHidden = hiddenOptions.includes(opt);
+                      const isSelected = currentSession.currentAnswers?.[participantId] === opt;
+                      const letters = ['A', 'B', 'C', 'D'];
+                      
+                      if (isHidden) {
+                        return <div key={i} className="w-full p-4 rounded-2xl border-2 border-transparent opacity-0"></div>;
+                      }
+                      
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => handleSubmitAnswer(opt)}
+                          className={`group w-full text-left p-4 md:p-5 rounded-2xl border-2 transition-all relative overflow-hidden ${isSelected ? 'border-amber-400 bg-amber-500/20 shadow-[0_0_20px_rgba(251,191,36,0.3)]' : 'border-indigo-500/40 hover:border-indigo-400 bg-indigo-950/40 hover:bg-indigo-900/60'}`}
+                        >
+                          <div className="flex items-center gap-4 relative z-10">
+                            <span className={`font-bold text-lg ${isSelected ? 'text-amber-400' : 'text-indigo-400 group-hover:text-indigo-300'}`}>{letters[i]}:</span>
+                            <span className={`font-medium text-lg ${isSelected ? 'text-white' : 'text-indigo-100'}`}>{opt}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                    
+                    {(!questions.find(q => q.id === currentSession.currentQuestionId)?.options || questions.find(q => q.id === currentSession.currentQuestionId)?.options.length === 0) && (
+                      <div className="col-span-1 md:col-span-2">
+                        <input 
+                          type="text"
+                          placeholder="Javobingizni kiriting va Enter bosing..."
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleSubmitAnswer(e.currentTarget.value);
+                            }
+                          }}
+                          className="w-full bg-indigo-950/40 border-2 border-indigo-500/40 rounded-2xl p-5 text-white focus:border-amber-400 focus:shadow-[0_0_20px_rgba(251,191,36,0.2)] outline-none transition-all font-medium text-lg text-center"
+                        />
+                        {currentSession.currentAnswers?.[participantId] && (
+                          <p className="text-green-400 mt-4 font-bold text-center">Javobingiz qabul qilindi: {currentSession.currentAnswers[participantId]}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="text-center py-12 text-foreground/60">Savollar yuklanmoqda...</div>
-          )}
+            )}
+
+            {currentSession.gamePhase === 'review' && (
+              <div className="bg-slate-900 rounded-[2rem] p-6 md:p-12 border-2 border-indigo-500/30 shadow-[0_0_40px_rgba(99,102,241,0.1)] text-center">
+                <h2 className="text-3xl font-bold text-white mb-4">Vaqt tugadi!</h2>
+                <p className="text-indigo-200 text-lg mb-8">Natijalar hisoblanmoqda. O'qituvchi to'g'ri javoblarni tekshirmoqda...</p>
+                <div className="w-16 h-16 border-4 border-indigo-500/30 border-t-amber-400 rounded-full animate-spin mx-auto"></div>
+              </div>
+            )}
           </div>
 
           {/* Mini Leaderboard */}
