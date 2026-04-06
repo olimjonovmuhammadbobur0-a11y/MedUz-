@@ -143,6 +143,94 @@
         "patientInfo": { "type": "object" }
       },
       "required": ["title", "description", "systemInstruction", "initialMessage"]
+    },
+    "BattleSession": {
+      "title": "BattleSession",
+      "description": "A live Zakovat battle session",
+      "type": "object",
+      "properties": {
+        "hostId": { "type": "string" },
+        "testId": { "type": "string" },
+        "roomCode": { "type": "string" },
+        "status": { "type": "string", "enum": ["waiting", "active", "completed"] },
+        "duration": { "type": "number" },
+        "startTime": { "type": "number" },
+        "endTime": { "type": "number" },
+        "maxParticipants": { "type": "number" }
+      },
+      "required": ["hostId", "testId", "roomCode", "status", "duration"]
+    },
+    "BattleParticipant": {
+      "title": "BattleParticipant",
+      "description": "A participant/group in a battle session",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "userId": { "type": "string" },
+        "groupName": { "type": "string" },
+        "totalScore": { "type": "number" },
+        "completedAt": { "type": "number" }
+      },
+      "required": ["sessionId", "groupName", "totalScore"]
+    },
+    "BattleAnswer": {
+      "title": "BattleAnswer",
+      "description": "An answer submitted by a participant",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "participantId": { "type": "string" },
+        "userId": { "type": "string" },
+        "questionId": { "type": "string" },
+        "selectedOption": { "type": "string" },
+        "isCorrect": { "type": "boolean" },
+        "answeredAt": { "type": "number" }
+      },
+      "required": ["sessionId", "participantId", "userId", "questionId", "selectedOption", "isCorrect", "answeredAt"]
+    },
+    "HostPermission": {
+      "title": "HostPermission",
+      "description": "Permission and details for a user to host battles",
+      "type": "object",
+      "properties": {
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "revoked"] },
+        "requestedAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["firstName", "lastName", "subjectId", "status", "requestedAt"]
+    },
+    "BattleTest": {
+      "title": "BattleTest",
+      "description": "A test created for Zakovat battles",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "isPublished": { "type": "boolean" },
+        "timeLimit": { "type": "number" }
+      },
+      "required": ["title", "description", "subjectId", "createdBy", "isPublished", "timeLimit"]
+    },
+    "BattleQuestion": {
+      "title": "BattleQuestion",
+      "description": "A question for a Zakovat test",
+      "type": "object",
+      "properties": {
+        "testId": { "type": "string" },
+        "text": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "type": { "type": "string", "enum": ["single", "multiple", "boolean", "text"] },
+        "options": { "type": "array", "items": { "type": "string" } },
+        "correctAnswer": { "type": "string" },
+        "points": { "type": "number" },
+        "orderIndex": { "type": "number" }
+      },
+      "required": ["testId", "text", "type", "correctAnswer", "points", "orderIndex"]
     }
   },
   "firestore": {
@@ -193,6 +281,30 @@
     "/osce_scenarios/{scenarioId}": {
       "schema": { "$ref": "OSCEScenario" },
       "description": "OSCE scenarios"
+    },
+    "/battle_sessions/{sessionId}": {
+      "schema": { "$ref": "BattleSession" },
+      "description": "Live Zakovat battle sessions"
+    },
+    "/battle_participants/{participantId}": {
+      "schema": { "$ref": "BattleParticipant" },
+      "description": "Participants in Zakovat battles"
+    },
+    "/battle_answers/{answerId}": {
+      "schema": { "$ref": "BattleAnswer" },
+      "description": "Answers submitted in Zakovat battles"
+    },
+    "/host_permissions/{userId}": {
+      "schema": { "$ref": "HostPermission" },
+      "description": "Permissions for users to host battles"
+    },
+    "/battle_tests/{testId}": {
+      "schema": { "$ref": "BattleTest" },
+      "description": "Tests for Zakovat battles"
+    },
+    "/battle_questions/{questionId}": {
+      "schema": { "$ref": "BattleQuestion" },
+      "description": "Questions for Zakovat tests"
     }
   }
 }

@@ -33,6 +33,7 @@ import {
   Sparkles,
   Loader2,
   Eye,
+  EyeOff,
   MessageSquare,
   Send,
   Camera,
@@ -101,6 +102,7 @@ const generateContentWithRetry = async (ai: GoogleGenAI, params: any, maxRetries
 import { Mnemonic, Question, SymptomData, VideoData, Section, Setting, Patient, OSCEScenario, Subject, Topic, NewsItem, JournalItem, initialFanlar, initialSettings, initialNews, initialJournals } from './data';
 import { explainMedicalTopic } from './services/aiService';
 import { LiveAudioChat } from './components/LiveAudioChat';
+import { BattlePage } from './components/BattlePage';
 import { quizData } from './quizData';
 import { signInWithPopup, GoogleAuthProvider, signOut, browserPopupRedirectResolver } from 'firebase/auth';
 import { doc, getDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc, writeBatch, query, orderBy, onSnapshot, where, arrayUnion } from 'firebase/firestore';
@@ -114,7 +116,7 @@ const getYouTubeEmbedUrl = (url: string) => {
   return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : url;
 };
 
-type Page = 'home' | 'dashboard' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients' | 'osce' | 'tutor' | 'pharma' | 'fanlar' | 'news' | 'journals' | 'profile' | 'laboratory' | 'leaderboard' | 'duel';
+type Page = 'home' | 'dashboard' | 'mnemonics' | 'videos' | 'symptoms' | 'quiz' | 'admin' | 'ai' | 'library' | 'patients' | 'osce' | 'tutor' | 'pharma' | 'fanlar' | 'news' | 'journals' | 'profile' | 'laboratory' | 'leaderboard' | 'duel' | 'battle';
 
 export function Modal({ isOpen, title, content, onClose, onConfirm, confirmText = "Tasdiqlash", cancelText = "Bekor qilish" }: { isOpen: boolean, title: string, content: string, onClose: () => void, onConfirm?: () => void, confirmText?: string, cancelText?: string }) {
   if (!isOpen) return null;
@@ -472,6 +474,8 @@ export default function App() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMessagesData(msgs);
+    }, (error) => {
+      console.error("Error fetching messages:", error);
     });
     return () => unsubscribe();
   }, []);
@@ -482,6 +486,8 @@ export default function App() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const duels = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setDuelsData(duels);
+    }, (error) => {
+      console.error("Error fetching duels (opponent):", error);
     });
     
     const q2 = query(collection(db, 'duels'), where('challengerId', '==', user.uid));
@@ -494,6 +500,8 @@ export default function App() {
         // Sort by createdAt desc
         return unique.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
       });
+    }, (error) => {
+      console.error("Error fetching duels (challenger):", error);
     });
 
     return () => {
@@ -1428,7 +1436,7 @@ export default function App() {
           {currentPage === 'symptoms' && <SymptomsPage data={symptomsData} handleAIExplain={handleAIExplain} updateProgress={updateProgress} />}
           {currentPage === 'patients' && <PatientsPage patients={patientsData} onTreat={handleTreatPatient} onClearAdvice={handleClearAdvice} />}
           {currentPage === 'osce' && <OSCEPage scenarios={osceScenarios} updateProgress={updateProgress} />}
-          {currentPage === 'quiz' && <QuizPage handleAIExplain={handleAIExplain} showAlert={showAlert} user={user} updateProgress={updateProgress} saveActivity={saveActivity} fanlar={fanlarData} questions={questionsData} />}
+          {currentPage === 'quiz' && <QuizPage handleAIExplain={handleAIExplain} showAlert={showAlert} showConfirm={showConfirm} user={user} updateProgress={updateProgress} saveActivity={saveActivity} fanlar={fanlarData} questions={questionsData} />}
           {currentPage === 'tutor' && <TutorPage />}
           {currentPage === 'pharma' && <PharmaPage />}
           {currentPage === 'fanlar' && <FanlarPage data={fanlarData} />}
@@ -1483,6 +1491,7 @@ export default function App() {
               onBack={() => setCurrentPage('leaderboard')} 
             />
           )}
+          {currentPage === 'battle' && <BattlePage user={user} showAlert={showAlert} showConfirm={showConfirm} fanlar={fanlarData} />}
         </AnimatePresence>
       </main>
 
@@ -1759,6 +1768,7 @@ function HomePage({ onNavigate, sections, showAlert, appSettings }: { onNavigate
                 { id: 'osce', label: 'OSCE', icon: Stethoscope, bgColor: 'bg-[#E0F2F1]', iconColor: 'text-[#00BFA5]' },
                 { id: 'patients', label: 'Bemorlar', icon: Icons.Users, bgColor: 'bg-[#F3E5F5]', iconColor: 'text-[#9C27B0]' },
                 { id: 'laboratory', label: 'Laboratoriya', icon: Icons.FlaskConical, bgColor: 'bg-[#E3F2FD]', iconColor: 'text-[#2196F3]' },
+                { id: 'battle', label: 'Zakovat', icon: Icons.Swords, bgColor: 'bg-[#FFEBEE]', iconColor: 'text-[#F44336]' },
               ].map((item) => (
                 <button 
                   key={item.id} 
@@ -2229,7 +2239,7 @@ function SymptomsPage({ data, handleAIExplain, updateProgress }: { data: Symptom
   );
 }
 
-function QuizPage({ handleAIExplain, showAlert, user, updateProgress, saveActivity, fanlar, questions }: { handleAIExplain: (title: string, context: string) => void, showAlert: (title: string, content: string) => void, user: any, updateProgress: (field: any, value: any) => void, saveActivity?: (type: 'test' | 'video', details: any) => void, fanlar: Subject[], questions: Question[] }) {
+function QuizPage({ handleAIExplain, showAlert, showConfirm, user, updateProgress, saveActivity, fanlar, questions }: { handleAIExplain: (title: string, context: string) => void, showAlert: (title: string, content: string) => void, showConfirm: (title: string, content: string, onConfirm: () => void) => void, user: any, updateProgress: (field: any, value: any) => void, saveActivity?: (type: 'test' | 'video', details: any) => void, fanlar: Subject[], questions: Question[] }) {
   const { t } = useTranslation();
   const [step, setStep] = useState<'subjects' | 'topics' | 'quiz' | 'result' | 'review' | 'retry_request'>('subjects');
   const [selectedSubject, setSelectedSubject] = useState<any>(null);
@@ -2972,9 +2982,7 @@ Return ONLY a JSON object in this format:
             )}
             <button 
               onClick={() => {
-                if (window.confirm('Testni to\'xtatmoqchimisiz?')) {
-                  resetQuiz();
-                }
+                showConfirm("To'xtatish", "Testni to'xtatmoqchimisiz?", resetQuiz);
               }}
               className="p-2 hover:bg-red-500/10 text-foreground/40 hover:text-red-500 rounded-lg transition-colors"
               title="Testni to'xtatish"
@@ -4137,7 +4145,7 @@ function JournalsAdmin({ journals, onAdd, onDelete }: { journals: any[], onAdd: 
   );
 }
 
-function QuestionsAdmin({ questions, fanlar, setFanlar, onAdd, onEdit, onCancelEdit, editData, onDelete, onEditClick, onUpdateTopicName, onDeleteTopic }: { questions: Question[], fanlar: Subject[], setFanlar: (f: Subject[]) => void, onAdd: (data: any) => Promise<boolean>, onEdit: (id: string, data: any) => Promise<boolean>, onCancelEdit: () => void, editData: Question | null, onDelete: (id: string) => void, onEditClick: (q: Question) => void, onUpdateTopicName?: (subjectId: string, oldTopicName: string, newTopicName: string) => Promise<boolean>, onDeleteTopic?: (subjectId: string, topicId: string) => void }) {
+function QuestionsAdmin({ questions, fanlar, setFanlar, onAdd, onEdit, onCancelEdit, editData, onDelete, onEditClick, onUpdateTopicName, onDeleteTopic, showConfirm }: { questions: Question[], fanlar: Subject[], setFanlar: (f: Subject[]) => void, onAdd: (data: any) => Promise<boolean>, onEdit: (id: string, data: any) => Promise<boolean>, onCancelEdit: () => void, editData: Question | null, onDelete: (id: string) => void, onEditClick: (q: Question) => void, onUpdateTopicName?: (subjectId: string, oldTopicName: string, newTopicName: string) => Promise<boolean>, onDeleteTopic?: (subjectId: string, topicId: string) => void, showConfirm: (title: string, content: string, onConfirm: () => void) => void }) {
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [editingTopic, setEditingTopic] = useState<{ subjectId: string, topicId: string, oldName: string, currentName: string, timeLimit: number } | null>(null);
@@ -4177,18 +4185,18 @@ function QuestionsAdmin({ questions, fanlar, setFanlar, onAdd, onEdit, onCancelE
       return;
     }
 
-    if (!window.confirm('Haqiqatan ham ushbu mavzuni va unga tegishli barcha testlarni o\'chirib tashlamoqchimisiz?')) return;
-    
-    const updatedFanlar = fanlar.map(f => {
-      if (f.id === subjectId) {
-        return {
-          ...f,
-          topics: f.topics.filter(t => t.id !== topicId)
-        };
-      }
-      return f;
+    showConfirm("O'chirish", "Haqiqatan ham ushbu mavzuni va unga tegishli barcha testlarni o'chirib tashlamoqchimisiz?", () => {
+      const updatedFanlar = fanlar.map(f => {
+        if (f.id === subjectId) {
+          return {
+            ...f,
+            topics: f.topics.filter(t => t.id !== topicId)
+          };
+        }
+        return f;
+      });
+      setFanlar(updatedFanlar);
     });
-    setFanlar(updatedFanlar);
   };
 
   const saveTopic = async (subjectId: string, topicId: string, oldName: string, newName: string, timeLimit: number) => {
@@ -4556,7 +4564,7 @@ function LibraryAdmin({ library, onUpdate }: { library: any, onUpdate: (data: an
   );
 }
 
-function FanlarAdmin({ fanlar, setFanlar, editSubjectData, editTopicData, onCancelEditSubject, onCancelEditTopic, onEditSubject, onEditTopic, onDeleteSubject, onDeleteTopic }: { fanlar: Subject[], setFanlar: (f: Subject[]) => void, editSubjectData: Subject | null, editTopicData: { subjectId: string, topic: Topic } | null, onCancelEditSubject: () => void, onCancelEditTopic: () => void, onEditSubject: (s: Subject) => void, onEditTopic: (subjectId: string, t: Topic) => void, onDeleteSubject: (id: string) => void, onDeleteTopic: (subjectId: string, topicId: string) => void }) {
+function FanlarAdmin({ fanlar, setFanlar, editSubjectData, editTopicData, onCancelEditSubject, onCancelEditTopic, onEditSubject, onEditTopic, onDeleteSubject, onDeleteTopic, showConfirm }: { fanlar: Subject[], setFanlar: (f: Subject[]) => void, editSubjectData: Subject | null, editTopicData: { subjectId: string, topic: Topic } | null, onCancelEditSubject: () => void, onCancelEditTopic: () => void, onEditSubject: (s: Subject) => void, onEditTopic: (subjectId: string, t: Topic) => void, onDeleteSubject: (id: string) => void, onDeleteTopic: (subjectId: string, topicId: string) => void, showConfirm: (title: string, content: string, onConfirm: () => void) => void }) {
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
   const [isAdding, setIsAdding] = useState(false);
 
@@ -4607,7 +4615,9 @@ function FanlarAdmin({ fanlar, setFanlar, editSubjectData, editTopicData, onCanc
               <button onClick={() => onEditSubject(subject)} className="p-2 bg-secondary text-foreground/60 hover:text-primary rounded-xl transition-colors">
                 <Edit2 className="w-4 h-4" />
               </button>
-              <button onClick={() => onDeleteSubject(subject.id)} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors">
+              <button onClick={() => {
+                showConfirm("O'chirish", "Haqiqatan ham ushbu fanni va unga tegishli barcha mavzularni o'chirib tashlamoqchimisiz?", () => onDeleteSubject(subject.id));
+              }} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors">
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
@@ -4654,6 +4664,430 @@ function FanlarAdmin({ fanlar, setFanlar, editSubjectData, editTopicData, onCanc
   );
 }
 
+function BattleAdmin({ showAlert, showConfirm, fanlar }: { showAlert: (title: string, content: string) => void, showConfirm: (title: string, content: string, onConfirm: () => void) => void, fanlar: Subject[] }) {
+  const [tests, setTests] = useState<any[]>([]);
+  const [selectedTest, setSelectedTest] = useState<any | null>(null);
+  const [isAddingTest, setIsAddingTest] = useState(false);
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [isAddingQuestion, setIsAddingQuestion] = useState(false);
+  const [questionImageUrl, setQuestionImageUrl] = useState('');
+  const [adminTab, setAdminTab] = useState<'tests' | 'hosts'>('tests');
+  const [hostRequests, setHostRequests] = useState<any[]>([]);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setQuestionImageUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  useEffect(() => {
+    if (adminTab === 'tests') {
+      const q = collection(db, 'battle_tests');
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        setTests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }, (error) => {
+        console.error("Error fetching battle tests:", error);
+      });
+      return () => unsubscribe();
+    } else if (adminTab === 'hosts') {
+      const q = collection(db, 'host_permissions');
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        setHostRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }, (error) => {
+        console.error("Error fetching host requests:", error);
+      });
+      return () => unsubscribe();
+    }
+  }, [adminTab]);
+
+  useEffect(() => {
+    if (!selectedTest) return;
+    const q = query(collection(db, 'battle_questions'), where('testId', '==', selectedTest.id));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setQuestions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)).sort((a: any, b: any) => (a.orderIndex || 0) - (b.orderIndex || 0)));
+    }, (error) => {
+      console.error("Error fetching battle questions:", error);
+    });
+    return () => unsubscribe();
+  }, [selectedTest]);
+
+  const handleAddTest = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    try {
+      await addDoc(collection(db, 'battle_tests'), {
+        title: formData.get('title'),
+        description: formData.get('description'),
+        subjectId: formData.get('subjectId'),
+        timeLimit: Number(formData.get('timeLimit')),
+        isPublished: false,
+        createdBy: auth.currentUser?.uid || 'admin'
+      });
+      setIsAddingTest(false);
+      showAlert("Muvaffaqiyatli", "Yangi test qo'shildi.");
+    } catch (error: any) {
+      showAlert("Xatolik", error.message);
+    }
+  };
+
+  const handleDeleteTest = async (id: string) => {
+    showConfirm("O'chirish", "Rostdan ham o'chirmoqchimisiz?", async () => {
+      try {
+        await deleteDoc(doc(db, 'battle_tests', id));
+        const q = query(collection(db, 'battle_questions'), where('testId', '==', id));
+        const snapshot = await getDocs(q);
+        const batch = writeBatch(db);
+        snapshot.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+        showAlert("Muvaffaqiyatli", "Test o'chirildi.");
+      } catch (error: any) {
+        showAlert("Xatolik", error.message);
+      }
+    });
+  };
+
+  const handleTogglePublish = async (test: any) => {
+    try {
+      await updateDoc(doc(db, 'battle_tests', test.id), {
+        isPublished: !test.isPublished
+      });
+    } catch (error: any) {
+      showAlert("Xatolik", error.message);
+    }
+  };
+
+  const handleUpdateHostStatus = async (userId: string, status: 'approved' | 'revoked') => {
+    try {
+      await updateDoc(doc(db, 'host_permissions', userId), {
+        status,
+        updatedAt: Date.now()
+      });
+      showAlert("Muvaffaqiyatli", `Ruxsat ${status === 'approved' ? 'berildi' : 'bekor qilindi'}.`);
+    } catch (error: any) {
+      showAlert("Xatolik", error.message);
+    }
+  };
+
+  const handleAddQuestion = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const options = [
+      formData.get('optionA') as string,
+      formData.get('optionB') as string,
+      formData.get('optionC') as string,
+      formData.get('optionD') as string
+    ].filter(Boolean);
+
+    try {
+      await addDoc(collection(db, 'battle_questions'), {
+        testId: selectedTest.id,
+        text: formData.get('text'),
+        imageUrl: questionImageUrl,
+        type: formData.get('type'),
+        options: options,
+        correctAnswer: formData.get('correctAnswer'),
+        points: Number(formData.get('points')),
+        orderIndex: questions.length
+      });
+      setIsAddingQuestion(false);
+      setQuestionImageUrl('');
+      showAlert("Muvaffaqiyatli", "Savol qo'shildi.");
+    } catch (error: any) {
+      showAlert("Xatolik", error.message);
+    }
+  };
+
+  const handleDeleteQuestion = async (id: string) => {
+    showConfirm("O'chirish", "Rostdan ham o'chirmoqchimisiz?", async () => {
+      try {
+        await deleteDoc(doc(db, 'battle_questions', id));
+        showAlert("Muvaffaqiyatli", "Savol o'chirildi.");
+      } catch (error: any) {
+        showAlert("Xatolik", error.message);
+      }
+    });
+  };
+
+  if (selectedTest) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between bg-card p-4 rounded-2xl border border-border shadow-sm">
+          <div>
+            <h3 className="text-xl font-bold text-foreground">{selectedTest.title}</h3>
+            <p className="text-sm text-foreground/60">{selectedTest.description}</p>
+          </div>
+          <button onClick={() => setSelectedTest(null)} className="px-4 py-2 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 font-medium transition-colors">
+            Orqaga
+          </button>
+        </div>
+
+        <div className="bg-card rounded-2xl p-6 border border-border shadow-sm">
+          <div className="flex justify-between items-center mb-6">
+            <h4 className="text-lg font-semibold text-foreground">Savollar ({questions.length})</h4>
+            <button onClick={() => setIsAddingQuestion(true)} className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-xl font-medium hover:bg-primary/90 transition-colors">
+              <Plus className="w-4 h-4" /> Savol qo'shish
+            </button>
+          </div>
+
+          {isAddingQuestion && (
+            <form onSubmit={handleAddQuestion} className="mb-8 p-6 bg-secondary/30 rounded-2xl space-y-4 border border-border">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Savol matni</label>
+                <textarea name="text" required className="w-full bg-background border border-border rounded-xl p-3 text-foreground focus:ring-2 focus:ring-primary/20 outline-none transition-all" rows={3}></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Savol rasmi (ixtiyoriy)</label>
+                <div className="flex items-center gap-4">
+                  <input type="file" accept="image/*" onChange={handleImageUpload} className="text-sm text-foreground/70 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20" />
+                  {questionImageUrl && <img src={questionImageUrl} alt="Preview" className="h-16 w-16 object-cover rounded-lg border border-border" />}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Savol turi</label>
+                  <select name="type" className="w-full bg-background border border-border rounded-xl p-3 text-foreground focus:ring-2 focus:ring-primary/20 outline-none transition-all">
+                    <option value="single">Bitta to'g'ri javob</option>
+                    <option value="multiple">Bir nechta to'g'ri javob</option>
+                    <option value="boolean">Rost/Yolg'on</option>
+                    <option value="text">Qisqa matn</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Ball</label>
+                  <input type="number" name="points" defaultValue="10" required className="w-full bg-background border border-border rounded-xl p-3 text-foreground focus:ring-2 focus:ring-primary/20 outline-none transition-all" />
+                </div>
+              </div>
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-foreground">Variantlar (A, B, C, D)</label>
+                <input type="text" name="optionA" placeholder="A varianti" className="w-full bg-background border border-border rounded-xl p-3 text-foreground focus:ring-2 focus:ring-primary/20 outline-none transition-all" />
+                <input type="text" name="optionB" placeholder="B varianti" className="w-full bg-background border border-border rounded-xl p-3 text-foreground focus:ring-2 focus:ring-primary/20 outline-none transition-all" />
+                <input type="text" name="optionC" placeholder="C varianti" className="w-full bg-background border border-border rounded-xl p-3 text-foreground focus:ring-2 focus:ring-primary/20 outline-none transition-all" />
+                <input type="text" name="optionD" placeholder="D varianti" className="w-full bg-background border border-border rounded-xl p-3 text-foreground focus:ring-2 focus:ring-primary/20 outline-none transition-all" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">To'g'ri javob (Variant matni yoki Rost/Yolg'on)</label>
+                <input type="text" name="correctAnswer" required className="w-full bg-background border border-border rounded-xl p-3 text-foreground focus:ring-2 focus:ring-primary/20 outline-none transition-all" />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setIsAddingQuestion(false)} className="px-4 py-2 bg-secondary text-foreground rounded-xl font-medium hover:bg-secondary/80 transition-colors">Bekor qilish</button>
+                <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors">Saqlash</button>
+              </div>
+            </form>
+          )}
+
+          <div className="space-y-4">
+            {questions.map((q, i) => (
+              <div key={q.id} className="p-4 bg-background rounded-xl border border-border flex justify-between items-start gap-4 hover:border-primary/30 transition-colors">
+                <div>
+                  <span className="font-bold text-primary mr-2">{i + 1}.</span>
+                  <span className="font-medium text-foreground">{q.text}</span>
+                  {q.imageUrl && (
+                    <div className="mt-3">
+                      <img src={q.imageUrl} alt="Question" className="max-h-40 rounded-lg border border-border object-contain" />
+                    </div>
+                  )}
+                  <div className="mt-3 text-sm text-foreground/60 bg-secondary/50 p-3 rounded-lg">
+                    <p className="mb-2"><span className="font-medium text-foreground/80">Turi:</span> {q.type} <span className="mx-2">|</span> <span className="font-medium text-foreground/80">Ball:</span> {q.points}</p>
+                    {q.options && q.options.length > 0 && (
+                      <ul className="list-disc list-inside space-y-1">
+                        {q.options.map((opt: string, j: number) => (
+                          <li key={j} className={opt === q.correctAnswer ? 'text-green-500 font-medium' : ''}>{opt}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {(!q.options || q.options.length === 0) && (
+                      <p className="text-green-500 font-medium mt-1">Javob: {q.correctAnswer}</p>
+                    )}
+                  </div>
+                </div>
+                <button onClick={() => handleDeleteQuestion(q.id)} className="text-red-500 p-2 hover:bg-red-500/10 rounded-lg transition-colors shrink-0">
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
+            ))}
+            {questions.length === 0 && !isAddingQuestion && (
+              <div className="text-center py-12 text-foreground/50 bg-secondary/20 rounded-xl border border-dashed border-border">
+                Hali savollar qo'shilmagan
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-card p-4 rounded-2xl border border-border shadow-sm">
+        <div className="flex items-center gap-4">
+          <h3 className="text-xl font-bold text-foreground flex items-center gap-2">
+            <Icons.Swords className="w-6 h-6 text-primary" />
+            Zakovat Boshqaruvi
+          </h3>
+          <div className="flex bg-secondary/50 p-1 rounded-xl">
+            <button 
+              onClick={() => setAdminTab('tests')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${adminTab === 'tests' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-foreground/60 hover:text-foreground'}`}
+            >
+              Testlar
+            </button>
+            <button 
+              onClick={() => setAdminTab('hosts')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${adminTab === 'hosts' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-foreground/60 hover:text-foreground'}`}
+            >
+              O'qituvchilar
+            </button>
+          </div>
+        </div>
+        {adminTab === 'tests' && (
+          <button onClick={() => setIsAddingTest(true)} className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-xl font-medium hover:bg-primary/90 transition-colors">
+            <Plus className="w-4 h-4" /> Yangi Test
+          </button>
+        )}
+      </div>
+
+      {adminTab === 'hosts' && (
+        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-secondary/50 border-b border-border">
+                  <th className="p-4 font-semibold text-foreground">Ism Familiya</th>
+                  <th className="p-4 font-semibold text-foreground">Yo'nalish</th>
+                  <th className="p-4 font-semibold text-foreground">Holat</th>
+                  <th className="p-4 font-semibold text-foreground">Sana</th>
+                  <th className="p-4 font-semibold text-foreground text-right">Amallar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {hostRequests.map(req => {
+                  const subject = fanlar.find(f => f.id === req.subjectId);
+                  return (
+                    <tr key={req.id} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
+                      <td className="p-4 font-medium text-foreground">{req.firstName} {req.lastName}</td>
+                      <td className="p-4 text-foreground/80">{subject ? (subject as any).title || (subject as any).name : 'Noma\'lum'}</td>
+                      <td className="p-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          req.status === 'approved' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
+                          req.status === 'revoked' ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 
+                          'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20'
+                        }`}>
+                          {req.status === 'approved' ? 'Tasdiqlangan' : req.status === 'revoked' ? 'Bekor qilingan' : 'Kutilmoqda'}
+                        </span>
+                      </td>
+                      <td className="p-4 text-sm text-foreground/60">{new Date(req.requestedAt).toLocaleDateString()}</td>
+                      <td className="p-4 text-right space-x-2">
+                        {req.status !== 'approved' && (
+                          <button onClick={() => handleUpdateHostStatus(req.id, 'approved')} className="px-3 py-1.5 bg-green-500/10 text-green-500 hover:bg-green-500/20 rounded-lg text-sm font-medium transition-colors">
+                            Tasdiqlash
+                          </button>
+                        )}
+                        {req.status !== 'revoked' && (
+                          <button onClick={() => handleUpdateHostStatus(req.id, 'revoked')} className="px-3 py-1.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg text-sm font-medium transition-colors">
+                            Bekor qilish
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {hostRequests.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-foreground/50">Hali so'rovlar yo'q</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {adminTab === 'tests' && isAddingTest && (
+        <form onSubmit={handleAddTest} className="p-6 bg-card rounded-2xl border border-border shadow-sm space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Test nomi</label>
+            <input type="text" name="title" required className="w-full bg-background border border-border rounded-xl p-3 text-foreground focus:ring-2 focus:ring-primary/20 outline-none transition-all" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Tavsif</label>
+            <textarea name="description" required className="w-full bg-background border border-border rounded-xl p-3 text-foreground focus:ring-2 focus:ring-primary/20 outline-none transition-all" rows={2}></textarea>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Yo'nalish (Fan)</label>
+              <select name="subjectId" required className="w-full bg-background border border-border rounded-xl p-3 text-foreground focus:ring-2 focus:ring-primary/20 outline-none transition-all">
+                <option value="" className="bg-card text-foreground">-- Tanlang --</option>
+                {fanlar.map(f => (
+                  <option key={f.id} value={f.id} className="bg-card text-foreground">
+                    {(f as any).title || (f as any).name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Vaqt limiti (daqiqalarda)</label>
+              <input type="number" name="timeLimit" defaultValue="15" required className="w-full bg-background border border-border rounded-xl p-3 text-foreground focus:ring-2 focus:ring-primary/20 outline-none transition-all" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => setIsAddingTest(false)} className="px-4 py-2 bg-secondary text-foreground rounded-xl font-medium hover:bg-secondary/80 transition-colors">Bekor qilish</button>
+            <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors">Yaratish</button>
+          </div>
+        </form>
+      )}
+
+      {adminTab === 'tests' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {tests.map(test => {
+            const subject = fanlar.find(f => f.id === test.subjectId);
+            return (
+              <div key={test.id} className="bg-card p-6 rounded-2xl border border-border shadow-sm flex flex-col hover:border-primary/30 transition-colors">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h4 className="font-bold text-lg text-foreground">{test.title}</h4>
+                    <p className="text-xs text-primary font-medium mt-1">{subject ? ((subject as any).title || (subject as any).name) : 'Umumiy'}</p>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${test.isPublished ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20'}`}>
+                    {test.isPublished ? 'Faol' : 'Qoralama'}
+                  </span>
+                </div>
+                <p className="text-sm text-foreground/60 mb-6 flex-1">{test.description}</p>
+                <div className="flex items-center justify-between mt-auto pt-4 border-t border-border/50">
+                  <div className="flex items-center gap-2 text-sm font-medium text-foreground/70 bg-secondary px-3 py-1.5 rounded-lg">
+                    <Clock className="w-4 h-4 text-primary" /> {test.timeLimit} daq
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => handleTogglePublish(test)} className={`p-2 rounded-xl transition-colors ${test.isPublished ? 'hover:bg-secondary text-foreground/60' : 'hover:bg-primary/10 text-primary'}`} title={test.isPublished ? "O'chirish" : "Faollashtirish"}>
+                      {test.isPublished ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                    <button onClick={() => setSelectedTest(test)} className="p-2 hover:bg-primary/10 rounded-xl text-primary transition-colors" title="Savollarni tahrirlash">
+                      <Edit2 className="w-5 h-5" />
+                    </button>
+                    <button onClick={() => handleDeleteTest(test.id)} className="p-2 hover:bg-red-500/10 text-red-500 rounded-xl transition-colors" title="O'chirish">
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {tests.length === 0 && !isAddingTest && (
+            <div className="col-span-full text-center py-16 text-foreground/50 bg-card rounded-2xl border border-dashed border-border">
+              <Icons.Swords className="w-12 h-12 mx-auto mb-4 text-foreground/20" />
+              <p>Hali testlar yaratilmagan</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections, settings, library, osceScenarios, fanlar, setFanlar, appSettings, setAppSettings, news, setNews, journals, setJournals, messagesData, onUpdate, onUpdateLibrary, themeColor, setThemeColor, showAlert, showConfirm }: { 
   mnemonics: Mnemonic[], 
   questions: Question[], 
@@ -4680,7 +5114,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   showAlert: (t: string, c: string) => void,
   showConfirm: (t: string, c: string, onConfirm: () => void) => void
 }) {
-  const [activeTab, setActiveTab] = useState<'main' | 'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'library' | 'osce' | 'fanlar' | 'news' | 'journals' | 'laboratory' | 'pharma' | 'tutor' | 'ai' | 'leaderboard' | 'appSettings' | 'settings' | 'messages'>('main');
+  const [activeTab, setActiveTab] = useState<'main' | 'mnemonics' | 'questions' | 'symptoms' | 'videos' | 'patients' | 'sections' | 'library' | 'osce' | 'fanlar' | 'news' | 'journals' | 'laboratory' | 'pharma' | 'tutor' | 'ai' | 'leaderboard' | 'appSettings' | 'settings' | 'messages' | 'battle'>('main');
   const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
   const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({});
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
@@ -4700,6 +5134,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
     { id: 'fanlar', title: 'Fanlar', icon: BookOpen, count: fanlar.length, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
     { id: 'news', title: 'Yangiliklar', icon: Globe, count: news.length, color: 'text-sky-500', bg: 'bg-sky-500/10' },
     { id: 'journals', title: 'Jurnallar', icon: BookOpen, count: journals.length, color: 'text-teal-500', bg: 'bg-teal-500/10' },
+    { id: 'battle', title: 'Zakovat', icon: Icons.Swords, count: 0, color: 'text-red-500', bg: 'bg-red-500/10' },
     { id: 'laboratory', title: 'Laboratoriya', icon: Icons.FlaskConical, count: 0, color: 'text-pink-500', bg: 'bg-pink-500/10' },
     { id: 'pharma', title: 'Farmakologiya', icon: Icons.Pill, count: 0, color: 'text-orange-500', bg: 'bg-orange-500/10' },
     { id: 'tutor', title: 'AI Tutor', icon: Icons.Bot, count: 0, color: 'text-violet-500', bg: 'bg-violet-500/10' },
@@ -4721,6 +5156,8 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
         const unsubscribe = onSnapshot(q, (snapshot) => {
           const reqs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           setQuizRequests(reqs);
+        }, (error) => {
+          console.error("Error fetching quiz requests:", error);
         });
         return unsubscribe;
       };
@@ -5345,24 +5782,25 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
                     return false;
                   }
                 }} />}
-                {activeTab === 'appSettings' && <AppSettingsForm appSettings={appSettings} setAppSettings={setAppSettings} />}
+                {activeTab === 'appSettings' && <AppSettingsForm appSettings={appSettings} setAppSettings={setAppSettings} showConfirm={showConfirm} />}
                 {activeTab === 'settings' && <SettingsForm settings={settings} onUpdate={onUpdate} themeColor={themeColor} setThemeColor={setThemeColor} showAlert={showAlert} />}
                 {activeTab === 'mnemonics' && <MnemonicsAdmin mnemonics={mnemonics} onAdd={(data) => addItem('mnemonics', data)} onDelete={(id) => deleteItem('mnemonics', id)} />}
-                {activeTab === 'questions' && <QuestionsAdmin questions={questions} fanlar={fanlar} setFanlar={setFanlar} onAdd={handleAddQuestion} onEdit={handleEditQuestion} onCancelEdit={() => setEditingQuestion(null)} editData={editingQuestion} onDelete={(id) => deleteItem('questions', id)} onEditClick={(q) => setEditingQuestion(q)} onUpdateTopicName={handleUpdateTopicName} onDeleteTopic={handleDeleteTopic} />}
+                {activeTab === 'questions' && <QuestionsAdmin questions={questions} fanlar={fanlar} setFanlar={setFanlar} onAdd={handleAddQuestion} onEdit={handleEditQuestion} onCancelEdit={() => setEditingQuestion(null)} editData={editingQuestion} onDelete={(id) => deleteItem('questions', id)} onEditClick={(q) => setEditingQuestion(q)} onUpdateTopicName={handleUpdateTopicName} onDeleteTopic={handleDeleteTopic} showConfirm={showConfirm} />}
                 {activeTab === 'symptoms' && <SymptomsAdmin symptoms={symptoms} onAdd={(data) => addItem('symptoms', data)} onDelete={(id) => deleteItem('symptoms', id)} />}
                 {activeTab === 'videos' && <VideosAdmin videos={videos} onAdd={(data) => addItem('videos', data)} onDelete={(id) => deleteItem('videos', id)} />}
                 {activeTab === 'patients' && <PatientsAdmin patients={patients} onAdd={(data) => addItem('patients', data)} onDelete={(id) => deleteItem('patients', id)} />}
                 {activeTab === 'sections' && <SectionsAdmin sections={sections} onAdd={(data) => addItem('sections', data)} onDelete={(id) => deleteItem('sections', id)} />}
                 {activeTab === 'library' && <LibraryAdmin library={library} onUpdate={onUpdateLibrary} />}
                 {activeTab === 'osce' && <OsceAdmin osceScenarios={osceScenarios} onAdd={(data) => addItem('osce_scenarios', data)} onDelete={(id) => deleteItem('osce_scenarios', id)} />}
-                {activeTab === 'fanlar' && <FanlarAdmin fanlar={fanlar} setFanlar={setFanlar} editSubjectData={editingSubject} editTopicData={editingTopic} onCancelEditSubject={() => setEditingSubject(null)} onCancelEditTopic={() => setEditingTopic(null)} onEditSubject={(s) => setEditingSubject(s)} onEditTopic={(subjectId, topic) => setEditingTopic({ subjectId, topic })} onDeleteSubject={(id) => setFanlar(fanlar.filter(f => f.id !== id))} onDeleteTopic={handleDeleteTopic} />}
+                {activeTab === 'fanlar' && <FanlarAdmin fanlar={fanlar} setFanlar={setFanlar} editSubjectData={editingSubject} editTopicData={editingTopic} onCancelEditSubject={() => setEditingSubject(null)} onCancelEditTopic={() => setEditingTopic(null)} onEditSubject={(s) => setEditingSubject(s)} onEditTopic={(subjectId, topic) => setEditingTopic({ subjectId, topic })} onDeleteSubject={(id) => setFanlar(fanlar.filter(f => f.id !== id))} onDeleteTopic={handleDeleteTopic} showConfirm={showConfirm} />}
                 {activeTab === 'news' && <NewsAdmin news={news} onAdd={async (data) => { setNews([...news, { ...data, id: Date.now().toString() }]); return true; }} onDelete={(id) => setNews(news.filter(n => n.id !== id))} />}
                 {activeTab === 'journals' && <JournalsAdmin journals={journals} onAdd={async (data) => { setJournals([...journals, { ...data, id: Date.now().toString() }]); return true; }} onDelete={(id) => setJournals(journals.filter(j => j.id !== id))} />}
+                {activeTab === 'battle' && <BattleAdmin showAlert={showAlert} showConfirm={showConfirm} fanlar={fanlar} />}
                 {activeTab === 'laboratory' && <div className="text-center py-12 text-foreground/60">Tez orada...</div>}
                 {activeTab === 'pharma' && <div className="text-center py-12 text-foreground/60">Tez orada...</div>}
                 {activeTab === 'tutor' && <div className="text-center py-12 text-foreground/60">Tez orada...</div>}
                 {activeTab === 'ai' && <div className="text-center py-12 text-foreground/60">Tez orada...</div>}
-                {activeTab === 'leaderboard' && <LeaderboardAdminForm showAlert={showAlert} />}
+                {activeTab === 'leaderboard' && <LeaderboardAdminForm showAlert={showAlert} showConfirm={showConfirm} />}
               </div>
             </div>
           )}
@@ -5372,7 +5810,7 @@ function AdminPage({ mnemonics, questions, symptoms, videos, patients, sections,
   );
 }
 
-function LeaderboardAdminForm({ showAlert }: { showAlert: (title: string, content: string) => void }) {
+function LeaderboardAdminForm({ showAlert, showConfirm }: { showAlert: (title: string, content: string) => void, showConfirm: (title: string, content: string, onConfirm: () => void) => void }) {
   const [settings, setSettings] = useState({
     startDate: '',
     endDate: '',
@@ -5411,71 +5849,71 @@ function LeaderboardAdminForm({ showAlert }: { showAlert: (title: string, conten
   };
 
   const handleResetAll = async () => {
-    if (!window.confirm("DIQQAT! Barcha foydalanuvchilarning natijalari (test, osce, videolar, va h.k.) va reyting to'liq tozalanadi. Buni ortga qaytarib bo'lmaydi. Davom etasizmi?")) return;
-    
-    setIsResetting(true);
-    try {
-      // 1. Clear leaderboard collection
-      const lbSnapshot = await getDocs(collection(db, 'leaderboard'));
-      let lbBatch = writeBatch(db);
-      let lbCount = 0;
-      for (const d of lbSnapshot.docs) {
-        lbBatch.delete(d.ref);
-        lbCount++;
-        if (lbCount % 400 === 0) {
+    showConfirm("Reytingni Tozalash", "DIQQAT! Barcha foydalanuvchilarning natijalari (test, osce, videolar, va h.k.) va reyting to'liq tozalanadi. Buni ortga qaytarib bo'lmaydi. Davom etasizmi?", async () => {
+      setIsResetting(true);
+      try {
+        // 1. Clear leaderboard collection
+        const lbSnapshot = await getDocs(collection(db, 'leaderboard'));
+        let lbBatch = writeBatch(db);
+        let lbCount = 0;
+        for (const d of lbSnapshot.docs) {
+          lbBatch.delete(d.ref);
+          lbCount++;
+          if (lbCount % 400 === 0) {
+            await lbBatch.commit();
+            lbBatch = writeBatch(db);
+          }
+        }
+        if (lbCount > 0 && lbCount % 400 !== 0) {
           await lbBatch.commit();
-          lbBatch = writeBatch(db);
         }
-      }
-      if (lbCount > 0 && lbCount % 400 !== 0) {
-        await lbBatch.commit();
-      }
 
-      // 2. Clear all users progress
-      const usersSnapshot = await getDocs(collection(db, 'users'));
-      
-      // Firestore batches are limited to 500 operations. We'll process in chunks if needed, 
-      // but for simplicity we'll do a simple loop with individual updates or smaller batches.
-      let batch = writeBatch(db);
-      let count = 0;
-      
-      for (const userDoc of usersSnapshot.docs) {
-        batch.set(userDoc.ref, {
-          progress_v2: {
-            quizScore: 0,
-            osceScore: 0,
-            videosWatched: 0,
-            mnemonicsRead: 0,
-            symptomsChecked: 0
-          },
-          testHistory_v2: [],
-          videoHistory_v2: [],
-          quizAttempts: {}
-        }, { merge: true });
-        count++;
-        if (count % 400 === 0) {
+        // 2. Clear all users progress
+        const usersSnapshot = await getDocs(collection(db, 'users'));
+        
+        // Firestore batches are limited to 500 operations. We'll process in chunks if needed, 
+        // but for simplicity we'll do a simple loop with individual updates or smaller batches.
+        let batch = writeBatch(db);
+        let count = 0;
+        
+        for (const userDoc of usersSnapshot.docs) {
+          batch.set(userDoc.ref, {
+            progress_v2: {
+              quizScore: 0,
+              osceScore: 0,
+              videosWatched: 0,
+              mnemonicsRead: 0,
+              symptomsChecked: 0
+            },
+            testHistory_v2: [],
+            videoHistory_v2: [],
+            quizAttempts: {}
+          }, { merge: true });
+          count++;
+          if (count % 400 === 0) {
+            await batch.commit();
+            batch = writeBatch(db);
+          }
+        }
+        if (count > 0 && count % 400 !== 0) {
           await batch.commit();
-          batch = writeBatch(db);
         }
-      }
-      if (count > 0 && count % 400 !== 0) {
-        await batch.commit();
-      }
 
-      // Clear local storage for the admin
-      localStorage.removeItem('meduz_quiz_scores_v2');
-      localStorage.removeItem('meduz_quiz_attempts_v2');
-      localStorage.removeItem('meduz_watched_videos');
-      localStorage.removeItem('meduz_osce_progress');
-      localStorage.removeItem('meduz_completed_topics');
+        // Clear local storage for the admin
+        localStorage.removeItem('meduz_quiz_scores_v2');
+        localStorage.removeItem('meduz_quiz_attempts_v2');
+        localStorage.removeItem('meduz_watched_videos');
+        localStorage.removeItem('meduz_osce_progress');
+        localStorage.removeItem('meduz_completed_topics');
 
-      showAlert("Muvaffaqiyat", "Barcha natijalar va reyting muvaffaqiyatli tozalandi!");
-    } catch (error) {
-      console.error("Error resetting progress", error);
-      showAlert("Xatolik", `Tozalashda xatolik yuz berdi: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setIsResetting(false);
-    }
+        showAlert("Muvaffaqiyat", "Barcha natijalar va reyting muvaffaqiyatli tozalandi!");
+      } catch (error) {
+        console.error("Error resetting progress", error);
+        showAlert("Xatolik", `Tozalashda xatolik yuz berdi: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setIsResetting(false);
+      }
+    });
   };
 
   if (loading) return <div className="p-8 text-center">Yuklanmoqda...</div>;
@@ -5595,7 +6033,7 @@ function MessagesAdminForm({ messages, onAdd, onDelete }: { messages: any[], onA
   );
 }
 
-function AppSettingsForm({ appSettings, setAppSettings }: { appSettings: any, setAppSettings: (data: any) => void }) {
+function AppSettingsForm({ appSettings, setAppSettings, showConfirm }: { appSettings: any, setAppSettings: (data: any) => void, showConfirm: (title: string, content: string, onConfirm: () => void) => void }) {
   const [formData, setFormData] = useState(appSettings);
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -5606,44 +6044,44 @@ function AppSettingsForm({ appSettings, setAppSettings }: { appSettings: any, se
   };
 
   const handleSyncLeaderboard = async () => {
-    if (!window.confirm("Barcha foydalanuvchilarning natijalarini reytingga sinxronizatsiya qilishni xohlaysizmi? Bu biroz vaqt olishi mumkin.")) return;
-    
-    setIsSyncing(true);
-    try {
-      const usersSnapshot = await getDocs(collection(db, 'users'));
-      let count = 0;
-      
-      const syncPromises: Promise<void>[] = [];
-      
-      usersSnapshot.forEach((userDoc) => {
-        const userData = userDoc.data();
-        const quizScore = userData.progress_v2?.quizScore || 0;
-        const osceScore = userData.progress_v2?.osceScore || 0;
-        const totalScore = quizScore + osceScore;
+    showConfirm("Sinxronizatsiya", "Barcha foydalanuvchilarning natijalarini reytingga sinxronizatsiya qilishni xohlaysizmi? Bu biroz vaqt olishi mumkin.", async () => {
+      setIsSyncing(true);
+      try {
+        const usersSnapshot = await getDocs(collection(db, 'users'));
+        let count = 0;
+        
+        const syncPromises: Promise<void>[] = [];
+        
+        usersSnapshot.forEach((userDoc) => {
+          const userData = userDoc.data();
+          const quizScore = userData.progress_v2?.quizScore || 0;
+          const osceScore = userData.progress_v2?.osceScore || 0;
+          const totalScore = quizScore + osceScore;
 
-        if (totalScore > 0) {
-          const leaderboardRef = doc(db, 'leaderboard', userDoc.id);
-          syncPromises.push(
-            setDoc(leaderboardRef, {
-              uid: userDoc.id,
-              displayName: userData.displayName || 'Anonim foydalanuvchi',
-              photoURL: userData.photoURL || '',
-              score: totalScore,
-              lastUpdated: new Date().toISOString()
-            }, { merge: true })
-          );
-          count++;
-        }
-      });
-      
-      await Promise.all(syncPromises);
-      alert(`Muvaffaqiyatli! ${count} ta foydalanuvchi reytingga qo'shildi/yangilandi.`);
-    } catch (error) {
-      console.error("Error syncing leaderboard:", error);
-      alert("Xatolik yuz berdi. Konsolni tekshiring.");
-    } finally {
-      setIsSyncing(false);
-    }
+          if (totalScore > 0) {
+            const leaderboardRef = doc(db, 'leaderboard', userDoc.id);
+            syncPromises.push(
+              setDoc(leaderboardRef, {
+                uid: userDoc.id,
+                displayName: userData.displayName || 'Anonim foydalanuvchi',
+                photoURL: userData.photoURL || '',
+                score: totalScore,
+                lastUpdated: new Date().toISOString()
+              }, { merge: true })
+            );
+            count++;
+          }
+        });
+        
+        await Promise.all(syncPromises);
+        alert(`Muvaffaqiyatli! ${count} ta foydalanuvchi reytingga qo'shildi/yangilandi.`);
+      } catch (error) {
+        console.error("Error syncing leaderboard:", error);
+        alert("Xatolik yuz berdi. Konsolni tekshiring.");
+      } finally {
+        setIsSyncing(false);
+      }
+    });
   };
 
   return (

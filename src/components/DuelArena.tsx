@@ -37,6 +37,9 @@ export function DuelArena({ duelId, currentUser, onBack }: DuelArenaProps) {
         }
       }
       setLoading(false);
+    }, (error) => {
+      console.error("Error fetching duel:", error);
+      setLoading(false);
     });
 
     return () => unsubscribe();

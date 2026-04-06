@@ -112,7 +112,7 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     match /messages/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAdmin();
     }
 
@@ -120,6 +120,44 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (resource.data.challengerId == request.auth.uid || resource.data.opponentId == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() && request.resource.data.challengerId == request.auth.uid;
       allow update: if isAuthenticated() && (resource.data.challengerId == request.auth.uid || resource.data.opponentId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Zakovat Bellashuvi Rules
+    match /battle_tests/{testId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /battle_questions/{questionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /battle_sessions/{sessionId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.hostId == request.auth.uid;
+      allow update: if isAuthenticated() && (resource.data.hostId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /battle_participants/{participantId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /battle_answers/{answerId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /host_permissions/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAuthenticated() && request.auth.uid == userId && request.resource.data.status == 'pending';
+      allow update: if isAdmin() || (isAuthenticated() && request.auth.uid == userId && request.resource.data.status == 'pending');
       allow delete: if isAdmin();
     }
   }
