@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Play, Clock, Trophy, ArrowLeft, CheckCircle2, XCircle, LogIn, Plus } from 'lucide-react';
+import { Users, Play, Clock, Trophy, ArrowLeft, CheckCircle2, XCircle, LogIn, Plus, Percent, Smile, Phone, BarChart2, X } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, getDocs, writeBatch, setDoc } from 'firebase/firestore';
 
@@ -24,6 +24,22 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
+
+  // Lifeline States
+  const [usedLifelines, setUsedLifelines] = useState({
+    fiftyFifty: false,
+    nasriddin: false,
+    phoneFriend: false,
+    audience: false
+  });
+  const [hiddenOptions, setHiddenOptions] = useState<string[]>([]);
+  const [activeLifelineModal, setActiveLifelineModal] = useState<'nasriddin' | 'phone' | 'audience' | null>(null);
+  const [lifelineData, setLifelineData] = useState<any>(null);
+
+  // Reset hidden options when question changes
+  useEffect(() => {
+    setHiddenOptions([]);
+  }, [currentQuestionIndex]);
 
   // Fetch host permission
   useEffect(() => {
@@ -249,6 +265,78 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
     } catch (error: any) {
       showAlert("Xatolik", "Xonaga qo'shilishda xatolik: " + error.message);
     }
+  };
+
+  const handle5050 = () => {
+    if (usedLifelines.fiftyFifty) return;
+    const currentQ = questions[currentQuestionIndex];
+    if (!currentQ.options || currentQ.options.length < 4) return;
+    
+    const correct = currentQ.correctAnswer;
+    const incorrects = currentQ.options.filter((opt: string) => opt !== correct);
+    // Pick 2 random incorrects to hide
+    const shuffled = [...incorrects].sort(() => 0.5 - Math.random());
+    const toHide = shuffled.slice(0, 2);
+    
+    setHiddenOptions(toHide);
+    setUsedLifelines(prev => ({ ...prev, fiftyFifty: true }));
+  };
+
+  const handleNasriddin = () => {
+    if (usedLifelines.nasriddin) return;
+    const currentQ = questions[currentQuestionIndex];
+    const correct = currentQ.correctAnswer;
+    
+    const jokes = [
+      `Xo'ja Nasriddin eshagini teskari minib keldi va dedi: "Odamlar, bu savolning javobi aniq '${correct}', agar ishonmasangiz eshagimdan so'rang!"`,
+      `Xo'ja Nasriddin bozorda aylanib yurib shunday dedi: "Kimki '${correct}' deb javob bersa, unga bir xumcha tilla... yo'q, bir kosa qatiq beraman!"`,
+      `"Ey barakalla!" dedi Xo'ja Nasriddin sallasini to'g'rilab, "Buning javobi '${correct}' bo'lmasa, men Xo'ja emasman!"`
+    ];
+    const joke = jokes[Math.floor(Math.random() * jokes.length)];
+    
+    setLifelineData(joke);
+    setActiveLifelineModal('nasriddin');
+    setUsedLifelines(prev => ({ ...prev, nasriddin: true }));
+  };
+
+  const handlePhoneFriend = () => {
+    if (usedLifelines.phoneFriend) return;
+    const currentQ = questions[currentQuestionIndex];
+    if (!currentQ.options) return;
+    
+    const correct = currentQ.correctAnswer;
+    const stats = currentQ.options.map((opt: string) => {
+      if (opt === correct) return { option: opt, percent: Math.floor(Math.random() * 20) + 60 }; // 60-80%
+      return { option: opt, percent: Math.floor(Math.random() * 15) };
+    });
+    
+    // Normalize to 100%
+    const total = stats.reduce((sum: number, item: any) => sum + item.percent, 0);
+    stats.forEach((item: any) => item.percent = Math.round((item.percent / total) * 100));
+    
+    setLifelineData(stats.sort((a: any, b: any) => b.percent - a.percent));
+    setActiveLifelineModal('phone');
+    setUsedLifelines(prev => ({ ...prev, phoneFriend: true }));
+  };
+
+  const handleAudience = () => {
+    if (usedLifelines.audience) return;
+    const currentQ = questions[currentQuestionIndex];
+    if (!currentQ.options) return;
+    
+    const correct = currentQ.correctAnswer;
+    const stats = currentQ.options.map((opt: string) => {
+      if (opt === correct) return { option: opt, percent: Math.floor(Math.random() * 30) + 40 }; // 40-70%
+      return { option: opt, percent: Math.floor(Math.random() * 20) };
+    });
+    
+    // Normalize to 100%
+    const total = stats.reduce((sum: number, item: any) => sum + item.percent, 0);
+    stats.forEach((item: any) => item.percent = Math.round((item.percent / total) * 100));
+    
+    setLifelineData(stats.sort((a: any, b: any) => b.percent - a.percent));
+    setActiveLifelineModal('audience');
+    setUsedLifelines(prev => ({ ...prev, audience: true }));
   };
 
   const handleSelectOption = (questionId: string, option: string) => {
@@ -571,7 +659,7 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
                 type="text" 
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
-                placeholder="Masalan: Ibn Sino vorislari"
+                placeholder="Guruh nomini kiriting"
                 required 
                 className="w-full bg-background border border-border rounded-xl p-3.5 text-foreground focus:ring-2 focus:ring-primary/20 outline-none transition-all" 
               />
@@ -604,87 +692,255 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
       )}
 
       {view === 'participant_active' && currentSession && (
-        <div className="space-y-6">
-          <div className="bg-card rounded-3xl p-4 md:p-6 border border-border shadow-sm flex justify-between items-center sticky top-4 z-10">
+        <div className="space-y-6 relative">
+          {/* Lifelines Bar */}
+          <div className="flex flex-wrap justify-center gap-4 mb-6">
+            <button 
+              onClick={handle5050}
+              disabled={usedLifelines.fiftyFifty || !questions[currentQuestionIndex]?.options || questions[currentQuestionIndex]?.options.length < 4}
+              className={`relative flex items-center justify-center w-16 h-12 rounded-full border-2 font-bold transition-all ${usedLifelines.fiftyFifty ? 'border-border bg-secondary/50 text-foreground/30 cursor-not-allowed' : 'border-amber-500 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 hover:shadow-[0_0_15px_rgba(245,158,11,0.4)]'}`}
+              title="50/50"
+            >
+              <Percent className="w-5 h-5" />
+              {usedLifelines.fiftyFifty && <div className="absolute inset-0 flex items-center justify-center"><X className="w-8 h-8 text-red-500/70" /></div>}
+            </button>
+            <button 
+              onClick={handleNasriddin}
+              disabled={usedLifelines.nasriddin}
+              className={`relative flex items-center justify-center w-16 h-12 rounded-full border-2 font-bold transition-all ${usedLifelines.nasriddin ? 'border-border bg-secondary/50 text-foreground/30 cursor-not-allowed' : 'border-emerald-500 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 hover:shadow-[0_0_15px_rgba(16,185,129,0.4)]'}`}
+              title="Xo'ja Nasriddin"
+            >
+              <Smile className="w-6 h-6" />
+              {usedLifelines.nasriddin && <div className="absolute inset-0 flex items-center justify-center"><X className="w-8 h-8 text-red-500/70" /></div>}
+            </button>
+            <button 
+              onClick={handlePhoneFriend}
+              disabled={usedLifelines.phoneFriend || !questions[currentQuestionIndex]?.options}
+              className={`relative flex items-center justify-center w-16 h-12 rounded-full border-2 font-bold transition-all ${usedLifelines.phoneFriend ? 'border-border bg-secondary/50 text-foreground/30 cursor-not-allowed' : 'border-blue-500 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 hover:shadow-[0_0_15px_rgba(59,130,246,0.4)]'}`}
+              title="Do'stimga qo'ng'iroq"
+            >
+              <Phone className="w-5 h-5" />
+              {usedLifelines.phoneFriend && <div className="absolute inset-0 flex items-center justify-center"><X className="w-8 h-8 text-red-500/70" /></div>}
+            </button>
+            <button 
+              onClick={handleAudience}
+              disabled={usedLifelines.audience || !questions[currentQuestionIndex]?.options}
+              className={`relative flex items-center justify-center w-16 h-12 rounded-full border-2 font-bold transition-all ${usedLifelines.audience ? 'border-border bg-secondary/50 text-foreground/30 cursor-not-allowed' : 'border-purple-500 bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 hover:shadow-[0_0_15px_rgba(168,85,247,0.4)]'}`}
+              title="Zaldan yordam"
+            >
+              <Users className="w-5 h-5" />
+              {usedLifelines.audience && <div className="absolute inset-0 flex items-center justify-center"><X className="w-8 h-8 text-red-500/70" /></div>}
+            </button>
+          </div>
+
+          <div className="bg-slate-900 rounded-[2rem] p-4 md:p-6 border-2 border-indigo-500/30 shadow-[0_0_30px_rgba(99,102,241,0.15)] flex justify-between items-center sticky top-4 z-10">
             <div>
-              <div className="text-sm text-foreground/60">Guruh: <span className="font-bold text-foreground">{groupName}</span></div>
-              <div className="font-bold text-primary">Savol: {currentQuestionIndex + 1} / {questions.length}</div>
+              <div className="text-sm text-indigo-200/60">Guruh: <span className="font-bold text-indigo-100">{groupName}</span></div>
+              <div className="font-bold text-indigo-400">Savol: {currentQuestionIndex + 1} / {questions.length}</div>
             </div>
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold ${timeLeft !== null && timeLeft < 60 ? 'bg-red-500/10 text-red-500 animate-pulse' : 'bg-secondary text-foreground'}`}>
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold border ${timeLeft !== null && timeLeft < 60 ? 'bg-red-500/20 text-red-400 border-red-500/50 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'bg-indigo-950 text-indigo-200 border-indigo-500/30'}`}>
               <Clock className="w-5 h-5" />
               {timeLeft !== null ? formatTime(timeLeft) : '--:--'}
             </div>
           </div>
 
           {questions.length > 0 && currentQuestionIndex < questions.length ? (
-            <div className="bg-card rounded-3xl p-6 md:p-8 border border-border shadow-sm">
-              <h3 className="text-xl md:text-2xl font-bold text-foreground mb-6 leading-relaxed">
-                {questions[currentQuestionIndex].text}
-              </h3>
+            <div className="bg-slate-900 rounded-[2rem] p-6 md:p-8 border-2 border-indigo-500/30 shadow-[0_0_40px_rgba(99,102,241,0.1)] relative overflow-hidden">
+              {/* Background glow */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-indigo-500/5 blur-[100px] pointer-events-none rounded-full"></div>
               
-              {questions[currentQuestionIndex].imageUrl && (
-                <div className="mb-8 flex justify-center">
-                  <img src={questions[currentQuestionIndex].imageUrl} alt="Question" className="max-h-64 md:max-h-96 rounded-2xl border border-border object-contain bg-secondary/20" />
+              <div className="relative z-10">
+                <div className="bg-indigo-950/50 border border-indigo-500/30 rounded-3xl p-6 md:p-10 mb-8 text-center shadow-[inset_0_0_20px_rgba(99,102,241,0.1)]">
+                  <h3 className="text-xl md:text-3xl font-bold text-white leading-relaxed">
+                    {questions[currentQuestionIndex].text}
+                  </h3>
                 </div>
-              )}
-              
-              <div className="space-y-3 mb-8">
-                {questions[currentQuestionIndex].options?.map((opt: string, i: number) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSelectOption(questions[currentQuestionIndex].id, opt)}
-                    className={`w-full text-left p-4 rounded-2xl border-2 transition-all ${answers[questions[currentQuestionIndex].id] === opt ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30 bg-background'}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${answers[questions[currentQuestionIndex].id] === opt ? 'border-primary' : 'border-foreground/30'}`}>
-                        {answers[questions[currentQuestionIndex].id] === opt && <div className="w-3 h-3 bg-primary rounded-full" />}
-                      </div>
-                      <span className="font-medium text-foreground">{opt}</span>
+                
+                {questions[currentQuestionIndex].imageUrl && (
+                  <div className="mb-8 flex justify-center">
+                    <img src={questions[currentQuestionIndex].imageUrl} alt="Question" className="max-h-64 md:max-h-96 rounded-2xl border-2 border-indigo-500/30 object-contain bg-black/50 shadow-[0_0_20px_rgba(0,0,0,0.5)]" />
+                  </div>
+                )}
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                  {questions[currentQuestionIndex].options?.map((opt: string, i: number) => {
+                    const isHidden = hiddenOptions.includes(opt);
+                    const isSelected = answers[questions[currentQuestionIndex].id] === opt;
+                    const letters = ['A', 'B', 'C', 'D'];
+                    
+                    if (isHidden) {
+                      return <div key={i} className="w-full p-4 rounded-2xl border-2 border-transparent opacity-0"></div>;
+                    }
+                    
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => handleSelectOption(questions[currentQuestionIndex].id, opt)}
+                        className={`group w-full text-left p-4 md:p-5 rounded-2xl border-2 transition-all relative overflow-hidden ${isSelected ? 'border-amber-400 bg-amber-500/20 shadow-[0_0_20px_rgba(251,191,36,0.3)]' : 'border-indigo-500/40 hover:border-indigo-400 bg-indigo-950/40 hover:bg-indigo-900/60'}`}
+                      >
+                        <div className="flex items-center gap-4 relative z-10">
+                          <span className={`font-bold text-lg ${isSelected ? 'text-amber-400' : 'text-indigo-400 group-hover:text-indigo-300'}`}>{letters[i]}:</span>
+                          <span className={`font-medium text-lg ${isSelected ? 'text-white' : 'text-indigo-100'}`}>{opt}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  
+                  {(!questions[currentQuestionIndex].options || questions[currentQuestionIndex].options.length === 0) && (
+                    <div className="col-span-1 md:col-span-2">
+                      <input 
+                        type="text"
+                        placeholder="Javobingizni kiriting..."
+                        value={answers[questions[currentQuestionIndex].id] || ''}
+                        onChange={(e) => handleSelectOption(questions[currentQuestionIndex].id, e.target.value)}
+                        className="w-full bg-indigo-950/40 border-2 border-indigo-500/40 rounded-2xl p-5 text-white focus:border-amber-400 focus:shadow-[0_0_20px_rgba(251,191,36,0.2)] outline-none transition-all font-medium text-lg text-center"
+                      />
                     </div>
-                  </button>
-                ))}
-                
-                {(!questions[currentQuestionIndex].options || questions[currentQuestionIndex].options.length === 0) && (
-                  <input 
-                    type="text"
-                    placeholder="Javobingizni kiriting..."
-                    value={answers[questions[currentQuestionIndex].id] || ''}
-                    onChange={(e) => handleSelectOption(questions[currentQuestionIndex].id, e.target.value)}
-                    className="w-full bg-background border-2 border-border rounded-2xl p-4 text-foreground focus:border-primary outline-none transition-all font-medium"
-                  />
-                )}
-              </div>
+                  )}
+                </div>
 
-              <div className="flex justify-between items-center pt-6 border-t border-border">
-                <button
-                  onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
-                  disabled={currentQuestionIndex === 0}
-                  className="px-6 py-3 bg-secondary text-foreground rounded-xl font-medium hover:bg-secondary/80 transition-colors disabled:opacity-50"
-                >
-                  Oldingi
-                </button>
-                
-                {currentQuestionIndex === questions.length - 1 ? (
+                <div className="flex justify-between items-center pt-6 border-t border-indigo-500/20">
                   <button
-                    onClick={() => handleFinishTest(false)}
-                    disabled={isSubmitting}
-                    className="px-8 py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors flex items-center gap-2"
+                    onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
+                    disabled={currentQuestionIndex === 0}
+                    className="px-6 py-3 bg-indigo-950 text-indigo-200 border border-indigo-500/30 rounded-xl font-medium hover:bg-indigo-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {isSubmitting ? 'Saqlanmoqda...' : 'Yakunlash'}
+                    Oldingi
                   </button>
-                ) : (
-                  <button
-                    onClick={() => setCurrentQuestionIndex(prev => Math.min(questions.length - 1, prev + 1))}
-                    className="px-8 py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors"
-                  >
-                    Keyingi
-                  </button>
-                )}
+                  
+                  {currentQuestionIndex === questions.length - 1 ? (
+                    <button
+                      onClick={() => handleFinishTest(false)}
+                      disabled={isSubmitting}
+                      className="px-8 py-3 bg-amber-500 text-amber-950 rounded-xl font-bold hover:bg-amber-400 transition-colors disabled:opacity-50 shadow-[0_0_15px_rgba(245,158,11,0.4)] flex items-center gap-2"
+                    >
+                      {isSubmitting ? 'Saqlanmoqda...' : 'Yakunlash'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setCurrentQuestionIndex(prev => Math.min(questions.length - 1, prev + 1))}
+                      className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-500 transition-colors shadow-[0_0_15px_rgba(79,70,229,0.4)]"
+                    >
+                      Keyingi
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ) : (
             <div className="text-center py-12 text-foreground/60">Savollar yuklanmoqda...</div>
           )}
+
+          {/* Lifeline Modals */}
+          <AnimatePresence>
+            {activeLifelineModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+                  onClick={() => setActiveLifelineModal(null)}
+                />
+                <motion.div 
+                  initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                  className={`relative z-10 w-full max-w-md rounded-3xl border-2 p-6 md:p-8 shadow-2xl ${
+                    activeLifelineModal === 'nasriddin' ? 'bg-emerald-950 border-emerald-500/50 shadow-[0_0_40px_rgba(16,185,129,0.3)]' :
+                    activeLifelineModal === 'phone' ? 'bg-blue-950 border-blue-500/50 shadow-[0_0_40px_rgba(59,130,246,0.3)]' :
+                    'bg-purple-950 border-purple-500/50 shadow-[0_0_40px_rgba(168,85,247,0.3)]'
+                  }`}
+                >
+                  <button 
+                    onClick={() => setActiveLifelineModal(null)}
+                    className="absolute top-4 right-4 p-2 text-white/50 hover:text-white bg-black/20 rounded-full transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+
+                  {activeLifelineModal === 'nasriddin' && (
+                    <div className="text-center">
+                      <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-500/50">
+                        <Smile className="w-10 h-10 text-emerald-400" />
+                      </div>
+                      <h3 className="text-2xl font-bold text-white mb-6">Xo'ja Nasriddin yordami</h3>
+                      <div className="bg-black/30 rounded-2xl p-6 border border-emerald-500/20">
+                        <p className="text-lg text-emerald-100 italic leading-relaxed">
+                          {lifelineData}
+                        </p>
+                      </div>
+                      <button onClick={() => setActiveLifelineModal(null)} className="mt-8 px-8 py-3 bg-emerald-500 text-emerald-950 font-bold rounded-xl hover:bg-emerald-400 transition-colors w-full">
+                        Rahmat, Xo'ja!
+                      </button>
+                    </div>
+                  )}
+
+                  {activeLifelineModal === 'phone' && (
+                    <div className="text-center">
+                      <div className="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-6 border border-blue-500/50">
+                        <Phone className="w-10 h-10 text-blue-400 animate-pulse" />
+                      </div>
+                      <h3 className="text-2xl font-bold text-white mb-6">Do'stimga qo'ng'iroq</h3>
+                      <p className="text-blue-200 mb-6">"Menimcha to'g'ri javob shunday..."</p>
+                      <div className="space-y-4">
+                        {lifelineData?.map((item: any, idx: number) => (
+                          <div key={idx} className="relative">
+                            <div className="flex justify-between text-sm text-blue-100 mb-1 font-medium">
+                              <span>{item.option}</span>
+                              <span>{item.percent}%</span>
+                            </div>
+                            <div className="h-3 bg-black/40 rounded-full overflow-hidden border border-blue-500/20">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${item.percent}%` }}
+                                transition={{ duration: 1, delay: 0.2 }}
+                                className={`h-full rounded-full ${idx === 0 ? 'bg-blue-400' : 'bg-blue-600/50'}`}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <button onClick={() => setActiveLifelineModal(null)} className="mt-8 px-8 py-3 bg-blue-500 text-blue-950 font-bold rounded-xl hover:bg-blue-400 transition-colors w-full">
+                        Tushunarli
+                      </button>
+                    </div>
+                  )}
+
+                  {activeLifelineModal === 'audience' && (
+                    <div className="text-center">
+                      <div className="w-20 h-20 bg-purple-500/20 rounded-full flex items-center justify-center mx-auto mb-6 border border-purple-500/50">
+                        <Users className="w-10 h-10 text-purple-400" />
+                      </div>
+                      <h3 className="text-2xl font-bold text-white mb-6">Zaldan yordam</h3>
+                      <p className="text-purple-200 mb-6">Tomoshabinlar ovoz berishdi:</p>
+                      <div className="flex items-end justify-center gap-4 h-48 mb-6 bg-black/20 rounded-2xl p-4 border border-purple-500/20">
+                        {lifelineData?.map((item: any, idx: number) => (
+                          <div key={idx} className="flex flex-col items-center flex-1">
+                            <span className="text-xs text-purple-200 font-bold mb-2">{item.percent}%</span>
+                            <div className="w-full bg-black/40 rounded-t-lg relative flex items-end justify-center h-full">
+                              <motion.div 
+                                initial={{ height: 0 }}
+                                animate={{ height: `${item.percent}%` }}
+                                transition={{ duration: 1, delay: 0.2 }}
+                                className={`w-full rounded-t-lg ${idx === 0 ? 'bg-purple-400' : 'bg-purple-600/50'}`}
+                              />
+                            </div>
+                            <span className="text-xs text-purple-300 mt-2 font-medium truncate w-full text-center px-1" title={item.option}>
+                              {item.option.length > 10 ? item.option.substring(0, 8) + '...' : item.option}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <button onClick={() => setActiveLifelineModal(null)} className="mt-4 px-8 py-3 bg-purple-500 text-purple-950 font-bold rounded-xl hover:bg-purple-400 transition-colors w-full">
+                        Yopish
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
         </div>
       )}
 

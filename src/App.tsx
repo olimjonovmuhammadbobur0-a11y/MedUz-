@@ -16,6 +16,7 @@ import {
   Search, 
   Copy, 
   CheckCircle2, 
+  Check,
   AlertTriangle, 
   ChevronRight, 
   Menu, 
@@ -4673,6 +4674,8 @@ function BattleAdmin({ showAlert, showConfirm, fanlar }: { showAlert: (title: st
   const [questionImageUrl, setQuestionImageUrl] = useState('');
   const [adminTab, setAdminTab] = useState<'tests' | 'hosts'>('tests');
   const [hostRequests, setHostRequests] = useState<any[]>([]);
+  const [editingHostId, setEditingHostId] = useState<string | null>(null);
+  const [editingSubjectId, setEditingSubjectId] = useState<string>('');
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -4768,6 +4771,19 @@ function BattleAdmin({ showAlert, showConfirm, fanlar }: { showAlert: (title: st
         updatedAt: Date.now()
       });
       showAlert("Muvaffaqiyatli", `Ruxsat ${status === 'approved' ? 'berildi' : 'bekor qilindi'}.`);
+    } catch (error: any) {
+      showAlert("Xatolik", error.message);
+    }
+  };
+
+  const handleSaveHostSubject = async (userId: string) => {
+    try {
+      await updateDoc(doc(db, 'host_permissions', userId), {
+        subjectId: editingSubjectId,
+        updatedAt: Date.now()
+      });
+      setEditingHostId(null);
+      showAlert("Muvaffaqiyatli", "O'qituvchi yo'nalishi o'zgartirildi.");
     } catch (error: any) {
       showAlert("Xatolik", error.message);
     }
@@ -4970,7 +4986,41 @@ function BattleAdmin({ showAlert, showConfirm, fanlar }: { showAlert: (title: st
                   return (
                     <tr key={req.id} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
                       <td className="p-4 font-medium text-foreground">{req.firstName} {req.lastName}</td>
-                      <td className="p-4 text-foreground/80">{subject ? (subject as any).title || (subject as any).name : 'Noma\'lum'}</td>
+                      <td className="p-4 text-foreground/80">
+                        {editingHostId === req.id ? (
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={editingSubjectId}
+                              onChange={(e) => setEditingSubjectId(e.target.value)}
+                              className="bg-background border border-border rounded-lg p-1.5 text-sm outline-none"
+                            >
+                              <option value="">Tanlang...</option>
+                              {fanlar.map(f => (
+                                <option key={f.id} value={f.id}>{(f as any).title || (f as any).name}</option>
+                              ))}
+                            </select>
+                            <button onClick={() => handleSaveHostSubject(req.id)} className="p-1.5 bg-green-500/10 text-green-500 rounded-lg hover:bg-green-500/20">
+                              <Check className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => setEditingHostId(null)} className="p-1.5 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span>{subject ? (subject as any).title || (subject as any).name : 'Noma\'lum'}</span>
+                            <button 
+                              onClick={() => {
+                                setEditingHostId(req.id);
+                                setEditingSubjectId(req.subjectId || '');
+                              }}
+                              className="p-1 text-foreground/40 hover:text-primary transition-colors"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </td>
                       <td className="p-4">
                         <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                           req.status === 'approved' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
