@@ -361,6 +361,13 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
 
   const [isSpinning, setIsSpinning] = useState(false);
   const [questionTimeLeft, setQuestionTimeLeft] = useState<number | null>(null);
+  const [answerStatus, setAnswerStatus] = useState<'idle' | 'checking' | 'correct' | 'wrong'>('idle');
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAnswerStatus('idle');
+    setSelectedOption(null);
+  }, [currentSession?.currentQuestionId, currentSession?.blitzQuestionId]);
 
   useEffect(() => {
     if (currentSession?.gamePhase === 'question' && currentSession?.questionEndTime) {
@@ -374,10 +381,37 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
 
   const handleSubmitAnswer = async (answer: string) => {
     if (!currentSession || !participantId) return;
+    if (answerStatus !== 'idle') return;
+
+    const currentQ = questions.find(q => q.id === currentSession.currentQuestionId || q.id === currentSession.blitzQuestionId);
+    const isCorrect = currentQ?.correctAnswer?.trim().toLowerCase() === answer.trim().toLowerCase();
+
     const newAnswers = { ...(currentSession.currentAnswers || {}), [participantId]: answer };
     await updateDoc(doc(db, 'battle_sessions', currentSession.id), {
       currentAnswers: newAnswers
     });
+
+    setSelectedOption(answer);
+    setAnswerStatus('checking');
+
+    // Play suspense audio
+    const suspenseAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3');
+    suspenseAudio.play().catch(e => console.log('Audio play error:', e));
+
+    setTimeout(() => {
+      suspenseAudio.pause();
+      setAnswerStatus(isCorrect ? 'correct' : 'wrong');
+      
+      if (isCorrect) {
+        new Audio('https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3').play().catch(e=>e);
+      } else {
+        new Audio('https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3').play().catch(e=>e);
+      }
+
+      setTimeout(() => {
+        setAnswerStatus('idle');
+      }, 4000);
+    }, 3000);
   };
 
   const handleSpinWheel = async () => {
@@ -927,16 +961,22 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
                 <input 
                   type="text"
                   placeholder="Javobingizni kiriting va Enter bosing..."
+                  disabled={answerStatus !== 'idle'}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       handleSubmitAnswer(e.currentTarget.value);
-                      e.currentTarget.value = '';
+                      if (answerStatus === 'idle') {
+                        e.currentTarget.value = '';
+                      }
                     }
                   }}
-                  className="w-full max-w-md mx-auto block bg-indigo-950/40 border-2 border-indigo-500/40 rounded-2xl p-5 text-white focus:border-amber-400 focus:shadow-[0_0_20px_rgba(251,191,36,0.2)] outline-none transition-all font-medium text-lg text-center"
+                  className="w-full max-w-md mx-auto block bg-indigo-950/40 border-2 border-indigo-500/40 rounded-2xl p-5 text-white focus:border-amber-400 focus:shadow-[0_0_20px_rgba(251,191,36,0.2)] outline-none transition-all font-medium text-lg text-center disabled:opacity-50"
                 />
-                {currentSession.currentAnswers?.[participantId] && (
-                  <p className="text-green-400 mt-4 font-bold">Javobingiz qabul qilindi: {currentSession.currentAnswers[participantId]}</p>
+                {answerStatus === 'checking' && <p className="text-amber-400 mt-4 font-bold animate-pulse">Javob tekshirilmoqda...</p>}
+                {answerStatus === 'correct' && <p className="text-green-400 mt-4 font-bold">To'g'ri javob!</p>}
+                {answerStatus === 'wrong' && <p className="text-red-400 mt-4 font-bold">Noto'g'ri javob!</p>}
+                {answerStatus === 'idle' && currentSession.currentAnswers?.[participantId] && (
+                  <p className="text-indigo-300 mt-4 font-bold">Javobingiz qabul qilindi: {currentSession.currentAnswers[participantId]}</p>
                 )}
               </div>
             )}
@@ -1041,21 +1081,47 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
                     {questions.find(q => q.id === currentSession.currentQuestionId)?.options?.map((opt: string, i: number) => {
                       const isHidden = hiddenOptions.includes(opt);
                       const isSelected = currentSession.currentAnswers?.[participantId] === opt;
+                      const isCheckingThis = answerStatus === 'checking' && selectedOption === opt;
+                      const isCorrectThis = answerStatus === 'correct' && selectedOption === opt;
+                      const isWrongThis = answerStatus === 'wrong' && selectedOption === opt;
                       const letters = ['A', 'B', 'C', 'D'];
                       
                       if (isHidden) {
                         return <div key={i} className="w-full p-4 rounded-2xl border-2 border-transparent opacity-0"></div>;
                       }
+
+                      let buttonClass = 'border-indigo-500/40 hover:border-indigo-400 bg-indigo-950/40 hover:bg-indigo-900/60';
+                      let textClass = 'text-indigo-400 group-hover:text-indigo-300';
+                      let optClass = 'text-indigo-100';
+
+                      if (isCheckingThis) {
+                        buttonClass = 'border-amber-400 bg-amber-500/20 shadow-[0_0_20px_rgba(251,191,36,0.5)] animate-pulse';
+                        textClass = 'text-amber-400';
+                        optClass = 'text-white';
+                      } else if (isCorrectThis) {
+                        buttonClass = 'border-green-500 bg-green-500/30 shadow-[0_0_30px_rgba(34,197,94,0.6)]';
+                        textClass = 'text-green-400';
+                        optClass = 'text-white';
+                      } else if (isWrongThis) {
+                        buttonClass = 'border-red-500 bg-red-500/30 shadow-[0_0_30px_rgba(239,68,68,0.6)]';
+                        textClass = 'text-red-400';
+                        optClass = 'text-white';
+                      } else if (isSelected && answerStatus === 'idle') {
+                        buttonClass = 'border-amber-400 bg-amber-500/20 shadow-[0_0_20px_rgba(251,191,36,0.3)]';
+                        textClass = 'text-amber-400';
+                        optClass = 'text-white';
+                      }
                       
                       return (
                         <button
                           key={i}
+                          disabled={answerStatus !== 'idle'}
                           onClick={() => handleSubmitAnswer(opt)}
-                          className={`group w-full text-left p-4 md:p-5 rounded-2xl border-2 transition-all relative overflow-hidden ${isSelected ? 'border-amber-400 bg-amber-500/20 shadow-[0_0_20px_rgba(251,191,36,0.3)]' : 'border-indigo-500/40 hover:border-indigo-400 bg-indigo-950/40 hover:bg-indigo-900/60'}`}
+                          className={`group w-full text-left p-4 md:p-5 rounded-2xl border-2 transition-all relative overflow-hidden disabled:opacity-80 ${buttonClass}`}
                         >
                           <div className="flex items-center gap-4 relative z-10">
-                            <span className={`font-bold text-lg ${isSelected ? 'text-amber-400' : 'text-indigo-400 group-hover:text-indigo-300'}`}>{letters[i]}:</span>
-                            <span className={`font-medium text-lg ${isSelected ? 'text-white' : 'text-indigo-100'}`}>{opt}</span>
+                            <span className={`font-bold text-lg ${textClass}`}>{letters[i]}:</span>
+                            <span className={`font-medium text-lg ${optClass}`}>{opt}</span>
                           </div>
                         </button>
                       );
@@ -1066,15 +1132,22 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
                         <input 
                           type="text"
                           placeholder="Javobingizni kiriting va Enter bosing..."
+                          disabled={answerStatus !== 'idle'}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               handleSubmitAnswer(e.currentTarget.value);
+                              if (answerStatus === 'idle') {
+                                e.currentTarget.value = '';
+                              }
                             }
                           }}
-                          className="w-full bg-indigo-950/40 border-2 border-indigo-500/40 rounded-2xl p-5 text-white focus:border-amber-400 focus:shadow-[0_0_20px_rgba(251,191,36,0.2)] outline-none transition-all font-medium text-lg text-center"
+                          className="w-full bg-indigo-950/40 border-2 border-indigo-500/40 rounded-2xl p-5 text-white focus:border-amber-400 focus:shadow-[0_0_20px_rgba(251,191,36,0.2)] outline-none transition-all font-medium text-lg text-center disabled:opacity-50"
                         />
-                        {currentSession.currentAnswers?.[participantId] && (
-                          <p className="text-green-400 mt-4 font-bold text-center">Javobingiz qabul qilindi: {currentSession.currentAnswers[participantId]}</p>
+                        {answerStatus === 'checking' && <p className="text-amber-400 mt-4 font-bold animate-pulse text-center">Javob tekshirilmoqda...</p>}
+                        {answerStatus === 'correct' && <p className="text-green-400 mt-4 font-bold text-center">To'g'ri javob!</p>}
+                        {answerStatus === 'wrong' && <p className="text-red-400 mt-4 font-bold text-center">Noto'g'ri javob!</p>}
+                        {answerStatus === 'idle' && currentSession.currentAnswers?.[participantId] && (
+                          <p className="text-indigo-300 mt-4 font-bold text-center">Javobingiz qabul qilindi: {currentSession.currentAnswers[participantId]}</p>
                         )}
                       </div>
                     )}
