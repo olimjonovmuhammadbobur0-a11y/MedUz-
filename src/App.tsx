@@ -2257,6 +2257,7 @@ function QuizPage({ handleAIExplain, showAlert, showConfirm, user, updateProgres
   const [timeTaken, setTimeTaken] = useState(0);
   const [cheatCount, setCheatCount] = useState(0);
   const [userAttempts, setUserAttempts] = useState<Record<string, number>>({});
+  const [userScores, setUserScores] = useState<Record<string, number>>({});
   const [requestSent, setRequestSent] = useState<Record<string, boolean>>({});
   const [motivationalMessage, setMotivationalMessage] = useState<string | null>(null);
   
@@ -2280,6 +2281,7 @@ function QuizPage({ handleAIExplain, showAlert, showConfirm, user, updateProgres
         const userDoc = await getDoc(userRef);
         if (userDoc.exists()) {
           setUserAttempts(userDoc.data().quizAttempts || {});
+          setUserScores(userDoc.data().quizScores || {});
         }
         
         // Check requests
@@ -2587,12 +2589,24 @@ Return ONLY a JSON object in this format:
         });
       }
       
-      // Update attempts
+      // Update attempts and best score
       const newAttempts = (userAttempts[selectedTopic.name] || 0) + 1;
       setUserAttempts(prev => ({ ...prev, [selectedTopic.name]: newAttempts }));
+      
       const userRef = doc(db, 'users', user.uid);
-      updateDoc(userRef, {
-        [`quizAttempts.${selectedTopic.name}`]: newAttempts
+      
+      // We need to get the current best score to update it if the new one is higher
+      getDoc(userRef).then(docSnap => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const currentBest = data.quizScores?.[selectedTopic.name] || 0;
+          const newBest = Math.max(currentBest, finalPercentage);
+          
+          updateDoc(userRef, {
+            [`quizAttempts.${selectedTopic.name}`]: newAttempts,
+            [`quizScores.${selectedTopic.name}`]: newBest
+          }).catch(console.error);
+        }
       }).catch(console.error);
     }
     
@@ -2928,28 +2942,55 @@ Return ONLY a JSON object in this format:
           <h2 className="text-3xl font-semibold tracking-tight text-foreground">{selectedSubject.name} <span className="text-primary mx-2">&rarr;</span> {t('quizTopicsTitle')}</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {selectedSubject.topics.map((topic: any) => (
-            <motion.button
-              key={topic.id}
-              whileHover={!topic.isLocked ? { scale: 1.02 } : {}}
-              whileTap={!topic.isLocked ? { scale: 0.98 } : {}}
-              onClick={() => !topic.isLocked && handleTopicSelect(topic)}
-              className={`bg-card p-8 rounded-2xl border border-border/40 shadow-sm transition-all text-left flex justify-between items-center group ${topic.isLocked ? 'opacity-60 cursor-not-allowed' : 'hover:shadow-sm'}`}
-            >
-              <div>
-                <h3 className={`text-xl font-medium transition-colors tracking-tight flex items-center gap-2 ${topic.isLocked ? 'text-foreground/60' : 'text-foreground group-hover:text-primary'}`}>
-                  {topic.name}
-                  {topic.isLocked && <Lock className="w-4 h-4 text-red-500" />}
-                </h3>
-                <p className="text-sm text-foreground/50 mt-2 font-medium bg-secondary w-fit px-3 py-1 rounded-lg">{topic.questions.length} {t('quizQuestion').toLowerCase()}</p>
-              </div>
-              {!topic.isLocked ? (
-                <ChevronRight className="w-6 h-6 text-foreground/30 group-hover:text-primary transition-colors group-hover:translate-x-1" />
-              ) : (
-                <Lock className="w-6 h-6 text-red-500/50" />
-              )}
-            </motion.button>
-          ))}
+          {selectedSubject.topics.map((topic: any) => {
+            const bestScore = userScores[topic.name] || 0;
+            const attempts = userAttempts[topic.name] || 0;
+            
+            return (
+              <motion.button
+                key={topic.id}
+                whileHover={!topic.isLocked ? { scale: 1.02 } : {}}
+                whileTap={!topic.isLocked ? { scale: 0.98 } : {}}
+                onClick={() => !topic.isLocked && handleTopicSelect(topic)}
+                className={`bg-card p-8 rounded-2xl border border-border/40 shadow-sm transition-all text-left flex flex-col group ${topic.isLocked ? 'opacity-60 cursor-not-allowed' : 'hover:shadow-sm'}`}
+              >
+                <div className="flex justify-between items-start w-full mb-4">
+                  <div>
+                    <h3 className={`text-xl font-medium transition-colors tracking-tight flex items-center gap-2 ${topic.isLocked ? 'text-foreground/60' : 'text-foreground group-hover:text-primary'}`}>
+                      {topic.name}
+                      {topic.isLocked && <Lock className="w-4 h-4 text-red-500" />}
+                    </h3>
+                    <div className="flex items-center gap-2 mt-2">
+                      <p className="text-sm text-foreground/50 font-medium bg-secondary w-fit px-3 py-1 rounded-lg">{topic.questions.length} {t('quizQuestion').toLowerCase()}</p>
+                      {attempts > 0 && (
+                        <p className="text-xs text-foreground/40 font-medium bg-secondary/50 w-fit px-2 py-1 rounded-md">{attempts} urinish</p>
+                      )}
+                    </div>
+                  </div>
+                  {!topic.isLocked ? (
+                    <ChevronRight className="w-6 h-6 text-foreground/30 group-hover:text-primary transition-colors group-hover:translate-x-1" />
+                  ) : (
+                    <Lock className="w-6 h-6 text-red-500/50" />
+                  )}
+                </div>
+                
+                {!topic.isLocked && attempts > 0 && (
+                  <div className="w-full mt-2">
+                    <div className="flex justify-between items-end mb-1.5">
+                      <span className="text-xs font-medium text-foreground/50">Eng yuqori natija</span>
+                      <span className={`text-xs font-bold ${bestScore >= 80 ? 'text-emerald-500' : bestScore >= 50 ? 'text-amber-500' : 'text-red-500'}`}>{bestScore}%</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-500 ${bestScore >= 80 ? 'bg-emerald-500' : bestScore >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} 
+                        style={{ width: `${bestScore}%` }} 
+                      />
+                    </div>
+                  </div>
+                )}
+              </motion.button>
+            );
+          })}
         </div>
       </motion.div>
     );
@@ -3570,21 +3611,40 @@ function FanlarPage({ data }: { data: Subject[] }) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {data.map(subject => {
           const Icon = (Icons[subject.icon as keyof typeof Icons] as React.ElementType) || BookOpen;
+          const completedCount = subject.topics.filter(t => completedTopics.includes(t.id)).length;
+          const progressPercent = subject.topics.length > 0 ? Math.round((completedCount / subject.topics.length) * 100) : 0;
+          
           return (
             <button
               key={subject.id}
               onClick={() => setSelectedSubject(subject)}
-              className="text-left bg-card border border-border rounded-3xl p-8 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group relative overflow-hidden"
+              className="text-left bg-card border border-border rounded-3xl p-8 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group relative overflow-hidden flex flex-col"
             >
               <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-bl-full -z-10 group-hover:bg-primary/10 transition-colors" />
               <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-6 text-primary group-hover:scale-110 transition-transform">
                 <Icon className="w-8 h-8" />
               </div>
               <h3 className="text-2xl font-bold text-foreground mb-3 group-hover:text-primary transition-colors">{subject.title}</h3>
-              <p className="text-foreground/60 leading-relaxed mb-6 line-clamp-2">{subject.description}</p>
-              <div className="flex items-center gap-2 text-primary font-medium">
-                <span>{subject.topics.length} {t('fanlarTopics')}</span>
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              <p className="text-foreground/60 leading-relaxed mb-6 line-clamp-2 flex-1">{subject.description}</p>
+              
+              <div className="w-full mb-4">
+                <div className="flex justify-between items-end mb-2">
+                  <span className="text-xs font-medium text-foreground/60">O'zlashtirish</span>
+                  <span className="text-xs font-bold text-primary">{progressPercent}%</span>
+                </div>
+                <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
+                  <div className="h-full bg-primary transition-all duration-500" style={{ width: `${progressPercent}%` }} />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center gap-2 text-primary font-medium">
+                  <span>{subject.topics.length} {t('fanlarTopics')}</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+                <span className="text-xs font-medium text-foreground/50 bg-secondary px-2 py-1 rounded-md">
+                  {completedCount} / {subject.topics.length} yakunlandi
+                </span>
               </div>
             </button>
           );

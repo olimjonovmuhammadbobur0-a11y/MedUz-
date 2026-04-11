@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Play, Clock, Trophy, ArrowLeft, CheckCircle2, XCircle, LogIn, Plus, Percent, Smile, Phone, BarChart2, X } from 'lucide-react';
+import { Users, Play, Clock, Trophy, ArrowLeft, CheckCircle2, XCircle, LogIn, Plus, Percent, Smile, Phone, BarChart2, X, Bot } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, getDocs, writeBatch, setDoc } from 'firebase/firestore';
+import { GoogleGenAI } from '@google/genai';
 
 export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any, showAlert: (title: string, content: string) => void, showConfirm: (title: string, content: string, onConfirm: () => void) => void, fanlar: any[] }) {
-  const [view, setView] = useState<'menu' | 'host_setup' | 'host_waiting' | 'host_active' | 'participant_join' | 'participant_waiting' | 'participant_active' | 'participant_completed'>('menu');
+  const [view, setView] = useState<'menu' | 'host_setup' | 'host_waiting' | 'host_active' | 'host_completed' | 'participant_join' | 'participant_waiting' | 'participant_active' | 'participant_completed'>('menu');
   
   // Host States
   const [tests, setTests] = useState<any[]>([]);
@@ -234,8 +235,7 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
           status: 'completed',
           endTime: serverTimestamp()
         });
-        setView('menu');
-        setCurrentSession(null);
+        setView('host_completed');
         showAlert("Muvaffaqiyatli", "Bellashuv yakunlandi.");
       } catch (error: any) {
         showAlert("Xatolik", "Yakunlashda xatolik: " + error.message);
@@ -384,20 +384,53 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
     if (answerStatus !== 'idle') return;
 
     const currentQ = questions.find(q => q.id === currentSession.currentQuestionId || q.id === currentSession.blitzQuestionId);
-    const isCorrect = currentQ?.correctAnswer?.trim().toLowerCase() === answer.trim().toLowerCase();
-
-    const newAnswers = { ...(currentSession.currentAnswers || {}), [participantId]: answer };
-    await updateDoc(doc(db, 'battle_sessions', currentSession.id), {
-      currentAnswers: newAnswers
-    });
-
+    
     setSelectedOption(answer);
     setAnswerStatus('checking');
 
     // Play suspense audio
     const suspenseAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3');
+    suspenseAudio.loop = true;
     suspenseAudio.play().catch(e => console.log('Audio play error:', e));
 
+    const startTime = Date.now();
+    let isCorrect = currentQ?.correctAnswer?.trim().toLowerCase() === answer.trim().toLowerCase();
+
+    // If not exact match, use AI to check
+    if (!isCorrect && currentQ?.correctAnswer && process.env.GEMINI_API_KEY) {
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const prompt = `Savol: "${currentQ.text}"\nTo'g'ri javob: "${currentQ.correctAnswer}"\nFoydalanuvchi javobi: "${answer}"\n\nFoydalanuvchi javobi to'g'rimi yoki ma'nosi to'g'ri keladimi? Faqat "HA" yoki "YO'Q" deb javob bering.`;
+        
+        // Add a 10-second timeout to prevent freezing
+        const aiPromise = ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: prompt,
+        });
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('AI timeout')), 10000));
+        
+        const response = await Promise.race([aiPromise, timeoutPromise]) as any;
+        
+        if (response.text?.trim().toUpperCase().includes('HA')) {
+          isCorrect = true;
+        }
+      } catch (error) {
+        console.error("AI checking error:", error);
+      }
+    }
+
+    try {
+      await updateDoc(doc(db, 'battle_sessions', currentSession.id), {
+        [`currentAnswers.${participantId}`]: answer
+      });
+    } catch (error) {
+      console.error("Error updating answer:", error);
+    }
+
+    const elapsed = Date.now() - startTime;
+    const remainingSuspense = Math.max(0, 3000 - elapsed);
+
+    // Ensure at least 3 seconds of suspense
     setTimeout(() => {
       suspenseAudio.pause();
       setAnswerStatus(isCorrect ? 'correct' : 'wrong');
@@ -411,36 +444,54 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
       setTimeout(() => {
         setAnswerStatus('idle');
       }, 4000);
-    }, 3000);
+    }, remainingSuspense);
   };
 
   const handleSpinWheel = async () => {
     if (!currentSession || isSpinning || !currentSession.availableQuestions || currentSession.availableQuestions.length === 0) return;
     setIsSpinning(true);
     setTimeout(async () => {
-      const questionsList = [...currentSession.availableQuestions];
-      const selectedIndex = Math.floor(Math.random() * questionsList.length);
-      const selectedQId = questionsList[selectedIndex];
-      questionsList.splice(selectedIndex, 1);
-      await updateDoc(doc(db, 'battle_sessions', currentSession.id), {
-        gamePhase: 'question',
-        currentQuestionId: selectedQId,
-        availableQuestions: questionsList,
-        questionEndTime: Date.now() + 60000, // 1 minute per question
-        currentAnswers: {}
-      });
-      setIsSpinning(false);
+      try {
+        const questionsList = [...currentSession.availableQuestions];
+        const selectedIndex = Math.floor(Math.random() * questionsList.length);
+        const selectedQId = questionsList[selectedIndex];
+        questionsList.splice(selectedIndex, 1);
+        await updateDoc(doc(db, 'battle_sessions', currentSession.id), {
+          gamePhase: 'question',
+          currentQuestionId: selectedQId,
+          availableQuestions: questionsList,
+          questionEndTime: Date.now() + 60000, // 1 minute per question
+          currentAnswers: {}
+        });
+      } catch (error) {
+        console.error("Error spinning wheel:", error);
+      } finally {
+        setIsSpinning(false);
+      }
     }, 3000);
   };
 
   const handleSetBlitzWinner = async (winnerId: string) => {
     if (!currentSession) return;
-    const newQueue = [...(currentSession.turnQueue || [])];
+    
+    // Ensure all current participants are in the queue
+    const currentParticipantIds = participants.map(p => p.id);
+    let newQueue = [...(currentSession.turnQueue || [])];
+    
+    currentParticipantIds.forEach(id => {
+      if (!newQueue.includes(id)) {
+        newQueue.push(id);
+      }
+    });
+
     const winnerIndex = newQueue.indexOf(winnerId);
     if (winnerIndex > -1) {
       newQueue.splice(winnerIndex, 1);
       newQueue.unshift(winnerId);
+    } else {
+      newQueue.unshift(winnerId);
     }
+
     await updateDoc(doc(db, 'battle_sessions', currentSession.id), {
       blitzWinnerId: winnerId,
       turnQueue: newQueue,
@@ -471,13 +522,26 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
 
   const handleNextTurn = async () => {
     if (!currentSession) return;
+    
+    // Ensure all current participants are in the queue
+    const currentParticipantIds = participants.map(p => p.id);
+    let newQueue = [...(currentSession.turnQueue || [])];
+    
+    currentParticipantIds.forEach(id => {
+      if (!newQueue.includes(id)) {
+        newQueue.push(id);
+      }
+    });
+
     let nextIndex = (currentSession.currentTurnIndex || 0) + 1;
-    if (nextIndex >= (currentSession.turnQueue?.length || 1)) {
+    if (nextIndex >= newQueue.length) {
       nextIndex = 0;
     }
+    
     await updateDoc(doc(db, 'battle_sessions', currentSession.id), {
       gamePhase: 'spinning',
       currentTurnIndex: nextIndex,
+      turnQueue: newQueue,
       currentQuestionId: null,
       currentAnswers: {}
     });
@@ -513,14 +577,12 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
       setIsSubmitting(true);
 
       try {
-        let score = 0;
         const batch = writeBatch(db);
 
+        // In Zakovat mode, points are awarded by the host, so we don't calculate them here.
+        // We just record the answers for history if needed.
         questions.forEach(q => {
           const selected = answers[q.id];
-          const isCorrect = selected === q.correctAnswer;
-          if (isCorrect) score += (q.points || 10);
-
           if (selected) {
             const answerRef = doc(collection(db, 'battle_answers'));
             batch.set(answerRef, {
@@ -529,15 +591,13 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
               userId: user.uid,
               questionId: q.id,
               selectedOption: selected,
-              isCorrect: isCorrect,
               answeredAt: Date.now()
             });
           }
         });
 
-        const participantRef = doc(db, 'battle_participants', participantId);
+        const participantRef = doc(db, 'battle_participants', participantId!);
         batch.update(participantRef, {
-          totalScore: score,
           completedAt: Date.now()
         });
 
@@ -883,6 +943,49 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
         </div>
       )}
 
+      {view === 'host_completed' && (() => {
+        const sortedParticipants = [...participants].sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+        return (
+          <div className="max-w-4xl mx-auto">
+            <div className="bg-card rounded-3xl p-8 border border-border shadow-sm mb-8 text-center">
+              <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Trophy className="w-10 h-10 text-primary" />
+              </div>
+              <h2 className="text-3xl font-bold text-foreground mb-2">O'yin yakunlandi!</h2>
+              <p className="text-foreground/60 mb-8">
+                Barcha ishtirokchilar natijalari hisoblandi.
+              </p>
+              
+              <div className="space-y-4 text-left">
+                {sortedParticipants.map((p, index) => (
+                  <div key={p.id} className="flex items-center justify-between p-4 bg-secondary/30 rounded-2xl border border-border">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${index === 0 ? 'bg-amber-400 text-amber-950 shadow-[0_0_15px_rgba(251,191,36,0.4)]' : index === 1 ? 'bg-slate-300 text-slate-800' : index === 2 ? 'bg-amber-700 text-amber-100' : 'bg-secondary text-foreground/60'}`}>
+                        {index + 1}
+                      </div>
+                      <span className="font-bold text-lg text-foreground">{p.groupName}</span>
+                    </div>
+                    <div className="text-2xl font-black text-primary">
+                      {p.totalScore || 0} <span className="text-sm font-medium text-foreground/40">ball</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <button 
+              onClick={() => {
+                setView('menu');
+                setCurrentSession(null);
+              }} 
+              className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary/90 transition-colors shadow-lg"
+            >
+              Bosh sahifaga qaytish
+            </button>
+          </div>
+        );
+      })()}
+
       {view === 'participant_join' && (
         <div className="bg-card rounded-3xl p-6 md:p-8 border border-border shadow-sm max-w-md mx-auto">
           <button onClick={() => setView('menu')} className="flex items-center gap-2 text-foreground/60 hover:text-foreground mb-6 transition-colors">
@@ -986,15 +1089,40 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
                 {currentSession.turnQueue?.[currentSession.currentTurnIndex] === participantId ? (
                   <>
                     <h2 className="text-3xl font-bold text-white mb-8">Sizning navbatingiz!</h2>
-                    <div className="relative w-64 h-64 mb-8">
+                    <div className="relative w-72 h-72 mb-8 mx-auto">
                       <motion.div 
-                        animate={{ rotate: isSpinning ? 360 * 5 : 0 }}
+                        animate={{ rotate: isSpinning ? 360 * 5 + Math.random() * 360 : 0 }}
                         transition={{ duration: 3, ease: "circOut" }}
-                        className="w-full h-full rounded-full border-8 border-indigo-500/50 border-t-amber-400 border-r-pink-500 border-b-emerald-500 border-l-blue-500 shadow-[0_0_50px_rgba(99,102,241,0.3)] flex items-center justify-center bg-indigo-950"
+                        className="w-full h-full rounded-full shadow-[0_0_50px_rgba(99,102,241,0.5)] flex items-center justify-center relative overflow-hidden border-4 border-indigo-900"
+                        style={{
+                          background: currentSession.availableQuestions && currentSession.availableQuestions.length > 0
+                            ? `conic-gradient(${currentSession.availableQuestions.map((_, i, arr) => {
+                                const colors = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef', '#f43f5e'];
+                                const color = colors[i % colors.length];
+                                const start = (i * 360) / arr.length;
+                                const end = ((i + 1) * 360) / arr.length;
+                                return `${color} ${start}deg ${end}deg`;
+                              }).join(', ')})`
+                            : '#1e1b4b'
+                        }}
                       >
-                        <span className="text-4xl font-black text-white/20">ZAKOVAT</span>
+                        <div className="absolute inset-2 rounded-full bg-slate-900 flex items-center justify-center z-10 border-4 border-indigo-900/50 shadow-inner">
+                          <span className="text-3xl font-black text-white/80 tracking-widest">ZAKOVAT</span>
+                        </div>
+                        {/* Draw lines for segments */}
+                        {currentSession.availableQuestions?.map((_, i, arr) => (
+                          <div 
+                            key={i} 
+                            className="absolute w-full h-0.5 bg-indigo-900/50 z-0"
+                            style={{ transform: `rotate(${(i * 360) / arr.length}deg)` }}
+                          />
+                        ))}
                       </motion.div>
-                      <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-4 w-8 h-8 bg-amber-400 rotate-45" style={{ clipPath: 'polygon(50% 100%, 0 0, 100% 0)' }}></div>
+                      {/* Pointer */}
+                      <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-8 h-10 z-20 flex flex-col items-center">
+                        <div className="w-6 h-6 bg-amber-400 rounded-full shadow-[0_0_15px_rgba(251,191,36,0.8)] border-2 border-white z-10"></div>
+                        <div className="w-0 h-0 border-l-[12px] border-l-transparent border-r-[12px] border-r-transparent border-t-[20px] border-t-amber-400 -mt-2 drop-shadow-md"></div>
+                      </div>
                     </div>
                     
                     <button 
@@ -1077,80 +1205,29 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
                     </div>
                   )}
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-                    {questions.find(q => q.id === currentSession.currentQuestionId)?.options?.map((opt: string, i: number) => {
-                      const isHidden = hiddenOptions.includes(opt);
-                      const isSelected = currentSession.currentAnswers?.[participantId] === opt;
-                      const isCheckingThis = answerStatus === 'checking' && selectedOption === opt;
-                      const isCorrectThis = answerStatus === 'correct' && selectedOption === opt;
-                      const isWrongThis = answerStatus === 'wrong' && selectedOption === opt;
-                      const letters = ['A', 'B', 'C', 'D'];
-                      
-                      if (isHidden) {
-                        return <div key={i} className="w-full p-4 rounded-2xl border-2 border-transparent opacity-0"></div>;
-                      }
-
-                      let buttonClass = 'border-indigo-500/40 hover:border-indigo-400 bg-indigo-950/40 hover:bg-indigo-900/60';
-                      let textClass = 'text-indigo-400 group-hover:text-indigo-300';
-                      let optClass = 'text-indigo-100';
-
-                      if (isCheckingThis) {
-                        buttonClass = 'border-amber-400 bg-amber-500/20 shadow-[0_0_20px_rgba(251,191,36,0.5)] animate-pulse';
-                        textClass = 'text-amber-400';
-                        optClass = 'text-white';
-                      } else if (isCorrectThis) {
-                        buttonClass = 'border-green-500 bg-green-500/30 shadow-[0_0_30px_rgba(34,197,94,0.6)]';
-                        textClass = 'text-green-400';
-                        optClass = 'text-white';
-                      } else if (isWrongThis) {
-                        buttonClass = 'border-red-500 bg-red-500/30 shadow-[0_0_30px_rgba(239,68,68,0.6)]';
-                        textClass = 'text-red-400';
-                        optClass = 'text-white';
-                      } else if (isSelected && answerStatus === 'idle') {
-                        buttonClass = 'border-amber-400 bg-amber-500/20 shadow-[0_0_20px_rgba(251,191,36,0.3)]';
-                        textClass = 'text-amber-400';
-                        optClass = 'text-white';
-                      }
-                      
-                      return (
-                        <button
-                          key={i}
-                          disabled={answerStatus !== 'idle'}
-                          onClick={() => handleSubmitAnswer(opt)}
-                          className={`group w-full text-left p-4 md:p-5 rounded-2xl border-2 transition-all relative overflow-hidden disabled:opacity-80 ${buttonClass}`}
-                        >
-                          <div className="flex items-center gap-4 relative z-10">
-                            <span className={`font-bold text-lg ${textClass}`}>{letters[i]}:</span>
-                            <span className={`font-medium text-lg ${optClass}`}>{opt}</span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                    
-                    {(!questions.find(q => q.id === currentSession.currentQuestionId)?.options || questions.find(q => q.id === currentSession.currentQuestionId)?.options.length === 0) && (
-                      <div className="col-span-1 md:col-span-2">
-                        <input 
-                          type="text"
-                          placeholder="Javobingizni kiriting va Enter bosing..."
-                          disabled={answerStatus !== 'idle'}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              handleSubmitAnswer(e.currentTarget.value);
-                              if (answerStatus === 'idle') {
-                                e.currentTarget.value = '';
-                              }
+                  <div className="w-full mb-8">
+                    <div className="col-span-1 md:col-span-2">
+                      <input 
+                        type="text"
+                        placeholder="Javobingizni kiriting va Enter bosing..."
+                        disabled={answerStatus !== 'idle'}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleSubmitAnswer(e.currentTarget.value);
+                            if (answerStatus === 'idle') {
+                              e.currentTarget.value = '';
                             }
-                          }}
-                          className="w-full bg-indigo-950/40 border-2 border-indigo-500/40 rounded-2xl p-5 text-white focus:border-amber-400 focus:shadow-[0_0_20px_rgba(251,191,36,0.2)] outline-none transition-all font-medium text-lg text-center disabled:opacity-50"
-                        />
-                        {answerStatus === 'checking' && <p className="text-amber-400 mt-4 font-bold animate-pulse text-center">Javob tekshirilmoqda...</p>}
-                        {answerStatus === 'correct' && <p className="text-green-400 mt-4 font-bold text-center">To'g'ri javob!</p>}
-                        {answerStatus === 'wrong' && <p className="text-red-400 mt-4 font-bold text-center">Noto'g'ri javob!</p>}
-                        {answerStatus === 'idle' && currentSession.currentAnswers?.[participantId] && (
-                          <p className="text-indigo-300 mt-4 font-bold text-center">Javobingiz qabul qilindi: {currentSession.currentAnswers[participantId]}</p>
-                        )}
-                      </div>
-                    )}
+                          }
+                        }}
+                        className="w-full bg-indigo-950/40 border-2 border-indigo-500/40 rounded-2xl p-5 text-white focus:border-amber-400 focus:shadow-[0_0_20px_rgba(251,191,36,0.2)] outline-none transition-all font-medium text-lg text-center disabled:opacity-50"
+                      />
+                      {answerStatus === 'checking' && <p className="text-amber-400 mt-4 font-bold animate-pulse text-center">Javob tekshirilmoqda...</p>}
+                      {answerStatus === 'correct' && <p className="text-green-400 mt-4 font-bold text-center">To'g'ri javob!</p>}
+                      {answerStatus === 'wrong' && <p className="text-red-400 mt-4 font-bold text-center">Noto'g'ri javob!</p>}
+                      {answerStatus === 'idle' && currentSession.currentAnswers?.[participantId] && (
+                        <p className="text-indigo-300 mt-4 font-bold text-center">Javobingiz qabul qilindi: {currentSession.currentAnswers[participantId]}</p>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1308,28 +1385,82 @@ export function BattlePage({ user, showAlert, showConfirm, fanlar }: { user: any
         </div>
       )}
 
-      {view === 'participant_completed' && (
-        <div className="bg-card rounded-3xl p-8 text-center shadow-sm border border-border max-w-md mx-auto">
-          <div className="w-24 h-24 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Trophy className="w-12 h-12 text-green-500" />
-          </div>
-          <h2 className="text-3xl font-bold text-foreground mb-2">Tabriklaymiz!</h2>
-          <p className="text-foreground/60 mb-8">
-            Siz testni muvaffaqiyatli yakunladingiz.
-          </p>
-          
-          <div className="bg-secondary/50 rounded-2xl p-6 mb-8 border border-border">
-            <p className="text-sm font-medium text-foreground/60 uppercase tracking-widest mb-2">Sizning natijangiz</p>
-            <div className="text-5xl font-black text-primary">
-              {participants.find(p => p.id === participantId)?.totalScore || 0} <span className="text-xl text-foreground/40">ball</span>
-            </div>
-          </div>
+      {view === 'participant_completed' && (() => {
+        const sortedParticipants = [...participants].sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+        const myRank = sortedParticipants.findIndex(p => p.id === participantId) + 1;
+        const myData = sortedParticipants.find(p => p.id === participantId);
+        const isWinner = myRank > 0 && myRank <= 3;
 
-          <button onClick={() => setView('menu')} className="w-full py-3.5 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors">
-            Bosh sahifaga qaytish
-          </button>
-        </div>
-      )}
+        return (
+          <div className="max-w-3xl mx-auto">
+            {isWinner ? (
+              <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-1 rounded-3xl shadow-[0_0_50px_rgba(99,102,241,0.3)] mb-8">
+                <div className="bg-slate-900 rounded-[1.4rem] p-8 md:p-12 border border-indigo-500/30 relative overflow-hidden text-center">
+                  {/* Decorative elements */}
+                  <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-amber-400 via-yellow-200 to-amber-400"></div>
+                  <div className="absolute -top-24 -left-24 w-48 h-48 bg-indigo-500/20 rounded-full blur-3xl"></div>
+                  <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-amber-500/20 rounded-full blur-3xl"></div>
+                  
+                  <div className="relative z-10">
+                    <Trophy className={`w-20 h-20 mx-auto mb-6 ${myRank === 1 ? 'text-amber-400 drop-shadow-[0_0_15px_rgba(251,191,36,0.5)]' : myRank === 2 ? 'text-slate-300 drop-shadow-[0_0_15px_rgba(203,213,225,0.5)]' : 'text-amber-700 drop-shadow-[0_0_15px_rgba(180,83,9,0.5)]'}`} />
+                    
+                    <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-amber-200 mb-2 uppercase tracking-widest font-serif">
+                      Sertifikat
+                    </h1>
+                    <p className="text-indigo-200 text-lg mb-8 uppercase tracking-widest">Zakovat intellektual o'yini</p>
+                    
+                    <p className="text-indigo-100 text-lg mb-4">Ushbu sertifikat</p>
+                    <h2 className="text-4xl font-bold text-white mb-4 border-b-2 border-indigo-500/30 pb-4 inline-block px-8">
+                      {myData?.groupName}
+                    </h2>
+                    <p className="text-indigo-100 text-lg mb-8">guruhiga o'yinda faol ishtirok etib,</p>
+                    
+                    <div className="inline-block bg-indigo-950/50 border border-indigo-500/30 rounded-2xl px-8 py-4 mb-12">
+                      <p className="text-3xl font-black text-amber-400">
+                        {myRank}-O'RINNI
+                      </p>
+                      <p className="text-indigo-200 mt-1">qo'lga kiritgani uchun beriladi.</p>
+                    </div>
+                    
+                    <div className="flex justify-between items-end border-t border-indigo-500/30 pt-8 mt-4">
+                      <div className="text-left">
+                        <p className="text-indigo-300 text-sm mb-1">To'plangan ball:</p>
+                        <p className="text-2xl font-bold text-white">{myData?.totalScore || 0}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-indigo-300 text-sm mb-1">Sana:</p>
+                        <p className="text-lg font-medium text-white">{new Date().toLocaleDateString('uz-UZ')}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-card rounded-3xl p-8 text-center shadow-sm border border-border mb-8">
+                <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <CheckCircle2 className="w-12 h-12 text-primary" />
+                </div>
+                <h2 className="text-3xl font-bold text-foreground mb-2">O'yin yakunlandi!</h2>
+                <p className="text-foreground/60 mb-8">
+                  Zakovat o'yinida ishtirok etganingiz uchun rahmat.
+                </p>
+                
+                <div className="bg-secondary/50 rounded-2xl p-6 mb-8 border border-border">
+                  <p className="text-sm font-medium text-foreground/60 uppercase tracking-widest mb-2">Sizning natijangiz</p>
+                  <div className="text-5xl font-black text-primary">
+                    {myData?.totalScore || 0} <span className="text-xl text-foreground/40">ball</span>
+                  </div>
+                  <p className="text-foreground/60 mt-4">Siz {myRank}-o'rinni egalladingiz.</p>
+                </div>
+              </div>
+            )}
+            
+            <button onClick={() => setView('menu')} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-500 transition-colors shadow-lg">
+              Bosh sahifaga qaytish
+            </button>
+          </div>
+        );
+      })()}
     </motion.div>
   );
 }
